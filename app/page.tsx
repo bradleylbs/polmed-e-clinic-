@@ -83,7 +83,7 @@ interface Appointment {
   locationId: string
   timeSlotId: string
   appointmentDate: Date
-  status: "confirmed" | "cancelled" | "completed"
+  status: "confirmed" | "cancelled" | "completed" | "pending_sync"
   createdAt: Date
 }
 
@@ -365,7 +365,7 @@ export default function HomePage() {
     }
   }
 
-  const handleAppointmentBooked = async (appointment: Appointment) => {
+  const handleAppointmentBooked = (appointment: Appointment) => {
     try {
       console.log("Appointment booked:", appointment)
 
@@ -382,7 +382,8 @@ export default function HomePage() {
         synced: false,
       }
 
-      await offlineManager.saveData("appointments", appointmentData)
+      // Fire and forget; handler is sync to match child prop type
+      void offlineManager.saveData("appointments", appointmentData)
       console.log('Appointment saved to offline storage')
       
       setViewMode("routes")

@@ -186,7 +186,7 @@ CREATE TABLE vital_signs (
 CREATE TABLE clinical_notes (
     id INT PRIMARY KEY AUTO_INCREMENT,
     visit_id INT NOT NULL,
-    note_type ENUM('Assessment', 'Diagnosis', 'Treatment', 'Referral', 'Counseling') NOT NULL,
+    note_type ENUM('Assessment', 'Diagnosis', 'Treatment', 'Referral', 'Counseling', 'Closure') NOT NULL,
     content TEXT NOT NULL,
     icd10_codes JSON,
     medications_prescribed JSON,

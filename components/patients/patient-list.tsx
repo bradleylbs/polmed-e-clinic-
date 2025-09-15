@@ -36,7 +36,9 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
       let patientsData: any[] = []
       if (!offlineManager.getConnectionStatus()) {
         // Offline: get patients from IndexedDB
-        patientsData = await offlineManager.getData("patients") || []
+        const data = await offlineManager.getData("patients")
+        // Ensure we always have an array
+        patientsData = Array.isArray(data) ? data : data ? [data] : []
       } else {
         // Online: get patients from API
         const response = await apiService.getPatients()

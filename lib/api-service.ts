@@ -179,7 +179,19 @@ class ApiService {
       const body = (data && data.data !== undefined) ? data.data : data
       let unwrapped = body
       if (body && typeof body === 'object' && !Array.isArray(body)) {
-        const preferredKeys = ['patients', 'routes', 'assets', 'consumables', 'appointments', 'users', 'stats']
+        const preferredKeys = [
+          'patients',
+          'routes',
+          'assets',
+          'consumables',
+          'appointments',
+          'users',
+          'stats',
+          'workflow',
+          // Added to support clinical notes and referrals endpoints
+          'notes',
+          'referrals',
+        ]
         for (const key of preferredKeys) {
           if (Object.prototype.hasOwnProperty.call(body, key)) {
             unwrapped = body[key]
@@ -435,6 +447,29 @@ class ApiService {
   async updateReferral(referralId: number, payload: UpdateReferralRequest): Promise<ApiResponse<Referral>> {
     return this.request<Referral>(`/referrals/${referralId}`, {
       method: 'PATCH',
+      body: JSON.stringify(payload),
+    })
+  }
+
+  // Clinical notes and workflow
+  async getWorkflowStatus(visitId: number): Promise<ApiResponse<any>> {
+    return this.request<any>(`/visits/${visitId}/workflow/status`)
+  }
+
+  async getClinicalNotes(visitId: number): Promise<ApiResponse<any[]>> {
+    return this.request<any[]>(`/visits/${visitId}/clinical-notes`)
+  }
+
+  async createClinicalNote(visitId: number, payload: {
+    note_type: 'Assessment' | 'Diagnosis' | 'Treatment' | 'Referral' | 'Counseling' | 'Closure'
+    content: string
+    icd10_codes?: string[]
+    medications_prescribed?: string[]
+    follow_up_required?: boolean
+    follow_up_date?: string
+  }): Promise<ApiResponse<any>> {
+    return this.request<any>(`/visits/${visitId}/clinical-notes`, {
+      method: 'POST',
       body: JSON.stringify(payload),
     })
   }

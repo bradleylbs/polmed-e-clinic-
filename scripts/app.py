@@ -428,7 +428,7 @@ def verify_token():
 
 @app.route('/api/patients', methods=['GET'])
 @token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
 def get_patients():
     """Get patients list with filtering and pagination"""
     try:
@@ -926,7 +926,7 @@ def add_vital_signs(visit_id: int):
 
 @app.route('/api/patients/<int:patient_id>/visits/latest', methods=['GET'])
 @token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_worker'])
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
 def get_latest_visit(patient_id: int):
     """Return the most recent visit for a patient (by id desc)."""
     try:
@@ -949,7 +949,7 @@ def get_latest_visit(patient_id: int):
 
 @app.route('/api/visits/<int:visit_id>/vital-signs', methods=['GET'])
 @token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_worker'])
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
 def get_visit_vitals(visit_id: int):
     """Return vitals summary for a visit (count and latest record)."""
     try:
@@ -970,9 +970,21 @@ def get_visit_vitals(visit_id: int):
             (visit_id,),
             fetch=True,
         )
+        # Provide last non-null values to help the UI display Pulse/Temp even when the latest entry omitted them
+        last_non_null = DatabaseManager.execute_query(
+            """
+            SELECT
+                (SELECT heart_rate  FROM vital_signs WHERE visit_id = %s AND heart_rate  IS NOT NULL ORDER BY id DESC LIMIT 1) AS heart_rate,
+                (SELECT temperature FROM vital_signs WHERE visit_id = %s AND temperature IS NOT NULL ORDER BY id DESC LIMIT 1) AS temperature
+            """,
+            (visit_id, visit_id),
+            fetch=True,
+        )
+        last_non_null_payload = _to_jsonable(last_non_null[0]) if last_non_null else None
         payload = {
             'count': (summary[0]['count'] if summary else 0),
-            'latest': (_to_jsonable(latest[0]) if latest else None)
+            'latest': (_to_jsonable(latest[0]) if latest else None),
+            'last_non_null': last_non_null_payload,
         }
         return jsonify({'success': True, 'data': payload}), 200
     except Exception as e:
@@ -986,7 +998,7 @@ def get_visit_vitals(visit_id: int):
 @app.route('/api/routes', methods=['GET'])
 @token_required
 # Allow read access for roles that have 'routes: read' capability
-@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_worker'])
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
 def get_routes():
     """Get routes list with filtering"""
     try:
@@ -1191,7 +1203,7 @@ def create_route():
 
 @app.route('/api/patients/<int:patient_id>/referrals', methods=['GET'])
 @token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_worker'])
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
 def list_referrals(patient_id: int):
     """List referrals for a patient"""
     try:
@@ -1214,7 +1226,7 @@ def list_referrals(patient_id: int):
 
 @app.route('/api/patients/<int:patient_id>/referrals', methods=['POST'])
 @token_required
-@role_required(['administrator', 'doctor', 'nurse', 'social_worker'])
+@role_required(['administrator', 'doctor', 'nurse', 'social_work', 'social_worker'])
 def create_referral(patient_id: int):
     """Create a referral (internal or external)"""
     try:
@@ -1282,7 +1294,7 @@ def create_referral(patient_id: int):
 
 @app.route('/api/referrals/<int:referral_id>', methods=['PATCH'])
 @token_required
-@role_required(['administrator', 'doctor', 'nurse', 'social_worker', 'clerk'])
+@role_required(['administrator', 'doctor', 'nurse', 'social_work', 'social_worker', 'clerk'])
 def update_referral(referral_id: int):
     """Update referral status, appointment date, or notes"""
     try:
@@ -1510,5 +1522,835 @@ def health_check():
             'timestamp': datetime.utcnow().isoformat()
         }), 503
 
+# ============================================================================
+# CLINICAL WORKFLOW ENDPOINTS
+# ============================================================================
+
+@app.route('/api/workflow/stages', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
+def get_workflow_stages():
+    """Get all workflow stages in order"""
+    try:
+        stages = DatabaseManager.execute_query(
+            """
+            SELECT ws.*, ur.role_name as required_role
+            FROM workflow_stages ws
+            JOIN user_roles ur ON ws.required_role_id = ur.id
+            ORDER BY ws.stage_order
+            """,
+            fetch=True
+        )
+        
+        return jsonify({
+            'success': True,
+            'stages': stages or []
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get workflow stages error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/visits/<int:visit_id>/workflow', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
+def get_visit_workflow(visit_id: int):
+    """Get workflow progress for a visit"""
+    try:
+        workflow = DatabaseManager.execute_query(
+            """
+            SELECT vwp.*, ws.stage_name, ws.stage_order, ur.role_name as required_role,
+                   u.first_name, u.last_name
+            FROM visit_workflow_progress vwp
+            JOIN workflow_stages ws ON vwp.stage_id = ws.id
+            JOIN user_roles ur ON ws.required_role_id = ur.id
+            LEFT JOIN users u ON vwp.assigned_user_id = u.id
+            WHERE vwp.visit_id = %s
+            ORDER BY ws.stage_order
+            """,
+            (visit_id,),
+            fetch=True
+        )
+        
+        return jsonify({
+            'success': True,
+            'workflow': workflow or []
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get visit workflow error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/visits/<int:visit_id>/workflow/status', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
+def get_visit_workflow_status(visit_id: int):
+    """Return high-level workflow status for a visit used by the frontend to route roles.
+
+    Stages covered (in order):
+    - Registration (assumed complete when a visit exists)
+    - Nursing Assessment (completed when any vital_signs exist for the visit)
+    - Doctor Consultation (completed when any clinical_notes of type Assessment/Diagnosis/Treatment exist)
+    - Counseling Session (completed when a clinical_note of type Counseling exists)
+    - File Closure (completed when a clinical_note of type Closure exists)
+    """
+    try:
+        # Visit metadata (for Registration timestamp)
+        visit_rows = DatabaseManager.execute_query(
+            """
+            SELECT id, created_at
+            FROM patient_visits
+            WHERE id = %s
+            """,
+            (visit_id,),
+            fetch=True,
+        )
+        if not visit_rows:
+            return jsonify({'success': False, 'error': 'Visit not found'}), 404
+
+        visit_created_at = visit_rows[0].get('created_at')
+
+        # Nursing: any vitals captured?
+        nursing = DatabaseManager.execute_query(
+            "SELECT COUNT(*) AS c, MAX(recorded_at) AS latest FROM vital_signs WHERE visit_id = %s",
+            (visit_id,),
+            fetch=True,
+        )
+        nursing_count = (nursing[0]['c'] if nursing else 0) or 0
+        nursing_latest = nursing[0].get('latest') if nursing else None
+
+        # Doctor Consultation: only count Diagnosis/Treatment notes created by a Doctor
+        doctor_row = DatabaseManager.execute_query(
+            """
+            SELECT MAX(cn.created_at) AS latest
+            FROM clinical_notes cn
+            JOIN users u ON u.id = cn.created_by
+            JOIN user_roles ur ON ur.id = u.role_id
+            WHERE cn.visit_id = %s
+                AND cn.note_type IN ('Diagnosis','Treatment')
+                AND ur.role_name = 'Doctor'
+            """,
+            (visit_id,),
+            fetch=True,
+        )
+        doctor_latest = doctor_row[0].get('latest') if doctor_row else None
+        doctor_done = bool(doctor_latest)
+
+        # Counseling Session: only count Counseling notes created by a Social Worker
+        counseling_row = DatabaseManager.execute_query(
+            """
+            SELECT MAX(cn.created_at) AS latest
+            FROM clinical_notes cn
+            JOIN users u ON u.id = cn.created_by
+            JOIN user_roles ur ON ur.id = u.role_id
+            WHERE cn.visit_id = %s
+                AND cn.note_type = 'Counseling'
+                AND ur.role_name = 'Social Worker'
+            """,
+            (visit_id,),
+            fetch=True,
+        )
+        counseling_latest = counseling_row[0].get('latest') if counseling_row else None
+        counseling_done = bool(counseling_latest)
+
+        # File Closure: any Closure note regardless of role (typically doctor)
+        closure_row = DatabaseManager.execute_query(
+            """
+            SELECT MAX(created_at) AS latest
+            FROM clinical_notes
+            WHERE visit_id = %s AND note_type = 'Closure'
+            """,
+            (visit_id,),
+            fetch=True,
+        )
+        closure_latest = closure_row[0].get('latest') if closure_row else None
+        closure_done = bool(closure_latest)
+
+        workflow = [
+            {
+                'stage': 'Registration',
+                'completed': True,
+                'completed_at': _to_jsonable(visit_created_at),
+            },
+            {
+                'stage': 'Nursing Assessment',
+                'completed': nursing_count > 0,
+                'completed_at': _to_jsonable(nursing_latest) if nursing_count > 0 else None,
+            },
+            {
+                'stage': 'Doctor Consultation',
+                'completed': bool(doctor_done),
+                'completed_at': _to_jsonable(doctor_latest) if doctor_done else None,
+            },
+            {
+                'stage': 'Counseling Session',
+                'completed': bool(counseling_done),
+                'completed_at': _to_jsonable(counseling_latest) if counseling_done else None,
+            },
+            {
+                'stage': 'File Closure',
+                'completed': bool(closure_done),
+                'completed_at': _to_jsonable(closure_latest) if closure_done else None,
+            },
+        ]
+
+        return jsonify({'success': True, 'workflow': workflow}), 200
+    except Exception as e:
+        logger.error(f"Get workflow status error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/visits/<int:visit_id>/workflow/advance', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
+def advance_workflow_stage(visit_id: int):
+    """Advance workflow to next stage"""
+    try:
+        data = request.get_json() or {}
+        current_stage_id = data.get('current_stage_id')
+        notes = data.get('notes', '')
+        data_collected = data.get('data_collected', {})
+        
+        if not current_stage_id:
+            return jsonify({'success': False, 'error': 'current_stage_id is required'}), 400
+        
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+        
+        try:
+            cursor = connection.cursor()
+            cursor.callproc('sp_advance_workflow_stage', [
+                visit_id,
+                current_stage_id,
+                request.current_user['id'],
+                notes,
+                json.dumps(data_collected) if data_collected else None
+            ])
+            
+            # Get the result
+            for result in cursor.stored_results():
+                row = result.fetchone()
+                if row:
+                    result_message = row[0]
+                    break
+            
+            connection.commit()
+            
+            if result_message.startswith('SUCCESS'):
+                return jsonify({
+                    'success': True,
+                    'message': result_message
+                }), 200
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': result_message
+                }), 400
+                
+        finally:
+            cursor.close()
+            connection.close()
+        
+    except Exception as e:
+        logger.error(f"Advance workflow error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/visits/<int:visit_id>/workflow/initialize', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
+def initialize_visit_workflow(visit_id: int):
+    """Initialize workflow for a visit"""
+    try:
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+        
+        try:
+            cursor = connection.cursor()
+            cursor.callproc('sp_initialize_visit_workflow', [visit_id])
+            
+            # Get the result
+            for result in cursor.stored_results():
+                row = result.fetchone()
+                if row:
+                    result_message = row[0]
+                    break
+            
+            connection.commit()
+            
+            if result_message.startswith('SUCCESS'):
+                return jsonify({
+                    'success': True,
+                    'message': 'Workflow initialized successfully'
+                }), 200
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': result_message
+                }), 400
+                
+        finally:
+            cursor.close()
+            connection.close()
+        
+    except Exception as e:
+        logger.error(f"Initialize workflow error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+# ============================================================================
+# CLINICAL NOTES ENDPOINTS
+# ============================================================================
+
+@app.route('/api/visits/<int:visit_id>/clinical-notes', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'social_work', 'social_worker'])
+def get_clinical_notes(visit_id: int):
+    """Get clinical notes for a visit"""
+    try:
+        notes = DatabaseManager.execute_query(
+            """
+            SELECT cn.*, u.first_name, u.last_name
+            FROM clinical_notes cn
+            JOIN users u ON cn.created_by = u.id
+            WHERE cn.visit_id = %s
+            ORDER BY cn.created_at DESC
+            """,
+            (visit_id,),
+            fetch=True
+        )
+        
+        return jsonify({
+            'success': True,
+            'notes': notes or []
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get clinical notes error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/visits/<int:visit_id>/clinical-notes', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'social_work', 'social_worker'])
+def create_clinical_note(visit_id: int):
+    """Create a clinical note"""
+    try:
+        data = request.get_json() or {}
+        
+        note_type = data.get('note_type')
+        content = data.get('content', '').strip()
+        icd10_codes = data.get('icd10_codes', [])
+        medications_prescribed = data.get('medications_prescribed', [])
+        follow_up_required = data.get('follow_up_required', False)
+        follow_up_date = data.get('follow_up_date')
+        
+        if not note_type or not content:
+            return jsonify({'success': False, 'error': 'note_type and content are required'}), 400
+        
+        valid_note_types = ['Assessment', 'Diagnosis', 'Treatment', 'Referral', 'Counseling', 'Closure']
+        if note_type not in valid_note_types:
+            return jsonify({'success': False, 'error': f'note_type must be one of: {valid_note_types}'}), 400
+        
+        result = DatabaseManager.execute_query(
+            """
+            INSERT INTO clinical_notes (
+                visit_id, note_type, content, icd10_codes, medications_prescribed,
+                follow_up_required, follow_up_date, created_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                visit_id,
+                note_type,
+                content,
+                json.dumps(icd10_codes) if icd10_codes else None,
+                json.dumps(medications_prescribed) if medications_prescribed else None,
+                follow_up_required,
+                follow_up_date,
+                request.current_user['id']
+            )
+        )
+        
+        if result:
+            return jsonify({
+                'success': True,
+                'message': 'Clinical note created successfully'
+            }), 201
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create clinical note'}), 500
+        
+    except Exception as e:
+        logger.error(f"Create clinical note error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+# ============================================================================
+# APPOINTMENT BOOKING SYSTEM
+# ============================================================================
+
+@app.route('/api/appointments/available', methods=['GET'])
+def get_available_appointments():
+    """Get available appointment slots (public endpoint)"""
+    try:
+        province = request.args.get('province', '')
+        date_from = request.args.get('date_from', '')
+        date_to = request.args.get('date_to', '')
+        location_type = request.args.get('location_type', '')
+        
+        query = """
+        SELECT 
+            a.id,
+            a.appointment_time,
+            a.duration_minutes,
+            rl.visit_date,
+            l.location_name,
+            l.province,
+            l.city,
+            lt.type_name as location_type,
+            r.route_name,
+            r.route_type
+        FROM appointments a
+        JOIN route_locations rl ON a.route_location_id = rl.id
+        JOIN routes r ON rl.route_id = r.id
+        JOIN locations l ON rl.location_id = l.id
+        JOIN location_types lt ON l.location_type_id = lt.id
+        WHERE a.status = 'Available'
+        AND r.is_active = TRUE
+        AND rl.visit_date >= CURDATE()
+        """
+        
+        params = []
+        
+        if province:
+            query += " AND l.province = %s"
+            params.append(province)
+        
+        if date_from:
+            query += " AND rl.visit_date >= %s"
+            params.append(date_from)
+        
+        if date_to:
+            query += " AND rl.visit_date <= %s"
+            params.append(date_to)
+        
+        if location_type:
+            query += " AND lt.type_name = %s"
+            params.append(location_type)
+        
+        query += " ORDER BY rl.visit_date, a.appointment_time"
+        
+        appointments = DatabaseManager.execute_query(query, tuple(params), fetch=True)
+        
+        return jsonify({
+            'success': True,
+            'appointments': appointments or []
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get available appointments error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/appointments/<int:appointment_id>/book', methods=['POST'])
+def book_appointment(appointment_id: int):
+    """Book an appointment (public endpoint)"""
+    try:
+        data = request.get_json() or {}
+        
+        patient_id = data.get('patient_id')
+        booked_by_name = data.get('booked_by_name', '').strip()
+        booked_by_phone = data.get('booked_by_phone', '').strip()
+        booked_by_email = data.get('booked_by_email', '').strip()
+        special_requirements = data.get('special_requirements', '').strip()
+        
+        if not booked_by_name or not booked_by_phone:
+            return jsonify({'success': False, 'error': 'Name and phone number are required'}), 400
+        
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+        
+        try:
+            cursor = connection.cursor()
+            cursor.callproc('sp_book_appointment', [
+                appointment_id,
+                patient_id,
+                booked_by_name,
+                booked_by_phone,
+                booked_by_email,
+                special_requirements
+            ])
+            
+            # Get the results
+            booking_reference = None
+            result_message = None
+            for result in cursor.stored_results():
+                row = result.fetchone()
+                if row:
+                    booking_reference = row[0]
+                    result_message = row[1]
+                    break
+            
+            connection.commit()
+            
+            if result_message and result_message.startswith('SUCCESS'):
+                return jsonify({
+                    'success': True,
+                    'booking_reference': booking_reference,
+                    'message': 'Appointment booked successfully'
+                }), 200
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': result_message or 'Failed to book appointment'
+                }), 400
+                
+        finally:
+            cursor.close()
+            connection.close()
+        
+    except Exception as e:
+        logger.error(f"Book appointment error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/route-locations/<int:route_location_id>/generate-slots', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor'])
+def generate_appointment_slots(route_location_id: int):
+    """Generate appointment slots for a route location"""
+    try:
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+        
+        try:
+            cursor = connection.cursor()
+            cursor.callproc('sp_generate_appointment_slots', [route_location_id])
+            
+            # Get the result
+            for result in cursor.stored_results():
+                row = result.fetchone()
+                if row:
+                    result_message = row[0]
+                    break
+            
+            connection.commit()
+            
+            if result_message.startswith('SUCCESS'):
+                return jsonify({
+                    'success': True,
+                    'message': result_message
+                }), 200
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': result_message
+                }), 400
+                
+        finally:
+            cursor.close()
+            connection.close()
+        
+    except Exception as e:
+        logger.error(f"Generate appointment slots error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+# ============================================================================
+# ENHANCED INVENTORY MANAGEMENT
+# ============================================================================
+
+@app.route('/api/inventory/usage', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def record_inventory_usage():
+    """Record inventory usage with FIFO stock management"""
+    try:
+        data = request.get_json() or {}
+        
+        consumable_id = data.get('consumable_id')
+        quantity_used = data.get('quantity_used')
+        visit_id = data.get('visit_id')
+        location = data.get('location', 'Mobile Clinic')
+        notes = data.get('notes', '')
+        
+        if not consumable_id or not quantity_used:
+            return jsonify({'success': False, 'error': 'consumable_id and quantity_used are required'}), 400
+        
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+        
+        try:
+            cursor = connection.cursor()
+            cursor.callproc('sp_record_inventory_usage', [
+                consumable_id,
+                quantity_used,
+                visit_id,
+                request.current_user['id'],
+                location,
+                notes
+            ])
+            
+            # Get the result
+            for result in cursor.stored_results():
+                row = result.fetchone()
+                if row:
+                    result_message = row[0]
+                    break
+            
+            connection.commit()
+            
+            if result_message.startswith('SUCCESS'):
+                return jsonify({
+                    'success': True,
+                    'message': 'Inventory usage recorded successfully'
+                }), 200
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': result_message
+                }), 400
+                
+        finally:
+            cursor.close()
+            connection.close()
+        
+    except Exception as e:
+        logger.error(f"Record inventory usage error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/inventory/expiry-alerts', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def get_expiry_alerts():
+    """Get inventory expiry alerts"""
+    try:
+        days_ahead = int(request.args.get('days_ahead', 90))
+        
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+        
+        try:
+            cursor = connection.cursor()
+            cursor.callproc('sp_check_expiring_inventory', [days_ahead])
+            
+            # Get the alert count
+            alert_count = 0
+            for result in cursor.stored_results():
+                row = result.fetchone()
+                if row:
+                    alert_count = row[0]
+                    break
+            
+            # Get the alerts from temporary table
+            alerts = DatabaseManager.execute_query(
+                "SELECT * FROM temp_expiry_alerts ORDER BY days_to_expiry, alert_level",
+                fetch=True
+            )
+            
+            connection.commit()
+            
+            return jsonify({
+                'success': True,
+                'alert_count': alert_count,
+                'alerts': alerts or []
+            }), 200
+                
+        finally:
+            cursor.close()
+            connection.close()
+        
+    except Exception as e:
+        logger.error(f"Get expiry alerts error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+# ============================================================================
+# OFFLINE SYNC CAPABILITIES
+# ============================================================================
+
+@app.route('/api/sync/status', methods=['GET'])
+@token_required
+def get_sync_status():
+    """Get synchronization status for offline operations"""
+    try:
+        device_id = request.args.get('device_id')
+        
+        query = """
+        SELECT 
+            table_name,
+            COUNT(*) as total_records,
+            COUNT(CASE WHEN sync_status = 'Pending' THEN 1 END) as pending_sync,
+            COUNT(CASE WHEN sync_status = 'Failed' THEN 1 END) as failed_sync,
+            COUNT(CASE WHEN sync_status = 'Conflict' THEN 1 END) as conflicts,
+            MAX(server_timestamp) as last_sync
+        FROM sync_status
+        WHERE user_id = %s
+        """
+        
+        params = [request.current_user['id']]
+        
+        if device_id:
+            query += " AND device_id = %s"
+            params.append(device_id)
+        
+        query += " GROUP BY table_name ORDER BY table_name"
+        
+        sync_status = DatabaseManager.execute_query(query, tuple(params), fetch=True)
+        
+        return jsonify({
+            'success': True,
+            'sync_status': sync_status or []
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get sync status error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/sync/pending', methods=['POST'])
+@token_required
+def sync_pending_records():
+    """Sync pending offline records to server"""
+    try:
+        data = request.get_json() or {}
+        device_id = data.get('device_id')
+        records = data.get('records', [])
+        
+        if not device_id or not records:
+            return jsonify({'success': False, 'error': 'device_id and records are required'}), 400
+        
+        synced_count = 0
+        failed_count = 0
+        
+        for record in records:
+            try:
+                DatabaseManager.execute_query(
+                    """
+                    INSERT INTO sync_status (
+                        table_name, record_id, operation_type, sync_status,
+                        device_id, user_id, local_timestamp
+                    ) VALUES (%s, %s, %s, 'Pending', %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        sync_status = 'Pending',
+                        retry_count = retry_count + 1,
+                        last_retry_at = NOW()
+                    """,
+                    (
+                        record.get('table_name'),
+                        record.get('record_id'),
+                        record.get('operation_type'),
+                        device_id,
+                        request.current_user['id'],
+                        record.get('timestamp')
+                    )
+                )
+                synced_count += 1
+            except Exception as sync_error:
+                logger.error(f"Sync record error: {sync_error}")
+                failed_count += 1
+        
+        return jsonify({
+            'success': True,
+            'synced_count': synced_count,
+            'failed_count': failed_count,
+            'message': f'Synced {synced_count} records, {failed_count} failed'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Sync pending records error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+# ============================================================================
+# PALMED INTEGRATION ENDPOINTS
+# ============================================================================
+
+@app.route('/api/palmed/member-lookup', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
+def palmed_member_lookup():
+    """Look up PALMED member information"""
+    try:
+        medical_aid_number = request.args.get('medical_aid_number', '').strip()
+        
+        if not medical_aid_number:
+            return jsonify({'success': False, 'error': 'medical_aid_number is required'}), 400
+        
+        existing_patient = DatabaseManager.execute_query(
+            "SELECT * FROM patients WHERE medical_aid_number = %s",
+            (medical_aid_number,),
+            fetch=True
+        )
+        
+        if existing_patient:
+            return jsonify({
+                'success': True,
+                'member_found': True,
+                'member_data': existing_patient[0],
+                'source': 'local_database'
+            }), 200
+        
+        # TODO: Implement actual PALMED API integration
+        # For now, return mock data structure
+        mock_member_data = {
+            'medical_aid_number': medical_aid_number,
+            'first_name': 'John',
+            'last_name': 'Doe',
+            'date_of_birth': '1980-01-01',
+            'gender': 'Male',
+            'member_type': 'Principal',
+            'is_palmed_member': True,
+            'phone_number': '0123456789',
+            'email': 'john.doe@example.com',
+            'physical_address': '123 Main Street, Johannesburg'
+        }
+        
+        return jsonify({
+            'success': True,
+            'member_found': True,
+            'member_data': mock_member_data,
+            'source': 'palmed_api',
+            'note': 'Mock data - PALMED API integration pending'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"PALMED member lookup error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/palmed/sync-member', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
+def sync_palmed_member():
+    """Sync patient data with PALMED systems"""
+    try:
+        data = request.get_json() or {}
+        patient_id = data.get('patient_id')
+        
+        if not patient_id:
+            return jsonify({'success': False, 'error': 'patient_id is required'}), 400
+        
+        # Get patient data
+        patient = DatabaseManager.execute_query(
+            "SELECT * FROM patients WHERE id = %s",
+            (patient_id,),
+            fetch=True
+        )
+        
+        if not patient:
+            return jsonify({'success': False, 'error': 'Patient not found'}), 404
+        
+        patient_data = patient[0]
+        
+        # TODO: Implement actual PALMED API sync
+        # For now, just log the sync attempt
+        logger.info(f"PALMED sync requested for patient {patient_id}: {patient_data['first_name']} {patient_data['last_name']}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Patient data sync initiated with PALMED systems',
+            'sync_status': 'pending',
+            'note': 'PALMED API integration pending'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"PALMED sync error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Disable the reloader to avoid SystemExit in debuggers (parent process exit).
+    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
