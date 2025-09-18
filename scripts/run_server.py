@@ -6,7 +6,22 @@ Run this script to start the Flask development server
 
 import os
 import sys
-from app import app
+
+# Ensure we can import the Flask app from scripts/app.py reliably
+# Try adding the repository root and the scripts directory to sys.path
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+SCRIPTS_DIR = os.path.abspath(os.path.dirname(__file__))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+if SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, SCRIPTS_DIR)
+
+# Import the Flask app instance, preferring scripts.app
+try:
+    from scripts.app import app  # type: ignore
+except Exception:
+    # Fallback to top-level app if present
+    from app import app  # type: ignore
 
 def main():
     """Main entry point for the Flask application"""

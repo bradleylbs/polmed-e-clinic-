@@ -124,7 +124,7 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
 
   const getMembershipBadge = (medicalAidNumber: string) => {
     if ((medicalAidNumber || "").startsWith("PAL")) {
-      return <Badge className="bg-green-100 text-green-800">PALMED Member</Badge>
+  return <Badge className="bg-green-100 text-green-800">POLMED Member</Badge>
     }
     return (
       <Badge variant="outline" className="bg-orange-100 text-orange-800">
@@ -189,7 +189,7 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Patients</SelectItem>
-                <SelectItem value="member">PALMED Members</SelectItem>
+                <SelectItem value="member">POLMED Members</SelectItem>
                 <SelectItem value="non-member">Non-members</SelectItem>
               </SelectContent>
             </Select>

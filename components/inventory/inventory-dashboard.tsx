@@ -13,7 +13,6 @@ import {
   TrendingUp,
   TrendingDown,
   DollarSign,
-  Calendar,
   Wrench,
   Clock,
   CheckCircle,
@@ -32,11 +31,11 @@ interface InventorySummary {
   operationalAssets: number
   assetsUnderMaintenance: number
   brokenAssets: number
+  retiredAssets: number
   totalConsumables: number
   lowStockItems: number
   expiringItems: number
   totalInventoryValue: number
-  monthlyUsage: number
   maintenanceAlerts: number
 }
 
@@ -77,20 +76,41 @@ export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
         // Calculate summary data from API responses
         const summary: InventorySummary = {
           totalAssets: assets.length,
-          operationalAssets: assets.filter((a) => a.status === "operational").length,
-          assetsUnderMaintenance: assets.filter((a) => a.status === "maintenance").length,
-          brokenAssets: assets.filter((a) => a.status === "broken").length,
+          operationalAssets: assets.filter((a: any) => a.status === "Operational").length,
+          assetsUnderMaintenance: assets.filter((a: any) => a.status === "Maintenance Required").length,
+          brokenAssets: assets.filter((a: any) => a.status === "Out of Service").length,
+          retiredAssets: assets.filter((a: any) => a.status === "Retired").length,
           totalConsumables: consumables.length,
-          lowStockItems: consumables.filter((c) => c.quantity_available < 50).length,
-          expiringItems: consumables.filter((c) => {
+          // Use backend-computed stock_status to avoid UI misreads
+          lowStockItems: consumables.filter(
+            (c: any) => c.stock_status === "low_stock" || c.stock_status === "out_of_stock",
+          ).length,
+          expiringItems: consumables.filter((c: any) => {
+            if (!c.expiry_date) return false
             const expiryDate = new Date(c.expiry_date)
             const threeMonthsFromNow = new Date()
             threeMonthsFromNow.setMonth(threeMonthsFromNow.getMonth() + 3)
             return expiryDate <= threeMonthsFromNow
           }).length,
-          totalInventoryValue: 485000, // This would come from a separate API endpoint
-          monthlyUsage: 15000, // This would come from a separate API endpoint
-          maintenanceAlerts: assets.filter((a) => a.status === "maintenance").length,
+          totalInventoryValue:
+            assets.reduce((total: number, asset: any) => total + (asset.current_value || 0), 0) +
+            consumables.reduce((total: number, c: any) => {
+              const qty = c.total_quantity ?? c.quantity_current ?? 0
+              const unitCost = c.avg_unit_cost ?? c.unit_cost ?? 0
+              return total + qty * unitCost
+            }, 0),
+          maintenanceAlerts: assets.filter((a: any) => {
+            if (a.status === "Maintenance Required") return true
+            if (a.next_maintenance_date) {
+              const nextMaintenance = new Date(a.next_maintenance_date)
+              const today = new Date()
+              const daysUntilMaintenance = Math.ceil(
+                (nextMaintenance.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+              )
+              return daysUntilMaintenance <= 30
+            }
+            return false
+          }).length,
         }
 
         setSummaryData(summary)
@@ -99,55 +119,100 @@ export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
         const generatedAlerts: InventoryAlert[] = []
 
         // Add expiry alerts
-        consumables.forEach((consumable) => {
+        consumables.forEach((consumable: any) => {
+          if (!consumable.expiry_date) return
           const expiryDate = new Date(consumable.expiry_date)
-          const daysUntilExpiry = Math.ceil((expiryDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+          const today = new Date()
+          const daysUntilExpiry = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 
           if (daysUntilExpiry <= 30 && daysUntilExpiry > 0) {
             generatedAlerts.push({
               id: `expiry-${consumable.id}`,
               type: "expiry",
-              title: `${consumable.name} Expiring Soon`,
-              description: `Batch ${consumable.batch_number} expires in ${daysUntilExpiry} days`,
-              severity: daysUntilExpiry <= 15 ? "high" : "medium",
+              title: `${consumable.item_name || consumable.name} Expiring Soon`,
+              description: `${consumable.batch_number ? `Batch ${consumable.batch_number}` : "Item"} expires in ${daysUntilExpiry} days`,
+              severity: daysUntilExpiry <= 7 ? "high" : "medium",
+              date: new Date().toISOString().split("T")[0],
+            })
+          } else if (daysUntilExpiry <= 0) {
+            generatedAlerts.push({
+              id: `expired-${consumable.id}`,
+              type: "expiry",
+              title: `${consumable.item_name || consumable.name} Expired`,
+              description: `${consumable.batch_number ? `Batch ${consumable.batch_number}` : "Item"} expired ${Math.abs(daysUntilExpiry)} days ago`,
+              severity: "high",
               date: new Date().toISOString().split("T")[0],
             })
           }
         })
 
-        // Add low stock alerts
-        consumables.forEach((consumable) => {
-          if (consumable.quantity_available < 50) {
+        // Add low stock alerts (use backend stock_status and totals)
+        consumables.forEach((consumable: any) => {
+          const status = consumable.stock_status
+          if (status === "low_stock" || status === "out_of_stock") {
+            const currentQuantity = (consumable.total_quantity ?? consumable.quantity_current ?? 0) as number
             generatedAlerts.push({
               id: `stock-${consumable.id}`,
               type: "stock",
               title: "Low Stock Alert",
-              description: `${consumable.name} below threshold (${consumable.quantity_available} remaining)`,
-              severity: consumable.quantity_available < 25 ? "high" : "medium",
+              description: `${consumable.item_name || consumable.name} below reorder level (${currentQuantity} remaining)`,
+              severity: status === "out_of_stock" || currentQuantity === 0 ? "high" : "medium",
               date: new Date().toISOString().split("T")[0],
             })
           }
         })
 
         // Add maintenance alerts
-        assets.forEach((asset) => {
-          if (asset.status === "maintenance") {
+        assets.forEach((asset: any) => {
+          if (asset.status === "Maintenance Required") {
             generatedAlerts.push({
               id: `maintenance-${asset.id}`,
               type: "maintenance",
-              title: "Equipment Maintenance Due",
-              description: `${asset.name} requires maintenance`,
+              title: "Equipment Maintenance Required",
+              description: `${asset.asset_name || asset.name} requires maintenance`,
               severity: "medium",
               date: new Date().toISOString().split("T")[0],
             })
+          } else if (asset.next_maintenance_date) {
+            const nextMaintenance = new Date(asset.next_maintenance_date)
+            const today = new Date()
+            const daysUntilMaintenance = Math.ceil(
+              (nextMaintenance.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+            )
+
+            if (daysUntilMaintenance <= 7 && daysUntilMaintenance >= 0) {
+              generatedAlerts.push({
+                id: `maintenance-due-${asset.id}`,
+                type: "maintenance",
+                title: "Scheduled Maintenance Due Soon",
+                description: `${asset.asset_name || asset.name} maintenance due in ${daysUntilMaintenance} days`,
+                severity: daysUntilMaintenance <= 3 ? "high" : "medium",
+                date: new Date().toISOString().split("T")[0],
+              })
+            } else if (daysUntilMaintenance < 0) {
+              generatedAlerts.push({
+                id: `maintenance-overdue-${asset.id}`,
+                type: "maintenance",
+                title: "Maintenance Overdue",
+                description: `${asset.asset_name || asset.name} maintenance is ${Math.abs(daysUntilMaintenance)} days overdue`,
+                severity: "high",
+                date: new Date().toISOString().split("T")[0],
+              })
+            }
           }
         })
 
-        setAlerts(generatedAlerts.slice(0, 5)) // Show only first 5 alerts
-    } else {
+        // Sort alerts by severity and take top 10
+        const sortedAlerts = generatedAlerts.sort((a, b) => {
+          const severityOrder = { high: 0, medium: 1, low: 2 }
+          return severityOrder[a.severity] - severityOrder[b.severity]
+        })
+
+        setAlerts(sortedAlerts.slice(0, 10))
+      } else {
         toast({
           title: "Error",
-      description: assetsResponse.error || consumablesResponse.error || "Failed to fetch inventory data",
+          description: assetsResponse.error || consumablesResponse.error || "Failed to fetch inventory data",
           variant: "destructive",
         })
       }
@@ -259,24 +324,26 @@ export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">R{summaryData.totalInventoryValue.toLocaleString()}</div>
+                <div className="text-2xl font-bold">
+                  R{Math.round(summaryData.totalInventoryValue).toLocaleString()}
+                </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <TrendingUp className="w-3 h-3 text-green-600" />
-                  +2.5% from last month
+                  Total portfolio value
                 </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Monthly Usage</CardTitle>
-                <TrendingDown className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Alerts</CardTitle>
+                <AlertTriangle className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">R{summaryData.monthlyUsage.toLocaleString()}</div>
+                <div className="text-2xl font-bold">{alerts.length}</div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Calendar className="w-3 h-3" />
-                  Current month
+                  <Clock className="w-3 h-3" />
+                  Require attention
                 </div>
               </CardContent>
             </Card>
@@ -301,7 +368,7 @@ export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Wrench className="w-4 h-4 text-yellow-600" />
-                    <span className="text-sm">Under Maintenance</span>
+                    <span className="text-sm">Maintenance Required</span>
                   </div>
                   <Badge className="bg-yellow-100 text-yellow-800">{summaryData.assetsUnderMaintenance}</Badge>
                 </div>
@@ -309,17 +376,17 @@ export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <XCircle className="w-4 h-4 text-red-600" />
-                    <span className="text-sm">Broken/Repair Needed</span>
+                    <span className="text-sm">Out of Service</span>
                   </div>
                   <Badge className="bg-red-100 text-red-800">{summaryData.brokenAssets}</Badge>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-orange-600" />
-                    <span className="text-sm">Maintenance Alerts</span>
+                    <AlertTriangle className="w-4 h-4 text-gray-600" />
+                    <span className="text-sm">Retired</span>
                   </div>
-                  <Badge className="bg-orange-100 text-orange-800">{summaryData.maintenanceAlerts}</Badge>
+                  <Badge className="bg-gray-100 text-gray-800">{summaryData.retiredAssets}</Badge>
                 </div>
               </CardContent>
             </Card>
@@ -356,10 +423,10 @@ export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-blue-600" />
-                    <span className="text-sm">Monthly Usage Value</span>
+                    <Wrench className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm">Maintenance Alerts</span>
                   </div>
-                  <Badge className="bg-blue-100 text-blue-800">R{summaryData.monthlyUsage.toLocaleString()}</Badge>
+                  <Badge className="bg-blue-100 text-blue-800">{summaryData.maintenanceAlerts}</Badge>
                 </div>
               </CardContent>
             </Card>
@@ -368,13 +435,13 @@ export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
           {/* Alerts */}
           <Card>
             <CardHeader>
-              <CardTitle>Recent Alerts</CardTitle>
-              <CardDescription>Important notifications requiring attention</CardDescription>
+              <CardTitle>Active Alerts</CardTitle>
+              <CardDescription>Important notifications requiring immediate attention</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 {alerts.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-4">No alerts at this time</p>
+                  <p className="text-muted-foreground text-center py-4">No alerts at this time - all systems normal</p>
                 ) : (
                   alerts.map((alert) => (
                     <div key={alert.id} className="flex items-start gap-3 p-3 border rounded-lg">
@@ -390,7 +457,7 @@ export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
                         <p className="text-xs text-muted-foreground mt-1">{alert.date}</p>
                       </div>
                       <Button variant="outline" size="sm">
-                        View
+                        Action
                       </Button>
                     </div>
                   ))

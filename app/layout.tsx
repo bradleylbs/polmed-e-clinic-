@@ -7,7 +7,7 @@ import { Suspense } from "react"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "PALMED Mobile Clinic ERP",
+  title: "POLMED Mobile Clinic ERP",
   description: "Police Medical Aid Scheme Mobile Clinic Electronic Patient Management System",
   generator: "v0.app",
   manifest: "/manifest.json",
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "PALMED Clinic",
+  title: "POLMED Clinic",
   },
 }
 

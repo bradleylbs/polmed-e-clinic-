@@ -33,7 +33,7 @@ interface PatientData {
   membershipStatus?: "active" | "inactive" | "pending"
 }
 
-// Shape of a PALMED member record returned by search
+// Shape of a POLMED member record returned by search
 interface MemberRecord {
   full_name?: string
   telephone_number?: string
@@ -92,7 +92,7 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
           membershipStatus: response.data?.status || "active",
         }))
         setMemberFound(true)
-        setSuccess("PALMED member found and details populated")
+  setSuccess("POLMED member found and details populated")
       } else {
         setMemberFound(false)
         setFormData((prev) => ({ ...prev, isMember: false }))
@@ -249,7 +249,7 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                   <>
                     <CheckCircle className="w-4 h-4 text-green-600" />
                     <Badge variant="default" className="bg-green-100 text-green-800">
-                      PALMED Member Found
+                      POLMED Member Found
                     </Badge>
                   </>
                 ) : (

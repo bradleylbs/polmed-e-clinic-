@@ -1,6 +1,6 @@
 {
-  "name": "PALMED Mobile Clinic ERP",
-  "short_name": "PALMED Clinic",
+  "name": "POLMED Mobile Clinic ERP",
+  "short_name": "POLMED Clinic",
   "description": "Police Medical Aid Scheme Mobile Clinic Electronic Patient Management System",
   "start_url": "/",
   "display": "standalone",

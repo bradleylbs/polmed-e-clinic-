@@ -1,4 +1,4 @@
--- PALMED Mobile Clinic ERP - Database Views
+-- POLMED Mobile Clinic ERP - Database Views
 -- Comprehensive views for reporting and data access
 
 USE palmed_clinic_erp;

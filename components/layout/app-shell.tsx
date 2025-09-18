@@ -104,7 +104,7 @@ export function AppShell({ user, children, onLogout }: AppShellProps) {
               <Stethoscope className="w-5 h-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="font-semibold text-foreground">PALMED Clinic</h1>
+              <h1 className="font-semibold text-foreground">POLMED Clinic</h1>
               <p className="text-xs text-muted-foreground">Mobile ERP System</p>
             </div>
           </div>

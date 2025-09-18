@@ -1,13 +1,13 @@
-interface LoginCredentials {
-  email: string
-  password: string
-}
-
-interface ApiResponse<T> {
+export interface ApiResponse<T = any> {
   success: boolean
   data?: T
   message?: string
   error?: string
+}
+
+interface LoginCredentials {
+  email: string
+  password: string
 }
 
 interface Patient {
@@ -80,19 +80,83 @@ interface Consumable {
   unit_of_measure: string
 }
 
+// Supplier interface
+export interface Supplier {
+  id: number
+  supplier_name: string
+  contact_person?: string
+  phone?: string
+  email?: string
+  address?: string
+  is_active: boolean
+}
+
+// Stock receiving interface
+export interface StockReceiptRequest {
+  consumable_id: number
+  batch_number: string
+  supplier_id: number
+  quantity_received: number
+  unit_cost: number
+  manufacture_date?: string
+  expiry_date: string
+  location?: string
+}
+
+// Enhanced Dashboard Response Types
+interface DashboardStats {
+  todayPatients: number
+  weeklyPatients: number
+  monthlyPatients: number
+  pendingAppointments: number
+  completedWorkflows: number
+  activeRoutes: number
+  lowStockAlerts: number
+  maintenanceAlerts: number
+  recentActivity: Array<{
+    id: string
+    type: "patient" | "appointment" | "inventory" | "route"
+    description: string
+    timestamp: string
+    location?: string
+    status: "completed" | "pending" | "alert"
+  }>
+  upcomingTasks: Array<{
+    id: string
+    title: string
+    description: string
+    dueDate: string
+    priority: "high" | "medium" | "low"
+    type: "maintenance" | "appointment" | "inventory" | "review"
+  }>
+  roleSpecificMetrics: {
+    metricType: string
+    todayBookings?: number
+    weekBookings?: number
+    monthBookings?: number
+    todayAssessments?: number
+    weekAssessments?: number
+    monthAssessments?: number
+    todayDiagnoses?: number
+    todayTreatments?: number
+    todayReferrals?: number
+    weekReferrals?: number
+  }
+}
+
 // Referrals
 export interface Referral {
   id: number
   patient_id: number
   visit_id?: number | null
-  referral_type: 'internal' | 'external'
-  from_stage: 'Registration' | 'Nursing Assessment' | 'Doctor Consultation' | 'Counseling Session'
-  to_stage?: 'Registration' | 'Nursing Assessment' | 'Doctor Consultation' | 'Counseling Session' | null
+  referral_type: "internal" | "external"
+  from_stage: "Registration" | "Nursing Assessment" | "Doctor Consultation" | "Counseling Session"
+  to_stage?: "Registration" | "Nursing Assessment" | "Doctor Consultation" | "Counseling Session" | null
   external_provider?: string | null
   department?: string | null
   reason: string
   notes?: string | null
-  status: 'pending' | 'sent' | 'accepted' | 'completed' | 'cancelled'
+  status: "pending" | "sent" | "accepted" | "completed" | "cancelled"
   appointment_date?: string | null
   created_by: number
   created_at: string
@@ -100,9 +164,9 @@ export interface Referral {
 }
 
 export interface CreateReferralRequest {
-  referral_type: 'internal' | 'external'
-  from_stage: Referral['from_stage']
-  to_stage?: Referral['to_stage']
+  referral_type: "internal" | "external"
+  from_stage: Referral["from_stage"]
+  to_stage?: Referral["to_stage"]
   external_provider?: string
   department?: string
   reason: string
@@ -112,7 +176,7 @@ export interface CreateReferralRequest {
 }
 
 export interface UpdateReferralRequest {
-  status?: Referral['status']
+  status?: Referral["status"]
   appointment_date?: string
   notes?: string
 }
@@ -176,21 +240,22 @@ class ApiService {
       }
 
       // Unwrap common envelope keys so callers get the array/object directly
-      const body = (data && data.data !== undefined) ? data.data : data
+      const body = data && data.data !== undefined ? data.data : data
       let unwrapped = body
-      if (body && typeof body === 'object' && !Array.isArray(body)) {
+      if (body && typeof body === "object" && !Array.isArray(body)) {
         const preferredKeys = [
-          'patients',
-          'routes',
-          'assets',
-          'consumables',
-          'appointments',
-          'users',
-          'stats',
-          'workflow',
-          // Added to support clinical notes and referrals endpoints
-          'notes',
-          'referrals',
+          "patients",
+          "routes",
+          "assets",
+          "consumables",
+          "categories",
+          "appointments",
+          "users",
+          "stats",
+          "workflow",
+          "notes",
+          "referrals",
+          "suppliers", // Added for supplier endpoints
         ]
         for (const key of preferredKeys) {
           if (Object.prototype.hasOwnProperty.call(body, key)) {
@@ -206,7 +271,7 @@ class ApiService {
         message: data.message,
       }
     } catch (error) {
-      console.error('API Request Error:', error)
+      console.error("API Request Error:", error)
       return {
         success: false,
         error: error instanceof Error ? error.message : "Network error occurred",
@@ -277,10 +342,10 @@ class ApiService {
       route_id?: number
       location?: string
       chief_complaint?: string
-    } = {}
+    } = {},
   ): Promise<ApiResponse<{ visit_id: number }>> {
     return this.request<{ visit_id: number }>(`/patients/${patientId}/visits`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify(payload),
     })
   }
@@ -298,10 +363,10 @@ class ApiService {
       blood_glucose?: number | string
       respiratory_rate?: number | string
       nursing_notes?: string
-    }
+    },
   ): Promise<ApiResponse<any>> {
     return this.request<any>(`/visits/${visitId}/vital-signs`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify(payload),
     })
   }
@@ -326,8 +391,8 @@ class ApiService {
     start_date: string
     end_date: string
     province: string
-    route_type?: 'Police Stations' | 'Schools' | 'Community Centers' | 'Mixed'
-    location_type?: 'police_station' | 'school' | 'community_center'
+    route_type?: "Police Stations" | "Schools" | "Community Centers" | "Mixed"
+    location_type?: "police_station" | "school" | "community_center"
     max_appointments_per_day?: number
   }): Promise<ApiResponse<Route>> {
     return this.request<Route>("/routes", {
@@ -355,48 +420,187 @@ class ApiService {
     })
   }
 
-  // Inventory Management
-  async getAssets(params?: Record<string, string>): Promise<ApiResponse<Asset[]>> {
+  // Inventory Management - Enhanced methods
+  async getAssets(params?: Record<string, string>): Promise<ApiResponse<any[]>> {
     const queryString = params ? `?${new URLSearchParams(params)}` : ""
-    return this.request<Asset[]>(`/inventory/assets${queryString}`)
+    return this.request<any[]>(`/inventory/assets${queryString}`)
   }
 
-  async createAsset(asset: Omit<Asset, "id">): Promise<ApiResponse<Asset>> {
-    return this.request<Asset>("/inventory/assets", {
+  async createAsset(asset: {
+    asset_name: string
+    asset_tag: string
+    serial_number?: string
+    manufacturer: string
+    model?: string
+    category_id: number
+    purchase_date: string
+    warranty_expiry?: string | null
+    status: string
+    location?: string
+    purchase_cost: number
+    current_value: number
+    maintenance_notes?: string | null
+  }): Promise<ApiResponse<any>> {
+    return this.request<any>("/inventory/assets", {
       method: "POST",
       body: JSON.stringify(asset),
     })
   }
 
-  async updateAsset(id: number, asset: Partial<Asset>): Promise<ApiResponse<Asset>> {
-    return this.request<Asset>(`/inventory/assets/${id}`, {
+  async updateAsset(id: number, asset: Partial<any>): Promise<ApiResponse<any>> {
+    return this.request<any>(`/inventory/assets/${id}`, {
       method: "PUT",
       body: JSON.stringify(asset),
     })
   }
 
-  async getConsumables(params?: Record<string, string>): Promise<ApiResponse<Consumable[]>> {
-    const queryString = params ? `?${new URLSearchParams(params)}` : ""
-    return this.request<Consumable[]>(`/inventory/consumables${queryString}`)
+  async getAssetCategories(): Promise<ApiResponse<any[]>> {
+    return this.request<any[]>(`/inventory/asset-categories`)
   }
 
-  async createConsumable(consumable: Omit<Consumable, "id">): Promise<ApiResponse<Consumable>> {
-    return this.request<Consumable>("/inventory/consumables", {
+  // Asset categories for Asset Management form (dedicated endpoint)
+  async getAssetCategoriesForAssets(): Promise<ApiResponse<any[]>> {
+    return this.request<any[]>(`/inventory/assets/categories`)
+  }
+
+  async getConsumables(params?: Record<string, string>): Promise<ApiResponse<any[]>> {
+    const queryString = params ? `?${new URLSearchParams(params)}` : ""
+    return this.request<any[]>(`/inventory/consumables${queryString}`)
+  }
+
+  async getConsumableCategories(): Promise<ApiResponse<any[]>> {
+    return this.request<any[]>(`/inventory/consumable-categories`)
+  }
+
+  async createConsumable(consumable: {
+    item_name: string
+    item_code: string
+    generic_name?: string | null
+    strength?: string | null
+    dosage_form?: string | null
+    unit_of_measure: string
+    category_id: number
+    reorder_level: number
+    max_stock_level: number
+    is_controlled_substance: boolean
+    storage_temperature_min?: number | null
+    storage_temperature_max?: number | null
+  }): Promise<ApiResponse<any>> {
+    return this.request<any>("/inventory/consumables", {
       method: "POST",
       body: JSON.stringify(consumable),
     })
   }
 
-  async updateConsumable(id: number, consumable: Partial<Consumable>): Promise<ApiResponse<Consumable>> {
-    return this.request<Consumable>(`/inventory/consumables/${id}`, {
+  async updateConsumable(id: number, consumable: Partial<any>): Promise<ApiResponse<any>> {
+    return this.request<any>(`/inventory/consumables/${id}`, {
       method: "PUT",
       body: JSON.stringify(consumable),
     })
   }
 
-  // Dashboard and Analytics
-  async getDashboardStats(): Promise<ApiResponse<any>> {
-    return this.request<any>("/dashboard/stats")
+  // Supplier Management
+  async getSuppliers(params?: Record<string, string>): Promise<ApiResponse<Supplier[]>> {
+    const queryString = params ? `?${new URLSearchParams(params)}` : ""
+    return this.request<Supplier[]>(`/inventory/suppliers${queryString}`)
+  }
+
+  async createSupplier(supplier: {
+    supplier_name: string
+    contact_person?: string
+    phone?: string
+    email?: string
+    address?: string
+    tax_number?: string
+    is_active?: boolean
+  }): Promise<ApiResponse<Supplier>> {
+    return this.request<Supplier>("/inventory/suppliers", {
+      method: "POST",
+      body: JSON.stringify(supplier),
+    })
+  }
+
+  async updateSupplier(id: number, supplier: Partial<Supplier>): Promise<ApiResponse<Supplier>> {
+    return this.request<Supplier>(`/inventory/suppliers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(supplier),
+    })
+  }
+
+  // Stock Management - NEW METHODS
+  async receiveInventoryStock(stockData: StockReceiptRequest): Promise<ApiResponse<any>> {
+    return this.request<any>("/inventory/stock/receive", {
+      method: "POST",
+      body: JSON.stringify(stockData),
+    })
+  }
+
+  async getConsumableBatches(consumableId: number): Promise<ApiResponse<any[]>> {
+    return this.request<any[]>(`/inventory/consumables/${consumableId}/batches`)
+  }
+
+  async adjustInventoryStock(
+    stockId: number,
+    payload: {
+      adjustment_type: "increase" | "decrease" | "set"
+      quantity: number
+      reason: string
+    }
+  ): Promise<ApiResponse<any>> {
+    return this.request<any>(`/inventory/stock/${stockId}/adjust`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  // Inventory usage tracking
+  async recordInventoryUsage(payload: {
+    consumable_id: number
+    quantity_used: number
+    visit_id?: number
+    location: string
+    notes?: string
+  }): Promise<ApiResponse<any>> {
+    return this.request<any>("/inventory/usage", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async getUsageHistory(params?: Record<string, string>): Promise<ApiResponse<any[]>> {
+    const queryString = params ? `?${new URLSearchParams(params)}` : ""
+    return this.request<any[]>(`/inventory/usage/history${queryString}`)
+  }
+
+  // Inventory Alerts and Reports
+  async getExpiryAlerts(daysAhead = 90, alertLevel?: string): Promise<ApiResponse<any[]>> {
+    const params = new URLSearchParams({ days_ahead: daysAhead.toString() })
+    if (alertLevel) {
+      params.append('alert_level', alertLevel)
+    }
+    return this.request<any[]>(`/inventory/alerts/expiry?${params}`)
+  }
+
+  async getStockAlerts(): Promise<ApiResponse<any[]>> {
+    return this.request<any[]>("/inventory/alerts/stock")
+  }
+
+  async getInventoryValuation(params?: Record<string, string>): Promise<ApiResponse<any>> {
+    const queryString = params ? `?${new URLSearchParams(params)}` : ""
+    return this.request<any>(`/inventory/reports/valuation${queryString}`)
+  }
+
+  async getInventoryTurnover(periodMonths = 12, categoryId?: number): Promise<ApiResponse<any>> {
+    const params = new URLSearchParams({ period_months: periodMonths.toString() })
+    if (categoryId) {
+      params.append('category_id', categoryId.toString())
+    }
+    return this.request<any>(`/inventory/reports/turnover?${params}`)
+  }
+
+  // Dashboard and Analytics - Updated for role-specific stats
+  async getDashboardStats(): Promise<ApiResponse<DashboardStats>> {
+    return this.request<DashboardStats>("/dashboard/stats")
   }
 
   // User Management
@@ -434,19 +638,19 @@ class ApiService {
 
   // Referrals
   async listReferrals(patientId: number): Promise<ApiResponse<Referral[]>> {
-    return this.request<Referral[]>(`/patients/${patientId}/referrals`, { method: 'GET' })
+    return this.request<Referral[]>(`/patients/${patientId}/referrals`, { method: "GET" })
   }
 
   async createReferral(patientId: number, payload: CreateReferralRequest): Promise<ApiResponse<Referral>> {
     return this.request<Referral>(`/patients/${patientId}/referrals`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify(payload),
     })
   }
 
   async updateReferral(referralId: number, payload: UpdateReferralRequest): Promise<ApiResponse<Referral>> {
     return this.request<Referral>(`/referrals/${referralId}`, {
-      method: 'PATCH',
+      method: "PATCH",
       body: JSON.stringify(payload),
     })
   }
@@ -460,20 +664,25 @@ class ApiService {
     return this.request<any[]>(`/visits/${visitId}/clinical-notes`)
   }
 
-  async createClinicalNote(visitId: number, payload: {
-    note_type: 'Assessment' | 'Diagnosis' | 'Treatment' | 'Referral' | 'Counseling' | 'Closure'
-    content: string
-    icd10_codes?: string[]
-    medications_prescribed?: string[]
-    follow_up_required?: boolean
-    follow_up_date?: string
-  }): Promise<ApiResponse<any>> {
+  async createClinicalNote(
+    visitId: number,
+    payload: {
+      note_type: "Assessment" | "Diagnosis" | "Treatment" | "Referral" | "Counseling" | "Closure"
+      content: string
+      icd10_codes?: string[]
+      medications_prescribed?: string[]
+      follow_up_required?: boolean
+      follow_up_date?: string
+    },
+  ): Promise<ApiResponse<any>> {
     return this.request<any>(`/visits/${visitId}/clinical-notes`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify(payload),
     })
   }
 }
 
 export const apiService = new ApiService()
-export type { Patient, Route, Asset, Consumable, ApiResponse }
+// Note: Supplier and StockReceiptRequest are already exported above via `export interface`,
+// so we don't re-export them here to avoid TS2484 conflicts.
+export type { Patient, Route, Asset, Consumable, DashboardStats }

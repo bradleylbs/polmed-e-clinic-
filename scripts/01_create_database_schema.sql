@@ -1,4 +1,4 @@
--- PALMED Mobile Clinic ERP Database Schema
+-- POLMED Mobile Clinic ERP Database Schema
 -- Created for Police Medical Aid Scheme Mobile Clinic System
 -- Supports 500,000 beneficiaries with offline capabilities
 
@@ -70,7 +70,7 @@ CREATE TABLE user_sessions (
 -- PATIENT MANAGEMENT TABLES
 -- =============================================
 
--- Patients table with PALMED integration
+-- Patients table with POLMED integration
 CREATE TABLE patients (
     id INT PRIMARY KEY AUTO_INCREMENT,
     medical_aid_number VARCHAR(50) UNIQUE,

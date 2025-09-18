@@ -1,4 +1,4 @@
--- PALMED Mobile Clinic ERP - Functions and Stored Procedures
+-- POLMED Mobile Clinic ERP - Functions and Stored Procedures
 -- Business logic and data processing functions
 
 USE palmed_clinic_erp;

@@ -122,6 +122,73 @@ INSERT INTO suppliers (supplier_name, contact_person, phone, email, address, tax
 ('Pharma Plus', 'David Medicine', '031-456-7890', 'info@pharmaplus.co.za', '789 Pharmacy Road, Durban', '7654321098', TRUE),
 ('Medical Equipment Co', 'Lisa Equipment', '012-567-8901', 'sales@medequip.co.za', '321 Equipment Street, Pretoria', '6543210987', TRUE);
 
+-- Seed consumable categories (idempotent)
+INSERT INTO consumable_categories (category_name, description, requires_prescription, storage_requirements)
+SELECT 'Pharmaceuticals', 'Prescription and OTC medications', TRUE, 'Room temp 15-25°C unless specified'
+WHERE NOT EXISTS (
+    SELECT 1 FROM consumable_categories WHERE category_name = 'Pharmaceuticals'
+);
+
+INSERT INTO consumable_categories (category_name, description, requires_prescription, storage_requirements)
+SELECT 'Medical Supplies', 'Non-drug medical supplies used in care', FALSE, 'Dry, clean storage'
+WHERE NOT EXISTS (
+    SELECT 1 FROM consumable_categories WHERE category_name = 'Medical Supplies'
+);
+
+INSERT INTO consumable_categories (category_name, description, requires_prescription, storage_requirements)
+SELECT 'Disposables', 'Single-use items like gloves and masks', FALSE, 'Dry, clean storage'
+WHERE NOT EXISTS (
+    SELECT 1 FROM consumable_categories WHERE category_name = 'Disposables'
+);
+
+INSERT INTO consumable_categories (category_name, description, requires_prescription, storage_requirements)
+SELECT 'Other Supplies', 'Miscellaneous consumables', FALSE, 'As applicable'
+WHERE NOT EXISTS (
+    SELECT 1 FROM consumable_categories WHERE category_name = 'Other Supplies'
+);
+
+-- Optional sample consumables (idempotent by unique item_code)
+INSERT INTO consumables (
+    item_code, item_name, category_id, generic_name, strength, dosage_form, unit_of_measure,
+    reorder_level, max_stock_level, storage_temperature_min, storage_temperature_max, is_controlled_substance
+)
+SELECT 'PARA500', 'Paracetamol 500 mg',
+       (SELECT id FROM consumable_categories WHERE category_name='Pharmaceuticals'),
+       'Paracetamol', '500mg', 'Tablet', 'tablets', 50, 1000, 15.0, 25.0, FALSE
+WHERE NOT EXISTS (SELECT 1 FROM consumables WHERE item_code = 'PARA500');
+
+INSERT INTO consumables (
+    item_code, item_name, category_id, generic_name, strength, dosage_form, unit_of_measure,
+    reorder_level, max_stock_level, storage_temperature_min, storage_temperature_max, is_controlled_substance
+)
+SELECT 'GLOVES-M', 'Nitrile Gloves - Medium',
+       (SELECT id FROM consumable_categories WHERE category_name='Disposables'),
+       NULL, NULL, 'Gloves', 'pairs', 100, 5000, NULL, NULL, FALSE
+WHERE NOT EXISTS (SELECT 1 FROM consumables WHERE item_code = 'GLOVES-M');
+
+-- Optional sample stock for the above consumables (skip if already present)
+INSERT INTO inventory_stock (
+    consumable_id, batch_number, supplier_id, quantity_received, quantity_current, unit_cost,
+    manufacture_date, expiry_date, received_date, received_by, location, status
+)
+SELECT c.id, 'BATCH-PARA-001', (SELECT id FROM suppliers WHERE supplier_name='MediSupply SA'), 1000, 1000, 0.50,
+             '2025-06-01', '2027-12-31', '2025-06-15', 1, 'Mobile Clinic', 'Active'
+FROM consumables c WHERE c.item_code='PARA500'
+AND NOT EXISTS (
+    SELECT 1 FROM inventory_stock s WHERE s.consumable_id = c.id AND s.batch_number = 'BATCH-PARA-001'
+);
+
+INSERT INTO inventory_stock (
+    consumable_id, batch_number, supplier_id, quantity_received, quantity_current, unit_cost,
+    manufacture_date, expiry_date, received_date, received_by, location, status
+)
+SELECT c.id, 'BATCH-GLOVES-M-001', (SELECT id FROM suppliers WHERE supplier_name='HealthCare Distributors'), 2000, 2000, 1.20,
+             '2025-07-01', '2026-07-01', '2025-07-10', 1, 'Mobile Clinic', 'Active'
+FROM consumables c WHERE c.item_code='GLOVES-M'
+AND NOT EXISTS (
+    SELECT 1 FROM inventory_stock s WHERE s.consumable_id = c.id AND s.batch_number = 'BATCH-GLOVES-M-001'
+);
+
 INSERT INTO consumable_categories (category_name, description, requires_prescription, storage_requirements) VALUES
 ('Medications - Chronic', 'Chronic disease medications', TRUE, 'Store in cool, dry place below 25°C'),
 ('Medications - Acute', 'Acute treatment medications', TRUE, 'Store in cool, dry place below 25°C'),

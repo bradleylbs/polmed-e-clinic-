@@ -176,7 +176,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
           <div className="mx-auto mb-4 w-16 h-16 bg-primary rounded-full flex items-center justify-center">
             <Stethoscope className="w-8 h-8 text-primary-foreground" />
           </div>
-          <CardTitle className="text-2xl font-bold text-balance">PALMED Mobile Clinic</CardTitle>
+          <CardTitle className="text-2xl font-bold text-balance">POLMED Mobile Clinic</CardTitle>
           <CardDescription className="text-pretty">Electronic Patient Management System</CardDescription>
         </CardHeader>
         <CardContent>

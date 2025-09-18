@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Flask server (debug)",
+			"type": "shell",
+			"command": "python scripts/run_server.py",
+			"args": [],
+			"problemMatcher": [
+				"$python"
+			],
+			"group": "build"
+		}
+	]
+}
