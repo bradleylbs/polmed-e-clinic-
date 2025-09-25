@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { offlineManager } from "@/lib/offline-manager"
+import { apiService } from "@/lib/api-service"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,6 +33,7 @@ interface TimeSlot {
   maxAppointments: number
   bookedAppointments: number
   locationId: string
+  visitDate?: string // ISO date (YYYY-MM-DD) for filtering by selected day
 }
 
 interface RouteSchedule {
@@ -62,9 +64,10 @@ interface AppointmentBookingProps {
   route: RouteSchedule
   onAppointmentBooked: (appointment: Appointment) => void
   onBack: () => void
+  mode?: "internal" | "public"
 }
 
-export function AppointmentBooking({ route, onAppointmentBooked, onBack }: AppointmentBookingProps) {
+export function AppointmentBooking({ route, onAppointmentBooked, onBack, mode = "internal" }: AppointmentBookingProps) {
   const [selectedDate, setSelectedDate] = useState<Date>()
   const [selectedLocation, setSelectedLocation] = useState<RouteLocation>()
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<TimeSlot>()
@@ -91,8 +94,18 @@ export function AppointmentBooking({ route, onAppointmentBooked, onBack }: Appoi
   const getAvailableTimeSlots = () => {
     if (!selectedLocation) return []
 
-    return route.timeSlots
-      .filter((slot) => slot.locationId === selectedLocation.id)
+    const slotsForLocation = route.timeSlots.filter((slot) => slot.locationId === selectedLocation.id)
+
+    // If a date is selected, filter slots matching the selected date
+    const slotsForDate = selectedDate
+      ? slotsForLocation.filter((slot) => {
+          if (!slot.visitDate) return true
+          const sel = format(selectedDate, "yyyy-MM-dd")
+          return slot.visitDate === sel
+        })
+      : slotsForLocation
+
+    return slotsForDate
       .filter((slot) => slot.bookedAppointments < slot.maxAppointments)
       .sort((a, b) => a.startTime.localeCompare(b.startTime))
   }
@@ -153,21 +166,49 @@ export function AppointmentBooking({ route, onAppointmentBooked, onBack }: Appoi
       return
     }
 
-    // Online: proceed as before
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    const appointment: Appointment = {
-      id: `apt-${Date.now()}`,
-      patientName,
-      patientPhone,
-      medicalAidNumber,
-      routeId: route.id,
-      locationId: selectedLocation.id,
-      timeSlotId: selectedTimeSlot.id,
-      appointmentDate: selectedDate,
-      status: "confirmed",
-      createdAt: new Date(),
+    // Online
+    if (mode === "public") {
+      // Call public booking endpoint using selected slot id
+      const resp = await apiService.bookAppointmentPublic(Number(selectedTimeSlot.id), {
+        booked_by_name: patientName,
+        booked_by_phone: patientPhone,
+        booked_by_email: "",
+        special_requirements: medicalAidNumber ? `MedicalAid:${medicalAidNumber}` : undefined,
+      })
+      const confirmed: Appointment = {
+        id: `apt-${Date.now()}`,
+        patientName,
+        patientPhone,
+        medicalAidNumber,
+        routeId: route.id,
+        locationId: selectedLocation.id,
+        timeSlotId: selectedTimeSlot.id,
+        appointmentDate: selectedDate,
+        status: resp.success ? "confirmed" : "pending_sync",
+        createdAt: new Date(),
+      }
+      // Attach booking reference if available
+      if (resp.success && (resp as any).data && (resp as any).data.booking_reference) {
+        (confirmed as any).booking_reference = (resp as any).data.booking_reference
+      }
+      onAppointmentBooked(confirmed)
+    } else {
+      // Internal (same behavior as previous simulated success)
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      const appointment: Appointment = {
+        id: `apt-${Date.now()}`,
+        patientName,
+        patientPhone,
+        medicalAidNumber,
+        routeId: route.id,
+        locationId: selectedLocation.id,
+        timeSlotId: selectedTimeSlot.id,
+        appointmentDate: selectedDate,
+        status: "confirmed",
+        createdAt: new Date(),
+      }
+      onAppointmentBooked(appointment)
     }
-    onAppointmentBooked(appointment)
     setIsBooking(false)
     // Reset form
     setSelectedDate(undefined)

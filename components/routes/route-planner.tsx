@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -54,6 +54,18 @@ interface TimeSlot {
 interface RoutePlannerProps {
   userRole: string
   onRouteCreated: (route: RouteSchedule) => void
+  routeToEdit?: {
+    id?: number
+    name: string
+    description?: string
+    province: string
+    scheduled_date: string
+    start_time?: string
+    end_time?: string
+    route_type?: string
+    max_appointments?: number
+  } | null
+  onRouteUpdated?: (route: { id: string; routeName: string; description?: string; startDate: Date; endDate: Date }) => void
 }
 
 const southAfricanProvinces = [
@@ -74,7 +86,7 @@ const locationTypes = [
   { value: "community_center", label: "Community Center", icon: Building, color: "bg-purple-100 text-purple-800" },
 ]
 
-export function RoutePlanner({ userRole, onRouteCreated }: RoutePlannerProps) {
+export function RoutePlanner({ userRole, onRouteCreated, routeToEdit, onRouteUpdated }: RoutePlannerProps) {
   const [routeName, setRouteName] = useState("")
   const [description, setDescription] = useState("")
   const [startDate, setStartDate] = useState<Date>()
@@ -98,6 +110,20 @@ export function RoutePlanner({ userRole, onRouteCreated }: RoutePlannerProps) {
     { startTime: "09:00", endTime: "09:30", maxAppointments: 10, bookedAppointments: 0 },
     { startTime: "09:30", endTime: "10:00", maxAppointments: 10, bookedAppointments: 0 },
   ])
+
+  // Prefill when editing
+  useEffect(() => {
+    if (routeToEdit) {
+      setRouteName(routeToEdit.name || "")
+      setDescription(routeToEdit.description || "")
+      try {
+        const d = new Date(routeToEdit.scheduled_date)
+        setStartDate(d)
+        setEndDate(d)
+      } catch {}
+      setSelectedProvince(routeToEdit.province || "")
+    }
+  }, [routeToEdit])
 
   const addLocation = () => {
     if (currentLocation.name && currentLocation.address && currentLocation.province) {
@@ -144,10 +170,14 @@ export function RoutePlanner({ userRole, onRouteCreated }: RoutePlannerProps) {
   }
 
   const createRoute = async () => {
-    if (!routeName || !startDate || !endDate || locations.length === 0 || !selectedProvince) {
+    const isEditing = !!routeToEdit?.id
+    const missingLocations = locations.length === 0
+    if (!routeName || !startDate || !endDate || (!isEditing && missingLocations) || !selectedProvince) {
       toast({
         title: "Missing information",
-        description: "Please fill in route name, dates, province, and at least one location.",
+        description: isEditing
+          ? "Please fill in route name, dates, and province."
+          : "Please fill in route name, dates, province, and at least one location.",
         variant: "destructive",
       })
       return
@@ -222,6 +252,25 @@ export function RoutePlanner({ userRole, onRouteCreated }: RoutePlannerProps) {
         return
       }
 
+      // If editing, call update and return
+      if (isEditing) {
+        const updateResp = await apiService.updateRoute(Number(routeToEdit.id), {
+          name: routeName,
+          description: description || undefined,
+          province: selectedProvince,
+          scheduled_date: format(startDate, 'yyyy-MM-dd'),
+          // Note: backend may derive status/route_type; sending only supported fields
+          max_appointments: Math.max(1, timeSlots.reduce((sum, s) => sum + Number(s.maxAppointments || 0), 0) * Math.max(1, locations.length)),
+        } as any)
+        if (!updateResp.success || !updateResp.data) {
+          throw new Error(updateResp.error || 'Failed to update route')
+        }
+  onRouteUpdated?.({ id: String(routeToEdit.id), routeName, description, startDate, endDate })
+        toast({ title: 'Route updated', description: `${routeName} updated successfully` })
+        setSubmitting(false)
+        return
+      }
+
       const resp = await apiService.createRoute(payload)
       if (!resp.success || !resp.data) {
         throw new Error(resp.error || 'Failed to create route')
@@ -286,7 +335,7 @@ export function RoutePlanner({ userRole, onRouteCreated }: RoutePlannerProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Route className="w-5 h-5" />
-            Create Mobile Clinic Route
+            {routeToEdit ? 'Edit Mobile Clinic Route' : 'Create Mobile Clinic Route'}
           </CardTitle>
           <CardDescription>
             Plan mobile clinic deployment routes and automatically generate appointment slots
@@ -588,10 +637,10 @@ export function RoutePlanner({ userRole, onRouteCreated }: RoutePlannerProps) {
           <Button
             onClick={createRoute}
             className="w-full"
-            disabled={submitting || !routeName || !startDate || !endDate || locations.length === 0}
+            disabled={submitting || !routeName || !startDate || !endDate || (!routeToEdit && locations.length === 0)}
           >
             <Route className="w-4 h-4 mr-2" />
-            {submitting ? 'Creating...' : 'Create Route & Generate Appointment Slots'}
+            {routeToEdit ? (submitting ? 'Updating...' : 'Update Route') : (submitting ? 'Creating...' : 'Create Route & Generate Appointment Slots')}
           </Button>
         </CardContent>
       </Card>

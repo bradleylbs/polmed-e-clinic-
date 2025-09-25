@@ -1291,6 +1291,74 @@ def create_referral(patient_id: int):
         logger.error(f"Create referral error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
+@app.route('/api/routes/<int:route_id>', methods=['PUT'])
+@token_required
+@role_required(['administrator', 'doctor'])
+def update_route(route_id: int):
+    """Update an existing route's core fields"""
+    try:
+        data = request.get_json() or {}
+
+        # Only allow updating specific fields
+        name = (data.get('name') or data.get('route_name') or '').strip()
+        description = (data.get('description') or '').strip() or None
+        scheduled_date = data.get('scheduled_date') or data.get('start_date')
+        end_date = data.get('end_date') or scheduled_date
+        province = (data.get('province') or '').strip()
+        route_type = (data.get('route_type') or '').strip() or None
+        max_appointments = data.get('max_appointments') or data.get('max_appointments_per_day')
+
+        # Build dynamic update
+        sets = []
+        params = []
+        if name:
+            sets.append('route_name = %s')
+            params.append(name)
+        if description is not None:
+            sets.append('description = %s')
+            params.append(description)
+        if scheduled_date:
+            sets.append('start_date = %s')
+            params.append(scheduled_date)
+        if end_date:
+            sets.append('end_date = %s')
+            params.append(end_date)
+        if province:
+            sets.append('province = %s')
+            params.append(province)
+        if route_type:
+            sets.append('route_type = %s')
+            params.append(route_type)
+        if max_appointments is not None:
+            sets.append('max_appointments_per_day = %s')
+            params.append(int(max_appointments))
+
+        if not sets:
+            return jsonify({'success': False, 'error': 'No updatable fields provided'}), 400
+
+        params.append(route_id)
+
+        update_sql = f"UPDATE routes SET {', '.join(sets)} WHERE id = %s"
+        res = DatabaseManager.execute_query(update_sql, tuple(params))
+        if res is None:
+            return jsonify({'success': False, 'error': 'Failed to update route'}), 500
+
+        # Return updated minimal payload
+        row = DatabaseManager.execute_query(
+            """
+            SELECT id, route_name AS name, description, province, start_date AS scheduled_date,
+                   route_type, max_appointments_per_day AS max_appointments
+            FROM routes WHERE id = %s
+            """,
+            (route_id,),
+            fetch=True,
+        )
+        data = row[0] if row else { 'id': route_id }
+        return jsonify({'success': True, 'data': data}), 200
+    except Exception as e:
+        logger.error(f"Update route error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 
 @app.route('/api/referrals/<int:referral_id>', methods=['PATCH'])
 @token_required
@@ -2100,6 +2168,8 @@ def get_available_appointments():
         date_from = request.args.get('date_from', '')
         date_to = request.args.get('date_to', '')
         location_type = request.args.get('location_type', '')
+        location_name = request.args.get('location_name', '')
+        city = request.args.get('city', '')
         
         query = """
         SELECT 
@@ -2114,10 +2184,10 @@ def get_available_appointments():
             r.route_name,
             r.route_type
         FROM appointments a
-        JOIN route_locations rl ON a.route_location_id = rl.id
-        JOIN routes r ON rl.route_id = r.id
-        JOIN locations l ON rl.location_id = l.id
-        JOIN location_types lt ON l.location_type_id = lt.id
+    JOIN route_locations rl ON a.route_location_id = rl.id
+    JOIN routes r ON rl.route_id = r.id
+    JOIN locations l ON rl.location_id = l.id
+    LEFT JOIN location_types lt ON l.location_type_id = lt.id
         WHERE a.status = 'Available'
         AND r.is_active = TRUE
         AND rl.visit_date >= CURDATE()
@@ -2140,6 +2210,14 @@ def get_available_appointments():
         if location_type:
             query += " AND lt.type_name = %s"
             params.append(location_type)
+        
+        if location_name:
+            query += " AND l.location_name LIKE %s"
+            params.append(f"%{location_name}%")
+        
+        if city:
+            query += " AND l.city = %s"
+            params.append(city)
         
         query += " ORDER BY rl.visit_date, a.appointment_time"
         
@@ -2175,30 +2253,31 @@ def book_appointment(appointment_id: int):
         
         try:
             cursor = connection.cursor()
-            cursor.callproc('sp_book_appointment', [
-                appointment_id,
-                patient_id,
+            # Prepare args including OUT parameter placeholders
+            args = [
+                int(appointment_id),
+                int(patient_id) if patient_id is not None else None,
                 booked_by_name,
                 booked_by_phone,
                 booked_by_email,
-                special_requirements
-            ])
-            
-            # Get the results
-            booking_reference = None
-            result_message = None
-            for result in cursor.stored_results():
-                row = result.fetchone()
-                if row:
-                    booking_reference = row[0]
-                    result_message = row[1]
-                    break
-            
+                special_requirements,
+                None,  # OUT p_booking_reference
+                None   # OUT p_result
+            ]
+
+            # callproc returns a sequence with OUT params populated
+            result_args = cursor.callproc('sp_book_appointment', args)
+
+            # OUT params are the last two arguments
+            booking_reference = result_args[6]
+            result_message = result_args[7]
+
             connection.commit()
-            
-            if result_message and result_message.startswith('SUCCESS'):
+
+            if result_message and str(result_message).startswith('SUCCESS') and booking_reference:
                 return jsonify({
                     'success': True,
+                    'data': { 'booking_reference': booking_reference },
                     'booking_reference': booking_reference,
                     'message': 'Appointment booked successfully'
                 }), 200
@@ -2228,18 +2307,16 @@ def generate_appointment_slots(route_location_id: int):
         
         try:
             cursor = connection.cursor()
-            cursor.callproc('sp_generate_appointment_slots', [route_location_id])
-            
-            # Get the result
-            for result in cursor.stored_results():
-                row = result.fetchone()
-                if row:
-                    result_message = row[0]
-                    break
-            
+            # Provide placeholder for OUT parameter
+            proc_args = [int(route_location_id), None]
+            result_args = cursor.callproc('sp_generate_appointment_slots', proc_args)
+
+            # OUT parameter is the second argument
+            result_message = result_args[1]
+
             connection.commit()
-            
-            if result_message.startswith('SUCCESS'):
+
+            if result_message and str(result_message).startswith('SUCCESS'):
                 return jsonify({
                     'success': True,
                     'message': result_message
@@ -2247,7 +2324,7 @@ def generate_appointment_slots(route_location_id: int):
             else:
                 return jsonify({
                     'success': False,
-                    'error': result_message
+                    'error': result_message or 'Failed to generate appointment slots'
                 }), 400
                 
         finally:
@@ -2256,6 +2333,95 @@ def generate_appointment_slots(route_location_id: int):
         
     except Exception as e:
         logger.error(f"Generate appointment slots error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+# ============================================================================
+# ADMIN: PUBLISH UPCOMING SLOTS (UTILITY)
+# ============================================================================
+
+@app.route('/api/admin/publish-upcoming-slots', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor'])
+def publish_upcoming_slots():
+    """
+    Ensure appointment slots exist for upcoming route locations.
+    Body (optional): { "date_from": "YYYY-MM-DD", "date_to": "YYYY-MM-DD" }
+    Defaults: date_from = today, date_to = today + 30 days
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        today = datetime.now().date()
+        date_from = data.get('date_from') or today.isoformat()
+        # Default 30 days window
+        date_to = data.get('date_to') or (today + timedelta(days=30)).isoformat()
+
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+
+        published = 0
+        already_had = 0
+        checked = 0
+        route_locations = []
+
+        try:
+            cursor = connection.cursor(dictionary=True)
+            # Find active route locations in window
+            rl_query = """
+                SELECT rl.id
+                FROM route_locations rl
+                JOIN routes r ON rl.route_id = r.id
+                WHERE r.is_active = TRUE
+                  AND rl.visit_date BETWEEN %s AND %s
+            """
+            cursor.execute(rl_query, (date_from, date_to))
+            rl_rows = cursor.fetchall() or []
+
+            for row in rl_rows:
+                rl_id = int(row['id'])
+                checked += 1
+                # Check if slots already exist
+                cursor2 = connection.cursor()
+                try:
+                    cursor2.execute("SELECT COUNT(*) FROM appointments WHERE route_location_id = %s", (rl_id,))
+                    count = cursor2.fetchone()[0]
+                finally:
+                    cursor2.close()
+
+                if count and int(count) > 0:
+                    already_had += 1
+                    continue
+
+                # Generate slots for this route location
+                gen_cursor = connection.cursor()
+                try:
+                    args = [rl_id, None]
+                    result_args = gen_cursor.callproc('sp_generate_appointment_slots', args)
+                    result_message = result_args[1]
+                    connection.commit()
+                    if result_message and str(result_message).startswith('SUCCESS'):
+                        published += 1
+                        route_locations.append({ 'route_location_id': rl_id, 'result': result_message })
+                    else:
+                        route_locations.append({ 'route_location_id': rl_id, 'result': result_message or 'FAILED' })
+                finally:
+                    gen_cursor.close()
+
+            return jsonify({
+                'success': True,
+                'data': {
+                    'checked': checked,
+                    'published': published,
+                    'already_had': already_had,
+                    'details': route_locations
+                },
+                'message': f'Processed {checked} route locations; published {published} new slot sets.'
+            }), 200
+        finally:
+            cursor.close()
+            connection.close()
+    except Exception as e:
+        logger.error(f"Publish upcoming slots error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 # ============================================================================

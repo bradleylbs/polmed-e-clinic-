@@ -408,6 +408,7 @@ class ApiService {
     })
   }
 
+  // Appointments (internal list by route or all)
   async getAppointments(routeId?: number): Promise<ApiResponse<any[]>> {
     const endpoint = routeId ? `/appointments?route_id=${routeId}` : "/appointments"
     return this.request<any[]>(endpoint)
@@ -417,6 +418,39 @@ class ApiService {
     return this.request<any>("/appointments", {
       method: "POST",
       body: JSON.stringify(appointment),
+    })
+  }
+
+  // Public appointments
+  async getAvailableAppointments(params?: {
+    province?: string
+    date_from?: string
+    date_to?: string
+    location_type?: string
+    location_name?: string
+    city?: string
+  }): Promise<ApiResponse<any[]>> {
+    const usp = new URLSearchParams()
+    if (params?.province) usp.set("province", params.province)
+    if (params?.date_from) usp.set("date_from", params.date_from)
+    if (params?.date_to) usp.set("date_to", params.date_to)
+    if (params?.location_type) usp.set("location_type", params.location_type)
+    if (params?.location_name) usp.set("location_name", params.location_name)
+    if (params?.city) usp.set("city", params.city)
+    const qs = usp.toString() ? `?${usp.toString()}` : ""
+    return this.request<any[]>(`/appointments/available${qs}`)
+  }
+
+  async bookAppointmentPublic(appointmentId: number, payload: {
+    patient_id?: number | null
+    booked_by_name: string
+    booked_by_phone: string
+    booked_by_email?: string
+    special_requirements?: string
+  }): Promise<ApiResponse<{ booking_reference: string }>> {
+    return this.request<{ booking_reference: string }>(`/appointments/${appointmentId}/book`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     })
   }
 

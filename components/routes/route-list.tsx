@@ -31,9 +31,10 @@ interface RouteListProps {
   userRole: string
   onRouteSelect: (route: ApiRoute) => void
   onNewRoute: () => void
+  onEditRoute?: (route: ApiRoute) => void
 }
 
-export function RouteList({ userRole, onRouteSelect, onNewRoute }: RouteListProps) {
+export function RouteList({ userRole, onRouteSelect, onNewRoute, onEditRoute }: RouteListProps) {
   const [routes, setRoutes] = useState<ApiRoute[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
@@ -262,7 +263,13 @@ export function RouteList({ userRole, onRouteSelect, onNewRoute }: RouteListProp
                       <Eye className="w-4 h-4" />
                     </Button>
                     {(userRole === "administrator" || userRole === "doctor") && (
-                      <Button variant="outline" size="sm">
+                      <Button
+                        title="Edit route"
+                        aria-label="Edit route"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onEditRoute?.(route)}
+                      >
                         <Edit className="w-4 h-4" />
                       </Button>
                     )}

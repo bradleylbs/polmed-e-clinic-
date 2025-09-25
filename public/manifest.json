@@ -2,7 +2,7 @@
   "name": "POLMED Mobile Clinic ERP",
   "short_name": "POLMED Clinic",
   "description": "Police Medical Aid Scheme Mobile Clinic Electronic Patient Management System",
-  "start_url": "/",
+  "start_url": "/landing",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#059669",

@@ -9,6 +9,15 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  async redirects() {
+    return [
+      {
+        source: '/',
+        destination: '/landing',
+        permanent: false,
+      },
+    ]
+  },
   async rewrites() {
     // Allow the Next.js app to proxy API calls to the Flask backend
     // Configure backend URL via NEXT_PUBLIC_API_PROXY or default to localhost:5000
