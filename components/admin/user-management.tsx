@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useToast } from "@/hooks/use-toast"
+import { apiService } from "@/lib/api-service"
 import {
   Search,
   Edit,
@@ -98,79 +100,16 @@ const southAfricanProvinces = [
   "Western Cape",
 ]
 
-// Mock user data
-const mockUsers: SystemUser[] = [
-  {
-    id: "USR-001",
-    username: "admin",
-    email: "admin@palmed.co.za",
-    fullName: "System Administrator",
-    role: "administrator",
-    status: "active",
-    phoneNumber: "+27123456789",
-    assignedLocation: "Head Office",
-    province: "Gauteng",
-    createdAt: new Date("2024-01-01"),
-    lastLogin: new Date("2024-02-01T08:30:00"),
-    permissions: ["all"],
-    approvedBy: "System",
-  },
-  {
-    id: "USR-002",
-    username: "dr.smith",
-    email: "dr.smith@palmed.co.za",
-    fullName: "Dr. John Smith",
-    role: "doctor",
-    status: "active",
-    mpNumber: "MP123456",
-    phoneNumber: "+27987654321",
-    assignedLocation: "KwaZulu-Natal Region",
-    province: "KwaZulu-Natal",
-    createdAt: new Date("2024-01-15"),
-    lastLogin: new Date("2024-02-01T07:45:00"),
-    permissions: ["patient_full", "clinical_notes", "prescriptions", "referrals"],
-    approvedBy: "admin",
-  },
-  {
-    id: "USR-003",
-    username: "nurse.johnson",
-    email: "nurse.johnson@palmed.co.za",
-    fullName: "Sarah Johnson",
-    role: "nurse",
-    status: "active",
-    phoneNumber: "+27555123456",
-    assignedLocation: "Mobile Clinic Unit 1",
-    province: "Western Cape",
-    createdAt: new Date("2024-01-20"),
-    lastLogin: new Date("2024-01-31T16:20:00"),
-    permissions: ["patient_vitals", "medical_history", "nursing_notes"],
-    approvedBy: "admin",
-  },
-  {
-    id: "USR-004",
-    username: "dr.pending",
-    email: "dr.pending@example.com",
-    fullName: "Dr. Jane Doe",
-    role: "doctor",
-    status: "pending",
-    mpNumber: "MP789012",
-    phoneNumber: "+27444555666",
-    assignedLocation: "Gauteng Region",
-    province: "Gauteng",
-    createdAt: new Date("2024-01-30"),
-    permissions: [],
-    notes: "Self-registered doctor awaiting approval",
-  },
-]
-
 export function UserManagement({ currentUser }: UserManagementProps) {
-  const [users, setUsers] = useState<SystemUser[]>(mockUsers)
+  const { toast } = useToast()
+  const [users, setUsers] = useState<SystemUser[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [roleFilter, setRoleFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [showAddForm, setShowAddForm] = useState(false)
   const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null)
   const [showUserDetails, setShowUserDetails] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [newUser, setNewUser] = useState<Partial<SystemUser>>({
     username: "",
     email: "",
@@ -182,6 +121,56 @@ export function UserManagement({ currentUser }: UserManagementProps) {
     mpNumber: "",
     notes: "",
   })
+
+  const normalizeRole = (name: string | undefined): UserRole => {
+    if (!name) return "clerk"
+    const key = name.toLowerCase().replace(/\s+/g, "_") as UserRole
+    return (Object.keys(roleConfig) as Array<UserRole>).includes(key) ? key : "clerk"
+  }
+
+  const loadUsers = async () => {
+    setLoading(true)
+    const res = await apiService.getUsers()
+    if (res.success && Array.isArray(res.data)) {
+      const mapped: SystemUser[] = res.data.map((u: any) => {
+        const role = normalizeRole(u.role_name)
+        const status: UserStatus = u.requires_approval && !u.approved_at ? "pending" : (u.is_active ? "active" : "suspended")
+        let province: string | undefined
+        try {
+          if (u.geographic_restrictions) {
+            const arr = typeof u.geographic_restrictions === "string" ? JSON.parse(u.geographic_restrictions) : u.geographic_restrictions
+            province = Array.isArray(arr) && arr.length ? arr[0] : undefined
+          }
+        } catch {}
+        return {
+          id: String(u.id),
+          username: u.username,
+          email: u.email,
+          fullName: `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim(),
+          role,
+          status,
+          mpNumber: u.mp_number || undefined,
+          assignedLocation: u.assigned_location || undefined,
+          province,
+          phoneNumber: u.phone_number || "",
+          createdAt: u.created_at ? new Date(u.created_at) : new Date(),
+          lastLogin: u.last_login ? new Date(u.last_login) : undefined,
+          permissions: roleConfig[role].permissions,
+          approvedBy: u.approved_by || undefined,
+          notes: u.notes || undefined,
+        }
+      })
+      setUsers(mapped)
+    } else {
+      toast({ title: "Failed to load users", description: res.error || "Unknown error" })
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    loadUsers()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
@@ -233,67 +222,49 @@ export function UserManagement({ currentUser }: UserManagementProps) {
     return roleConfig[role]
   }
 
-  const addUser = () => {
-    if (newUser.username && newUser.email && newUser.fullName && newUser.role) {
-      const user: SystemUser = {
-        id: `USR-${String(users.length + 1).padStart(3, "0")}`,
-        username: newUser.username,
-        email: newUser.email,
-        fullName: newUser.fullName,
-        role: newUser.role as UserRole,
-        status: newUser.role === "doctor" ? "pending" : "active", // Doctors need approval
-        phoneNumber: newUser.phoneNumber || "",
-        assignedLocation: newUser.assignedLocation || "",
-        province: newUser.province || "",
-        mpNumber: newUser.mpNumber || undefined,
-        createdAt: new Date(),
-        permissions: roleConfig[newUser.role as UserRole].permissions,
-        approvedBy: newUser.role === "doctor" ? undefined : currentUser.username,
-        notes: newUser.notes || undefined,
-      }
-
-      setUsers([...users, user])
-      setNewUser({
-        username: "",
-        email: "",
-        fullName: "",
-        role: "clerk",
-        phoneNumber: "",
-        assignedLocation: "",
-        province: "",
-        mpNumber: "",
-        notes: "",
-      })
+  const addUser = async () => {
+    if (!(newUser.username && newUser.email && newUser.fullName && newUser.role)) return
+    const [first_name, ...rest] = String(newUser.fullName).trim().split(/\s+/)
+    const last_name = rest.join(" ") || "N/A"
+    const payload: any = {
+      username: newUser.username,
+      email: newUser.email,
+      first_name,
+      last_name,
+      role: newUser.role,
+      phone_number: newUser.phoneNumber,
+      mp_number: newUser.mpNumber,
+      assigned_province: newUser.province,
+    }
+    const res = await apiService.createUser(payload)
+    if (res.success) {
+      toast({ title: "User created", description: `Account for ${newUser.fullName} created` })
       setShowAddForm(false)
+      setNewUser({ username: "", email: "", fullName: "", role: "clerk", phoneNumber: "", assignedLocation: "", province: "", mpNumber: "", notes: "" })
+      loadUsers()
+    } else {
+      toast({ title: "Create failed", description: res.error || "Unknown error" })
     }
   }
 
-  const approveUser = (userId: string) => {
-    setUsers(
-      users.map((user) =>
-        user.id === userId
-          ? {
-              ...user,
-              status: "active" as UserStatus,
-              approvedBy: currentUser.username,
-              permissions: roleConfig[user.role].permissions,
-            }
-          : user,
-      ),
-    )
+  const approveUser = async (userId: string) => {
+    const res = await apiService.updateUser(Number(userId), { approve: true, status: "active" })
+    if (res.success) {
+      toast({ title: "User approved" })
+      loadUsers()
+    } else {
+      toast({ title: "Approval failed", description: res.error || "Unknown error" })
+    }
   }
 
-  const suspendUser = (userId: string) => {
-    setUsers(
-      users.map((user) =>
-        user.id === userId
-          ? {
-              ...user,
-              status: "suspended" as UserStatus,
-            }
-          : user,
-      ),
-    )
+  const suspendUser = async (userId: string) => {
+    const res = await apiService.updateUser(Number(userId), { status: "suspended" })
+    if (res.success) {
+      toast({ title: "User suspended" })
+      loadUsers()
+    } else {
+      toast({ title: "Suspend failed", description: res.error || "Unknown error" })
+    }
   }
 
   const formatLastLogin = (date?: Date) => {

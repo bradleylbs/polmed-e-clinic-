@@ -219,10 +219,55 @@ class ApiService {
     }
 
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      })
+      // Offline-first: if we're offline and this looks like a mutation, queue it and return an optimistic response
+      const isBrowser = typeof window !== "undefined"
+      const isOffline = isBrowser ? !navigator.onLine : false
+      const method = (options.method || "GET").toUpperCase()
+      const isMutation = method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE"
+
+      if (isOffline && isMutation) {
+        try {
+          const { offlineManager } = await import("./offline-manager")
+          const body = options.body && typeof options.body === "string" ? JSON.parse(options.body) : options.body
+
+          const opType: any =
+            endpoint.startsWith("/patients") ? "patient" :
+            endpoint.startsWith("/routes") ? "route" :
+            endpoint.startsWith("/inventory") ? "inventory" :
+            endpoint.startsWith("/appointments") ? "appointment" : "inventory"
+
+          const opId = offlineManager.queueOperation({
+            type: opType,
+            action: (method === "POST" ? "create" : method === "DELETE" ? "delete" : "update") as any,
+            data: body ?? {},
+          })
+
+          // Return optimistic success; caller UI can reflect pending state if needed
+          return {
+            success: true,
+            // @ts-expect-error expose minimal shape for UIs that expect ids
+            data: { id: opId, optimistic: true },
+            message: "Queued offline; will sync when online.",
+          }
+        } catch (e) {
+          console.warn("Failed to queue offline operation", e)
+          // fall through to network attempt in case we mis-detected
+        }
+      }
+
+      // Online or read operation: perform fetch with a tiny retry for transient failures
+      const attemptFetch = async () =>
+        fetch(url, {
+          ...options,
+          headers,
+        })
+
+      let response = await attemptFetch()
+      if (!response.ok && response.status >= 500) {
+        // one quick retry after 300ms for transient server hiccups
+        await new Promise((r) => setTimeout(r, 300))
+        response = await attemptFetch()
+      }
 
       // Handle non-JSON responses
       let data
@@ -256,6 +301,7 @@ class ApiService {
           "notes",
           "referrals",
           "suppliers", // Added for supplier endpoints
+          "sync_status", // for sync/status endpoint
         ]
         for (const key of preferredKeys) {
           if (Object.prototype.hasOwnProperty.call(body, key)) {

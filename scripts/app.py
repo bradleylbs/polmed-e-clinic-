@@ -20,9 +20,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'palmed-clinic-secret-key-2025')
 # Allow CORS from configured frontends (comma-separated) or common localhost defaults
-frontend_origins = os.environ.get('FRONTEND_ORIGINS')
-if frontend_origins:
-    allowed_origins = [o.strip() for o in frontend_origins.split(',') if o.strip()]
+# Prefer CORS_ALLOWED_ORIGINS (pipeline/app settings) but support legacy FRONTEND_ORIGINS
+cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS') or os.environ.get('FRONTEND_ORIGINS')
+if cors_origins_env:
+    allowed_origins = [o.strip() for o in cors_origins_env.split(',') if o.strip()]
 else:
     allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
@@ -65,6 +66,12 @@ DB_CONFIG = {
     'use_unicode': True,
     'charset': 'utf8mb4'
 }
+
+# Optional: Azure MySQL SSL configuration (set via App Settings). If DB_SSL_CA is provided we enable SSL.
+DB_SSL_CA = os.environ.get('DB_SSL_CA')  # path to CA certificate in container
+DB_SSL_DISABLED = os.environ.get('DB_SSL_DISABLED', '0') in ('1', 'true', 'True')
+if DB_SSL_CA and not DB_SSL_DISABLED:
+    DB_CONFIG['ssl_ca'] = DB_SSL_CA
 
 class DatabaseManager:
     """Database connection and query management"""
@@ -1773,33 +1780,234 @@ def internal_error(error):
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
+    """Health check endpoint (always 200 to avoid restart loops on transient DB issues)."""
     try:
-        # Test database connection
+        # Test database connection quickly
         connection = DatabaseManager.get_connection()
+        db_status = 'healthy' if connection else 'unhealthy'
         if connection:
-            connection.close()
-            db_status = 'healthy'
-        else:
-            db_status = 'unhealthy'
-        
+            try:
+                connection.close()
+            except Exception:
+                pass
+
         return jsonify({
-            'status': 'healthy' if db_status == 'healthy' else 'unhealthy',
+            'status': 'ok',
             'database': db_status,
             'timestamp': datetime.utcnow().isoformat()
-        }), 200 if db_status == 'healthy' else 503
-        
+        }), 200
+
     except Exception as e:
         logger.error(f"Health check error: {e}")
         return jsonify({
-            'status': 'unhealthy',
+            'status': 'ok',
+            'database': 'unknown',
             'error': str(e),
             'timestamp': datetime.utcnow().isoformat()
-        }), 503
+        }), 200
 
 # ============================================================================
 # CLINICAL WORKFLOW ENDPOINTS
 # ============================================================================
+
+# ============================================================================
+# USER MANAGEMENT (Admin)
+# ============================================================================
+
+@app.route('/api/users', methods=['GET'])
+@token_required
+@role_required(['administrator'])
+def list_users():
+    """List users with optional search, role, and status filters."""
+    try:
+        search = request.args.get('search', '').strip()
+        role = request.args.get('role', '').strip()
+        status = request.args.get('status', '').strip().lower()
+
+        query = (
+            "SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.phone_number, u.mp_number, "
+            "u.is_active, u.requires_approval, u.approved_at, u.created_at, u.last_login, "
+            "u.geographic_restrictions, ur.role_name "
+            "FROM users u JOIN user_roles ur ON u.role_id = ur.id WHERE 1=1"
+        )
+        params: list = []
+
+        if search:
+            query += " AND (u.username LIKE %s OR u.email LIKE %s OR u.first_name LIKE %s OR u.last_name LIKE %s)"
+            s = f"%{search}%"
+            params.extend([s, s, s, s])
+
+        if role:
+            query += " AND LOWER(REPLACE(ur.role_name, ' ', '_')) = %s"
+            params.append(role.lower().replace(' ', '_'))
+
+        if status in ('active', 'pending', 'suspended', 'inactive'):
+            if status == 'active':
+                query += " AND u.is_active = TRUE AND (u.requires_approval = FALSE OR u.approved_at IS NOT NULL)"
+            elif status == 'pending':
+                query += " AND u.requires_approval = TRUE AND (u.approved_at IS NULL)"
+            else:  # suspended/inactive
+                query += " AND u.is_active = FALSE"
+
+        query += " ORDER BY u.created_at DESC"
+
+        rows = DatabaseManager.execute_query(query, tuple(params) if params else None, fetch=True) or []
+        return jsonify({'success': True, 'users': _to_jsonable(rows)}), 200
+    except Exception as e:
+        logger.error(f"List users error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/users', methods=['POST'])
+@token_required
+@role_required(['administrator'])
+def create_user_admin():
+    """Create a new user account (admin only). Doctors require approval by default."""
+    try:
+        data = request.get_json(silent=True) or {}
+        required = ['username', 'email', 'first_name', 'last_name', 'role', 'phone_number']
+        missing = [f for f in required if not str(data.get(f, '')).strip()]
+        if missing:
+            return jsonify({'success': False, 'error': f"Missing required fields: {', '.join(missing)}"}), 400
+
+        email = data['email'].strip().lower()
+        if '@' not in email or '.' not in email:
+            return jsonify({'success': False, 'error': 'Invalid email address'}), 400
+
+        # Role resolution
+        role_key = data['role'].strip().lower().replace(' ', '_')
+        role_row = DatabaseManager.execute_query("SELECT id, role_name FROM user_roles WHERE LOWER(REPLACE(role_name, ' ', '_')) = %s", (role_key,), fetch=True)
+        if not role_row:
+            return jsonify({'success': False, 'error': f"Invalid role: {data['role']}"}), 400
+        role_id = role_row[0]['id']
+        role_name = role_row[0]['role_name']
+
+        # Unique email and username checks
+        existing_email = DatabaseManager.execute_query("SELECT id FROM users WHERE email = %s", (email,), fetch=True)
+        if existing_email:
+            return jsonify({'success': False, 'error': 'Email already exists'}), 409
+        existing_username = DatabaseManager.execute_query("SELECT id FROM users WHERE username = %s", (data['username'],), fetch=True)
+        if existing_username:
+            return jsonify({'success': False, 'error': 'Username already exists'}), 409
+
+        # Geographic restrictions (store as JSON array of provinces)
+        assigned_province = data.get('assigned_province')
+        geo_json = None
+        if assigned_province:
+            try:
+                import json as _json
+                geo_json = _json.dumps([assigned_province])
+            except Exception:
+                geo_json = None
+
+        # Approval logic
+        requires_approval = (role_name.strip().lower() == 'doctor')
+        is_active = not requires_approval
+
+        # Temporary password
+        temp_password = f"Temp-{uuid.uuid4().hex[:8]}"
+        password_hash = generate_password_hash(temp_password)
+
+        insert_q = (
+            "INSERT INTO users (username, email, password_hash, role_id, first_name, last_name, phone_number, mp_number, geographic_restrictions, is_active, requires_approval, created_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+        )
+        ivals = (
+            data['username'].strip(),
+            email,
+            password_hash,
+            role_id,
+            data['first_name'].strip(),
+            data['last_name'].strip(),
+            data['phone_number'].strip(),
+            (data.get('mp_number') or None),
+            geo_json,
+            is_active,
+            requires_approval,
+            datetime.now(timezone.utc)
+        )
+        result = DatabaseManager.execute_query(insert_q, ivals)
+        if not result:
+            return jsonify({'success': False, 'error': 'Failed to create user'}), 500
+
+        # Respond with created minimal details (do not expose password); admins can reset separately
+        return jsonify({
+            'success': True,
+            'data': {
+                'username': data['username'],
+                'email': email,
+                'requires_approval': requires_approval,
+                'status': 'pending' if requires_approval else 'active'
+            },
+            'message': 'User created'
+        }), 201
+    except Exception as e:
+        logger.error(f"Create user error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/users/<int:user_id>', methods=['PUT', 'PATCH'])
+@token_required
+@role_required(['administrator'])
+def update_user_admin(user_id: int):
+    """Update user fields or approve/suspend users."""
+    try:
+        data = request.get_json(silent=True) or {}
+
+        # Approval flow
+        approve = bool(data.get('approve'))
+        status = (data.get('status') or '').strip().lower()
+
+        fields = []
+        params: list = []
+
+        if approve:
+            fields.append("requires_approval = FALSE")
+            fields.append("is_active = TRUE")
+            fields.append("approved_at = %s")
+            params.append(datetime.now(timezone.utc))
+
+        if status in ('active', 'suspended', 'inactive'):
+            if status == 'active':
+                fields.append("is_active = TRUE")
+            else:
+                fields.append("is_active = FALSE")
+
+        if 'mp_number' in data:
+            fields.append("mp_number = %s")
+            params.append(data.get('mp_number') or None)
+
+        if 'phone_number' in data:
+            fields.append("phone_number = %s")
+            params.append(data.get('phone_number') or '')
+
+        if 'assigned_province' in data:
+            try:
+                import json as _json
+                fields.append("geographic_restrictions = %s")
+                params.append(_json.dumps([data.get('assigned_province')]))
+            except Exception:
+                pass
+
+        if not fields:
+            return jsonify({'success': False, 'error': 'No valid fields to update'}), 400
+
+        update_q = "UPDATE users SET " + ", ".join(fields) + " WHERE id = %s"
+        params.append(user_id)
+        result = DatabaseManager.execute_query(update_q, tuple(params))
+        if not result:
+            return jsonify({'success': False, 'error': 'Update failed'}), 500
+
+        # Return updated record minimal
+        row = DatabaseManager.execute_query(
+            "SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.is_active, u.requires_approval, u.approved_at FROM users u WHERE u.id = %s",
+            (user_id,),
+            fetch=True,
+        )
+        return jsonify({'success': True, 'data': _to_jsonable(row[0]) if row else {}}), 200
+    except Exception as e:
+        logger.error(f"Update user error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 @app.route('/api/workflow/stages', methods=['GET'])
 @token_required
