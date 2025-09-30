@@ -1,0 +1,147 @@
+# Azure Pipelines for POLMED ERP (Next.js frontend + Flask backend)
+# - Builds frontend with pnpm and publishes artifact
+# - Builds backend (Flask) with Python and publishes artifact
+# - Optional deployment stage placeholders (disabled unless variables provided)
+
+trigger:
+  branches:
+    include:
+      - master
+      - main
+
+pr:
+  branches:
+    include:
+      - master
+      - main
+
+variables:
+  node_version: '18.x'
+  python_version: '3.11'
+  frontend_artifact: 'frontend'
+  backend_artifact: 'backend'
+  # Optional deploy variables (leave empty to skip Deploy stage)
+  azureServiceConnection: ''
+  AZURE_WEBAPP_NAME_FRONTEND: ''
+  AZURE_WEBAPP_NAME_BACKEND: ''
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+  - stage: Build
+    displayName: Build and package
+    jobs:
+      - job: BuildFrontend
+        displayName: Build frontend (Next.js)
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(node_version)
+            displayName: 'Use Node.js $(node_version)'
+
+          - script: |
+              npm i -g corepack
+              corepack enable
+              corepack prepare pnpm@8.15.8 --activate
+              pnpm -v
+            displayName: 'Install pnpm'
+
+          - task: Cache@2
+            inputs:
+              key: 'pnpm | "$(Agent.OS)" | pnpm-lock.yaml'
+              restoreKeys: 'pnpm | "$(Agent.OS)"'
+              path: '$(Pipeline.Workspace)/.pnpm-store'
+            displayName: 'Cache pnpm store'
+
+          - script: |
+              export PNPM_HOME=$(Pipeline.Workspace)/.pnpm-store
+              echo "PNPM_HOME=$PNPM_HOME" >> $GITHUB_ENV || true
+              pnpm install --frozen-lockfile
+            displayName: 'Install frontend dependencies'
+
+          - script: |
+              pnpm build
+            displayName: 'Build frontend'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(Build.SourcesDirectory)'
+              ArtifactName: '$(frontend_artifact)'
+              publishLocation: 'Container'
+            displayName: 'Publish frontend artifact'
+
+      - job: BuildBackend
+        displayName: Build backend (Flask)
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '$(python_version)'
+            displayName: 'Use Python $(python_version)'
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r scripts/requirements.txt
+            displayName: 'Install backend dependencies'
+
+          - script: |
+              if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+              if [ -d tests ]; then python -m pytest -q || true; fi
+            displayName: 'Run backend tests (optional)'
+
+          - task: ArchiveFiles@2
+            inputs:
+              rootFolderOrFile: '$(Build.SourcesDirectory)/scripts'
+              includeRootFolder: true
+              archiveType: 'zip'
+              archiveFile: '$(Build.ArtifactStagingDirectory)/backend.zip'
+              replaceExistingArchive: true
+            displayName: 'Archive backend files'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)/backend.zip'
+              ArtifactName: '$(backend_artifact)'
+              publishLocation: 'Container'
+            displayName: 'Publish backend artifact'
+
+  - stage: Deploy
+    displayName: Deploy to Azure (optional)
+    dependsOn: Build
+    condition: and(ne(variables.azureServiceConnection, ''), or(ne(variables.AZURE_WEBAPP_NAME_FRONTEND, ''), ne(variables.AZURE_WEBAPP_NAME_BACKEND, '')))
+    jobs:
+      - deployment: DeployBackend
+        displayName: Deploy backend (Flask) to Azure Web App
+        environment: 'dev'
+        condition: and(ne(variables.azureServiceConnection, ''), ne(variables.AZURE_WEBAPP_NAME_BACKEND, ''))
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: $(backend_artifact)
+                - task: AzureWebApp@1
+                  inputs:
+                    azureSubscription: '$(azureServiceConnection)'
+                    appType: 'webAppLinux'
+                    appName: '$(AZURE_WEBAPP_NAME_BACKEND)'
+                    package: '$(Pipeline.Workspace)/$(backend_artifact)/backend.zip'
+                  displayName: 'Deploy backend to $(AZURE_WEBAPP_NAME_BACKEND)'
+
+      - deployment: DeployFrontend
+        displayName: Deploy frontend (Next.js) to Azure Web App
+        environment: 'dev'
+        condition: and(ne(variables.azureServiceConnection, ''), ne(variables.AZURE_WEBAPP_NAME_FRONTEND, ''))
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: $(frontend_artifact)
+                - task: AzureWebApp@1
+                  inputs:
+                    azureSubscription: '$(azureServiceConnection)'
+                    appType: 'webAppLinux'
+                    appName: '$(AZURE_WEBAPP_NAME_FRONTEND)'
+                    package: '$(Pipeline.Workspace)/$(frontend_artifact)'
+                  displayName: 'Deploy frontend to $(AZURE_WEBAPP_NAME_FRONTEND)'
