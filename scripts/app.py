@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 import mysql.connector
@@ -8,10 +8,9 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 import os
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import List
 import uuid
 import json 
-from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -276,7 +275,7 @@ def login():
             try:
                 import json
                 geographic_restrictions = json.loads(user_data['geographic_restrictions'])
-            except:
+            except Exception:
                 geographic_restrictions = []
 
         response_data = {
@@ -474,7 +473,7 @@ def get_patients():
                         province_placeholders = ','.join(['%s'] * len(provinces))
                         base_query += f" AND p.province IN ({province_placeholders})"
                         params.extend(provinces)
-                except:
+                except Exception:
                     pass
         
         base_query += " GROUP BY p.id ORDER BY p.created_at DESC LIMIT %s OFFSET %s"
@@ -567,7 +566,7 @@ def create_patient():
         if 'is_palmed_member' not in data and data.get('medical_aid_number'):
             data['is_palmed_member'] = True
 
-        logger.info(f"[PATIENT_CREATE] After normalization:")
+        logger.info("[PATIENT_CREATE] After normalization:")
         logger.info(f"[PATIENT_CREATE] first_name: '{data.get('first_name')}' (type: {type(data.get('first_name'))})")
         logger.info(f"[PATIENT_CREATE] last_name: '{data.get('last_name')}' (type: {type(data.get('last_name'))})")
         logger.info(f"[PATIENT_CREATE] date_of_birth: '{data.get('date_of_birth')}' (type: {type(data.get('date_of_birth'))})")
@@ -1078,7 +1077,7 @@ def get_routes():
                         province_placeholders = ','.join(['%s'] * len(provinces))
                         query += f" AND r.province IN ({province_placeholders})"
                         params.extend(provinces)
-                except:
+                except Exception:
                     pass
         
         query += " GROUP BY r.id ORDER BY r.start_date DESC"
@@ -1128,10 +1127,14 @@ def create_route():
 
         # Basic validation
         missing = []
-        if not route_name: missing.append('route_name')
-        if not start_date: missing.append('start_date')
-        if not end_date: missing.append('end_date')
-        if not province: missing.append('province')
+        if not route_name:
+            missing.append('route_name')
+        if not start_date:
+            missing.append('start_date')
+        if not end_date:
+            missing.append('end_date')
+        if not province:
+            missing.append('province')
 
         if missing:
             return jsonify({'success': False, 'error': f"Missing required fields: {', '.join(missing)}"}), 400
@@ -1249,10 +1252,14 @@ def create_referral(patient_id: int):
         appointment_date = data.get('appointment_date')  # optional 'YYYY-MM-DD'
 
         missing = []
-        if not from_stage: missing.append('from_stage')
-        if referral_type == 'internal' and not to_stage: missing.append('to_stage')
-        if referral_type == 'external' and not external_provider: missing.append('external_provider')
-        if not reason: missing.append('reason')
+        if not from_stage:
+            missing.append('from_stage')
+        if referral_type == 'internal' and not to_stage:
+            missing.append('to_stage')
+        if referral_type == 'external' and not external_provider:
+            missing.append('external_provider')
+        if not reason:
+            missing.append('reason')
         if missing:
             return jsonify({'success': False, 'error': f"Missing required fields: {', '.join(missing)}"}), 400
 
@@ -1380,7 +1387,8 @@ def update_referral(referral_id: int):
         if status:
             if status not in ['pending','sent','accepted','completed','cancelled']:
                 return jsonify({'success': False, 'error': 'Invalid status'}), 400
-            sets.append("status = %s"); params.append(status)
+            sets.append("status = %s")
+            params.append(status)
 
         appointment_date = data.get('appointment_date')
         if appointment_date:
@@ -1388,15 +1396,18 @@ def update_referral(referral_id: int):
                 datetime.strptime(appointment_date, '%Y-%m-%d')
             except ValueError:
                 return jsonify({'success': False, 'error': 'appointment_date must be YYYY-MM-DD'}), 400
-            sets.append("appointment_date = %s"); params.append(appointment_date)
+            sets.append("appointment_date = %s")
+            params.append(appointment_date)
 
         if 'notes' in data:
-            sets.append("notes = %s"); params.append(data.get('notes'))
+            sets.append("notes = %s")
+            params.append(data.get('notes'))
 
         if not sets:
             return jsonify({'success': False, 'error': 'No changes provided'}), 400
 
-        sets.append("updated_at = %s"); params.append(datetime.now(timezone.utc))
+        sets.append("updated_at = %s")
+        params.append(datetime.now(timezone.utc))
         params.append(referral_id)
 
         ok = DatabaseManager.execute_query(
@@ -3341,9 +3352,8 @@ def adjust_inventory_stock(stock_id):
         
         if not current_stock:
             return jsonify({'success': False, 'error': 'Stock record not found'}), 404
-            
+        
         current_quantity = current_stock[0]['quantity_current']
-        consumable_id = current_stock[0]['consumable_id']
         
         # Calculate new quantity
         if adjustment_type == 'increase':
