@@ -23,19 +23,19 @@ variables:
   backend_artifact: 'backend'
   # Backend base URL for Static Web Apps API proxy rewrite
   BACKEND_BASE_URL: 'https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net'
-  # Frontend build-time API base for App Service deployments (used by NEXT at build time)
-  NEXT_PUBLIC_API_URL: 'https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net/api'
-  # Optional deploy variables (leave empty to skip Deploy stage)
-  azureServiceConnection: ''
-  AZURE_WEBAPP_NAME_FRONTEND: 'app-polmed-frontend'
-  AZURE_WEBAPP_NAME_BACKEND: 'app-polmed-backend'
-  ResourceGroupName: 'ERP_POLMED'
-  # Backend app settings (fill in in pipeline variables or variable group)
+
+
+  ResourceGroupName: 'rg-polmed-erp'
+  # Backend app settings (set via secure pipeline variables or App Service config)
   SECRET_KEY: ''
-  DB_HOST: ''
-  DB_NAME: ''
-  DB_USER: ''
-  DB_PASSWORD: ''
+  DB_HOST: 'db-polmed.mysql.database.azure.com'
+  DB_NAME: 'palmed_clinic_erp'
+  DB_USER: 'dbadmin'
+  DB_PASSWORD: 'Polm3d!DB@2025'
+  DB_PORT: '3306'
+  # Optional SSL settings for Azure MySQL (set DB_SSL_DISABLED to '1' to disable)
+  DB_SSL_DISABLED: '0'
+  DB_SSL_CA: ''
   CORS_ALLOWED_ORIGINS: 'https://app-polmed-frontend-hdc0bwcwcceth4gk.southafricanorth-01.azurewebsites.net'
 
 pool:
@@ -187,49 +187,9 @@ stages:
                           DB_NAME="$(DB_NAME)" \
                           DB_USER="$(DB_USER)" \
                           DB_PASSWORD="$(DB_PASSWORD)" \
+                          DB_PORT="$(DB_PORT)" \
+                          DB_SSL_DISABLED="$(DB_SSL_DISABLED)" \
+                          DB_SSL_CA="$(DB_SSL_CA)" \
                           PYTHONUNBUFFERED=1 \
                           CORS_ALLOWED_ORIGINS="$(CORS_ALLOWED_ORIGINS)"
                   condition: and(ne(variables.ResourceGroupName, ''), ne(variables.SECRET_KEY, ''))
-
-      - deployment: DeployFrontend
-        displayName: Deploy frontend (Next.js) to Azure Web App
-        environment: 'dev'
-        condition: and(ne(variables.azureServiceConnection, ''), ne(variables.AZURE_WEBAPP_NAME_FRONTEND, ''))
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - download: current
-                  artifact: $(frontend_artifact)
-                # If using Static Web Apps, use AzureStaticWebApp task instead of App Service
-                # To enable, set variable USE_SWA to 'true' and provide STATIC_WEB_APPS_API_TOKEN as a secret variable
-                - ${{ if eq(variables.USE_SWA, 'true') }}:
-                  - task: AzureStaticWebApp@0
-                    inputs:
-                      app_location: '$(Pipeline.Workspace)/$(frontend_artifact)'
-                      output_location: ''
-                      skip_app_build: true
-                      azure_static_web_apps_api_token: '$(STATIC_WEB_APPS_API_TOKEN)'
-                    displayName: 'Deploy frontend to Azure Static Web Apps'
-                - ${{ if ne(variables.USE_SWA, 'true') }}:
-                  - task: AzureWebApp@1
-                    inputs:
-                      azureSubscription: '$(azureServiceConnection)'
-                      appType: 'webAppLinux'
-                      appName: '$(AZURE_WEBAPP_NAME_FRONTEND)'
-                      package: '$(Pipeline.Workspace)/$(frontend_artifact)'
-                    displayName: 'Deploy frontend to $(AZURE_WEBAPP_NAME_FRONTEND)'
-                  - task: AzureCLI@2
-                    displayName: 'Configure frontend App Service (health check)'
-                    inputs:
-                      azureSubscription: '$(azureServiceConnection)'
-                      scriptType: bash
-                      scriptLocation: inlineScript
-                      inlineScript: |
-                        set -e
-                        echo "Setting health check path for frontend"
-                        az webapp config set \
-                          --resource-group "$(ResourceGroupName)" \
-                          --name "$(AZURE_WEBAPP_NAME_FRONTEND)" \
-                          --health-check-path "/"
-                    condition: ne(variables.ResourceGroupName, '')
