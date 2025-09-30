@@ -55,8 +55,7 @@ stages:
             displayName: 'Cache pnpm store'
 
           - script: |
-              export PNPM_HOME=$(Pipeline.Workspace)/.pnpm-store
-              echo "PNPM_HOME=$PNPM_HOME" >> $GITHUB_ENV || true
+              pnpm config set store-dir $(Pipeline.Workspace)/.pnpm-store
               pnpm install --frozen-lockfile
             displayName: 'Install frontend dependencies'
 
