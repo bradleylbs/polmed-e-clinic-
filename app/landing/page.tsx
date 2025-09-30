@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { CalendarDays, Stethoscope, ShieldCheck, Truck, Activity, Users, ArrowRight } from "lucide-react"
+import { CalendarDays, Stethoscope, ShieldCheck, Truck, Activity, Users, ArrowRight, User } from "lucide-react"
 
 export default function LandingPage() {
   return (
@@ -21,13 +21,22 @@ export default function LandingPage() {
             <span className="font-semibold tracking-tight">POLMED Clinic</span>
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm">
-            <Link href="#features" className="hover:text-primary">Features</Link>
-            <Link href="#how" className="hover:text-primary">How it works</Link>
-            <Link href="#contact" className="hover:text-primary">Contact</Link>
+            <Link href="#features" className="hover:text-primary">
+              Features
+            </Link>
+            <Link href="#how" className="hover:text-primary">
+              How it works
+            </Link>
+            <Link href="#contact" className="hover:text-primary">
+              Contact
+            </Link>
           </nav>
           <div className="flex items-center gap-2">
-            <Link href="/book-appointment">
-              <Button variant="default" className="hidden sm:inline-flex">Book Appointment</Button>
+            <Link href="/patient-portal">
+              <Button variant="ghost" className="hidden sm:inline-flex">
+                <User className="w-4 h-4 mr-2" />
+                Patient Portal
+              </Button>
             </Link>
             <Link href="/staff">
               <Button variant="outline">Staff Sign In</Button>
@@ -40,26 +49,39 @@ export default function LandingPage() {
       <section className="container mx-auto max-w-7xl px-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center py-16">
           <div className="space-y-6">
-            <Badge className="w-fit" variant="default">Mobile Health Outreach</Badge>
+            <Badge className="w-fit" variant="default">
+              Mobile Health Outreach
+            </Badge>
             <h1 className="text-4xl md:text-5xl font-bold leading-tight tracking-tight">
               Accessible Primary Care, Anywhere
             </h1>
             <p className="text-lg text-muted-foreground max-w-prose">
-              Book appointments at our mobile clinics across communities. POLMED’s modern platform brings
-              screening, chronic care, and essential services closer to you.
+              Book appointments at our mobile clinics across communities. POLMED's modern platform brings screening,
+              chronic care, and essential services closer to you.
             </p>
             <div className="flex flex-wrap gap-3">
-              <Link href="/book-appointment">
-                <Button size="lg">Book an Appointment <ArrowRight className="w-4 h-4 ml-2" /></Button>
+              <Link href="/patient-portal">
+                <Button size="lg" variant="secondary">
+                  <User className="w-4 h-4 mr-2" />
+                  Patient Portal
+                </Button>
               </Link>
               <a href="#features">
-                <Button size="lg" variant="outline">Explore Features</Button>
+                <Button size="lg" variant="outline">
+                  Explore Features
+                </Button>
               </a>
             </div>
             <div className="flex items-center gap-6 pt-2 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2"><ShieldCheck className="w-4 h-4" /> Secure & Private</div>
-              <div className="flex items-center gap-2"><Truck className="w-4 h-4" /> Mobile Clinics</div>
-              <div className="flex items-center gap-2"><Activity className="w-4 h-4" /> Real-time Updates</div>
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4" /> Secure & Private
+              </div>
+              <div className="flex items-center gap-2">
+                <Truck className="w-4 h-4" /> Mobile Clinics
+              </div>
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4" /> Real-time Updates
+              </div>
             </div>
           </div>
           <div className="relative">
@@ -83,7 +105,16 @@ export default function LandingPage() {
                     </div>
                   </CardContent>
                 </Card>
-                <Card className="sm:col-span-2">
+                <Card>
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <User className="w-6 h-6 text-primary" />
+                    <div>
+                      <div className="font-semibold">Patient Portal</div>
+                      <div className="text-sm text-muted-foreground">Access your health records</div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div>
@@ -91,7 +122,9 @@ export default function LandingPage() {
                         <div className="text-sm text-muted-foreground">Check published schedules near you</div>
                       </div>
                       <Link href="/book-appointment">
-                        <Button size="sm" variant="secondary">Browse</Button>
+                        <Button size="sm" variant="secondary">
+                          Browse
+                        </Button>
                       </Link>
                     </div>
                   </CardContent>
@@ -108,18 +141,85 @@ export default function LandingPage() {
           <h2 className="text-2xl md:text-3xl font-bold mb-8">Why choose POLMED outreach?</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
-              { title: "Public Booking", desc: "Reserve time slots online at convenient locations.", icon: <CalendarDays className="w-5 h-5 text-primary" /> },
-              { title: "Clinical Workflows", desc: "Streamlined, role-based care for staff.", icon: <Stethoscope className="w-5 h-5 text-primary" /> },
-              { title: "Secure by Design", desc: "Privacy-first with secure data handling.", icon: <ShieldCheck className="w-5 h-5 text-primary" /> },
+              {
+                title: "Public Booking",
+                desc: "Reserve time slots online at convenient locations.",
+                icon: <CalendarDays className="w-5 h-5 text-primary" />,
+              },
+              {
+                title: "Clinical Workflows",
+                desc: "Streamlined, role-based care for staff.",
+                icon: <Stethoscope className="w-5 h-5 text-primary" />,
+              },
+              {
+                title: "Secure by Design",
+                desc: "Privacy-first with secure data handling.",
+                icon: <ShieldCheck className="w-5 h-5 text-primary" />,
+              },
             ].map((f) => (
               <Card key={f.title}>
                 <CardContent className="p-6 space-y-2">
-                  <div className="flex items-center gap-2">{f.icon}<span className="font-medium">{f.title}</span></div>
+                  <div className="flex items-center gap-2">
+                    {f.icon}
+                    <span className="font-medium">{f.title}</span>
+                  </div>
                   <p className="text-sm text-muted-foreground">{f.desc}</p>
                 </CardContent>
               </Card>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Patient Portal */}
+      <section className="container mx-auto max-w-7xl px-4 py-16">
+        <div className="text-center mb-12">
+          <h2 className="text-2xl md:text-3xl font-bold mb-4">Manage Your Health Online</h2>
+          <p className="text-muted-foreground max-w-2xl mx-auto">
+            Access your patient portal to view appointments, health records, and communicate with your healthcare team.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            {
+              title: "View Appointments",
+              desc: "See upcoming and past appointments",
+              icon: <CalendarDays className="w-5 h-5 text-primary" />,
+            },
+            {
+              title: "Health Records",
+              desc: "Access your medical history and results",
+              icon: <Activity className="w-5 h-5 text-primary" />,
+            },
+            {
+              title: "Secure Messaging",
+              desc: "Communicate with your care team",
+              icon: <Users className="w-5 h-5 text-primary" />,
+            },
+            {
+              title: "Privacy Protected",
+              desc: "Your data is secure and private",
+              icon: <ShieldCheck className="w-5 h-5 text-primary" />,
+            },
+          ].map((feature) => (
+            <Card key={feature.title}>
+              <CardContent className="p-6 text-center space-y-3">
+                <div className="mx-auto w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                  {feature.icon}
+                </div>
+                <div className="font-medium">{feature.title}</div>
+                <p className="text-sm text-muted-foreground">{feature.desc}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <div className="text-center mt-8">
+          <Link href="/patient-portal">
+            <Button size="lg">
+              <User className="w-4 h-4 mr-2" />
+              Access Patient Portal
+            </Button>
+          </Link>
         </div>
       </section>
 
@@ -146,10 +246,20 @@ export default function LandingPage() {
       <section className="bg-primary/5 border-t">
         <div className="container mx-auto max-w-7xl px-4 py-16 flex flex-col items-center text-center gap-4">
           <h3 className="text-2xl md:text-3xl font-bold">Ready to book your appointment?</h3>
-          <p className="text-muted-foreground max-w-prose">Choose a location and time that works for you. It only takes a minute.</p>
-          <Link href="/book-appointment">
-            <Button size="lg">Book Now</Button>
-          </Link>
+          <p className="text-muted-foreground max-w-prose">
+            Choose a location and time that works for you. It only takes a minute.
+          </p>
+          <div className="flex flex-wrap gap-3 justify-center">
+            <Link href="/book-appointment">
+              <Button size="lg">Book Now</Button>
+            </Link>
+            <Link href="/patient-portal">
+              <Button size="lg" variant="outline">
+                <User className="w-4 h-4 mr-2" />
+                Patient Portal
+              </Button>
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -164,9 +274,15 @@ export default function LandingPage() {
               <span>POLMED Clinic</span>
             </div>
             <div className="flex items-center gap-6">
-              <a href="mailto:info@example.com" className="hover:text-foreground">info@example.com</a>
-              <a href="#" className="hover:text-foreground">Privacy</a>
-              <a href="#" className="hover:text-foreground">Terms</a>
+              <a href="mailto:info@example.com" className="hover:text-foreground">
+                info@example.com
+              </a>
+              <a href="#" className="hover:text-foreground">
+                Privacy
+              </a>
+              <a href="#" className="hover:text-foreground">
+                Terms
+              </a>
             </div>
           </div>
           <Separator className="my-4" />
