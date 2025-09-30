@@ -41,7 +41,12 @@ stages:
                 . .venv/bin/activate
                 python -m pip install --upgrade pip
                 pip install -r requirements.txt
-                pip install -r requirements-dev.txt
+                if [ -f requirements-dev.txt ]; then
+                  pip install -r requirements-dev.txt
+                else
+                  echo "requirements-dev.txt not found; installing test/lint tools"
+                  pip install pytest pytest-cov ruff
+                fi
               workingDirectory: $(projectRoot)/scripts
           - task: CmdLine@2
             displayName: "Lint (ruff)"
@@ -56,7 +61,11 @@ stages:
             inputs:
               script: |
                 . .venv/bin/activate
-                pytest --junitxml=$(Build.ArtifactStagingDirectory)/test-results.xml --cov=app --cov-report=xml:$(Build.ArtifactStagingDirectory)/coverage.xml --cov-report=term-missing
+                pytest -q --maxfail=1 --disable-warnings \
+                  --junitxml=$(Build.ArtifactStagingDirectory)/test-results.xml \
+                  --cov=. \
+                  --cov-report=xml:$(Build.ArtifactStagingDirectory)/coverage.xml \
+                  --cov-report=term-missing
               workingDirectory: $(projectRoot)/scripts
           - task: PublishTestResults@2
             displayName: "Publish Test Results"
