@@ -182,7 +182,9 @@ function useToast() {
         listeners.splice(index, 1)
       }
     }
-  }, [state])
+    // We deliberately subscribe once; state updates flow via setState callback
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return {
     ...state,

@@ -16,16 +16,27 @@ pr:
       - main
 
 variables:
-  node_version: '18.x'
-  python_version: '3.11'
+  # Align with Azure App Service runtimes you created
+  node_version: '20.x'
+  python_version: '3.10'
   frontend_artifact: 'frontend'
   backend_artifact: 'backend'
   # Backend base URL for Static Web Apps API proxy rewrite
-  BACKEND_BASE_URL: ''
+  BACKEND_BASE_URL: 'https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net'
+  # Frontend build-time API base for App Service deployments (used by NEXT at build time)
+  NEXT_PUBLIC_API_URL: 'https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net/api'
   # Optional deploy variables (leave empty to skip Deploy stage)
   azureServiceConnection: ''
-  AZURE_WEBAPP_NAME_FRONTEND: ''
-  AZURE_WEBAPP_NAME_BACKEND: ''
+  AZURE_WEBAPP_NAME_FRONTEND: 'app-polmed-frontend'
+  AZURE_WEBAPP_NAME_BACKEND: 'app-polmed-backend'
+  ResourceGroupName: 'ERP_POLMED'
+  # Backend app settings (fill in in pipeline variables or variable group)
+  SECRET_KEY: ''
+  DB_HOST: ''
+  DB_NAME: ''
+  DB_USER: ''
+  DB_PASSWORD: ''
+  CORS_ALLOWED_ORIGINS: 'https://app-polmed-frontend-hdc0bwcwcceth4gk.southafricanorth-01.azurewebsites.net'
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -66,6 +77,8 @@ stages:
               # Next.js static export outputs to 'out' when output: 'export' is set
               test -d out && echo "Export dir exists: out" || echo "No out dir created"
             displayName: 'Build frontend (export)'
+            env:
+              NEXT_PUBLIC_API_URL: $(NEXT_PUBLIC_API_URL)
 
           # Inject backend URL into SWA config if provided
           - script: |
@@ -143,6 +156,40 @@ stages:
                     appName: '$(AZURE_WEBAPP_NAME_BACKEND)'
                     package: '$(Pipeline.Workspace)/$(backend_artifact)/backend.zip'
                   displayName: 'Deploy backend to $(AZURE_WEBAPP_NAME_BACKEND)'
+                # Configure startup command, health check, and app settings for backend
+                - task: AzureCLI@2
+                  displayName: 'Configure backend App Service (startup, health check, app settings)'
+                  inputs:
+                    azureSubscription: '$(azureServiceConnection)'
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -e
+                      echo "Setting startup command"
+                      az webapp config set \
+                        --resource-group "$(ResourceGroupName)" \
+                        --name "$(AZURE_WEBAPP_NAME_BACKEND)" \
+                        --startup-file "bash scripts/startup.sh"
+
+                      echo "Setting health check path"
+                      az webapp config set \
+                        --resource-group "$(ResourceGroupName)" \
+                        --name "$(AZURE_WEBAPP_NAME_BACKEND)" \
+                        --health-check-path "/api/health"
+
+                      echo "Applying app settings"
+                      az webapp config appsettings set \
+                        --resource-group "$(ResourceGroupName)" \
+                        --name "$(AZURE_WEBAPP_NAME_BACKEND)" \
+                        --settings \
+                          SECRET_KEY="$(SECRET_KEY)" \
+                          DB_HOST="$(DB_HOST)" \
+                          DB_NAME="$(DB_NAME)" \
+                          DB_USER="$(DB_USER)" \
+                          DB_PASSWORD="$(DB_PASSWORD)" \
+                          PYTHONUNBUFFERED=1 \
+                          CORS_ALLOWED_ORIGINS="$(CORS_ALLOWED_ORIGINS)"
+                  condition: and(ne(variables.ResourceGroupName, ''), ne(variables.SECRET_KEY, ''))
 
       - deployment: DeployFrontend
         displayName: Deploy frontend (Next.js) to Azure Web App
@@ -172,3 +219,17 @@ stages:
                       appName: '$(AZURE_WEBAPP_NAME_FRONTEND)'
                       package: '$(Pipeline.Workspace)/$(frontend_artifact)'
                     displayName: 'Deploy frontend to $(AZURE_WEBAPP_NAME_FRONTEND)'
+                  - task: AzureCLI@2
+                    displayName: 'Configure frontend App Service (health check)'
+                    inputs:
+                      azureSubscription: '$(azureServiceConnection)'
+                      scriptType: bash
+                      scriptLocation: inlineScript
+                      inlineScript: |
+                        set -e
+                        echo "Setting health check path for frontend"
+                        az webapp config set \
+                          --resource-group "$(ResourceGroupName)" \
+                          --name "$(AZURE_WEBAPP_NAME_FRONTEND)" \
+                          --health-check-path "/"
+                    condition: ne(variables.ResourceGroupName, '')

@@ -74,6 +74,24 @@ export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
         const consumables = consumablesResponse.data || []
 
         // Calculate summary data from API responses
+        // Helper to normalize numeric inputs (handles strings, null, undefined)
+        const toNum = (v: unknown, fallback = 0): number => {
+          if (v === null || v === undefined) return fallback
+          const n = typeof v === "string" ? Number(v.replace(/[,\s]/g, "")) : Number(v)
+          return Number.isFinite(n) ? n : fallback
+        }
+
+        // Compute totals with number coercion to avoid NaN/string concatenation
+        const totalAssetValue = assets.reduce((total: number, asset: any) => {
+          return total + toNum(asset.current_value, 0)
+        }, 0)
+
+        const totalConsumablesValue = consumables.reduce((total: number, c: any) => {
+          const qty = toNum(c.total_quantity ?? c.quantity_current, 0)
+          const unitCost = toNum(c.avg_unit_cost ?? c.unit_cost, 0)
+          return total + qty * unitCost
+        }, 0)
+
         const summary: InventorySummary = {
           totalAssets: assets.length,
           operationalAssets: assets.filter((a: any) => a.status === "Operational").length,
@@ -92,13 +110,7 @@ export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
             threeMonthsFromNow.setMonth(threeMonthsFromNow.getMonth() + 3)
             return expiryDate <= threeMonthsFromNow
           }).length,
-          totalInventoryValue:
-            assets.reduce((total: number, asset: any) => total + (asset.current_value || 0), 0) +
-            consumables.reduce((total: number, c: any) => {
-              const qty = c.total_quantity ?? c.quantity_current ?? 0
-              const unitCost = c.avg_unit_cost ?? c.unit_cost ?? 0
-              return total + qty * unitCost
-            }, 0),
+          totalInventoryValue: totalAssetValue + totalConsumablesValue,
           maintenanceAlerts: assets.filter((a: any) => {
             if (a.status === "Maintenance Required") return true
             if (a.next_maintenance_date) {
@@ -325,7 +337,9 @@ export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  R{Math.round(summaryData.totalInventoryValue).toLocaleString()}
+                  {new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 }).format(
+                    Math.round(Number.isFinite(summaryData.totalInventoryValue) ? summaryData.totalInventoryValue : 0)
+                  )}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <TrendingUp className="w-3 h-3 text-green-600" />
