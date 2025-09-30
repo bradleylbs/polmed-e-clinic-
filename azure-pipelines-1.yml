@@ -1,7 +1,6 @@
-# Azure Pipelines for POLMED ERP (Next.js frontend + Flask backend)
-# - Builds frontend with pnpm and publishes artifact
+# Azure Pipelines for POLMED ERP (Flask backend only)
 # - Builds backend (Flask) with Python and publishes artifact
-# - Optional deployment stage placeholders (disabled unless variables provided)
+# - Deploys ZIP to Azure Web App (Linux)
 trigger:
   branches:
     include:
@@ -34,54 +33,14 @@ stages:
               versionSpec: '$(pythonVersion)'
             displayName: 'Use Python $(pythonVersion)'
           - task: CmdLine@2
-            displayName: "Install requirements (prod + dev)"
+            displayName: "Install requirements"
             inputs:
               script: |
                 python -m venv .venv
                 . .venv/bin/activate
                 python -m pip install --upgrade pip
                 pip install -r requirements.txt
-                if [ -f requirements-dev.txt ]; then
-                  pip install -r requirements-dev.txt
-                else
-                  echo "requirements-dev.txt not found; installing test/lint tools"
-                  pip install pytest pytest-cov ruff
-                fi
               workingDirectory: $(projectRoot)/scripts
-          - task: CmdLine@2
-            displayName: "Lint (ruff)"
-            inputs:
-              script: |
-                . .venv/bin/activate
-                ruff --version
-                # Auto-fix safe issues, then verify clean
-                ruff check . --fix
-                ruff check .
-              workingDirectory: $(projectRoot)/scripts
-          - task: CmdLine@2
-            displayName: "Run tests (pytest) with coverage"
-            inputs:
-              script: |
-                . .venv/bin/activate
-                pytest -q --maxfail=1 --disable-warnings \
-                  --junitxml=$(Build.ArtifactStagingDirectory)/test-results.xml \
-                  --cov=. \
-                  --cov-report=xml:$(Build.ArtifactStagingDirectory)/coverage.xml \
-                  --cov-report=term-missing
-              workingDirectory: $(projectRoot)/scripts
-          - task: PublishTestResults@2
-            displayName: "Publish Test Results"
-            inputs:
-              testResultsFormat: 'JUnit'
-              testResultsFiles: '$(Build.ArtifactStagingDirectory)/test-results.xml'
-              failTaskOnFailedTests: true
-              testRunTitle: 'Python tests'
-          - task: PublishCodeCoverageResults@2
-            displayName: "Publish code coverage"
-            inputs:
-              codeCoverageTool: 'Cobertura'
-              summaryFileLocation: '$(Build.ArtifactStagingDirectory)/coverage.xml'
-              reportDirectory: '$(Build.ArtifactStagingDirectory)'
           - task: ArchiveFiles@2
             displayName: 'Archive files'
             inputs:
@@ -111,10 +70,6 @@ stages:
           runOnce:
             deploy:
               steps:
-                - task: UsePythonVersion@0
-                  inputs:
-                    versionSpec: '$(pythonVersion)'
-                  displayName: 'Use Python version'
                 - task: AzureWebApp@1
                   displayName: 'Deploy Azure Web App : app-polmed-backend'
                   inputs:
