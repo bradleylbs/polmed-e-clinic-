@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Enable static export for Azure Static Web Apps
+  output: 'export',
   eslint: {
     ignoreDuringBuilds: true,
   },

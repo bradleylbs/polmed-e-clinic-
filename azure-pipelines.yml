@@ -20,6 +20,8 @@ variables:
   python_version: '3.11'
   frontend_artifact: 'frontend'
   backend_artifact: 'backend'
+  # Backend base URL for Static Web Apps API proxy rewrite
+  BACKEND_BASE_URL: ''
   # Optional deploy variables (leave empty to skip Deploy stage)
   azureServiceConnection: ''
   AZURE_WEBAPP_NAME_FRONTEND: ''
@@ -61,14 +63,29 @@ stages:
 
           - script: |
               pnpm build
-            displayName: 'Build frontend'
+              # Next.js static export outputs to 'out' when output: 'export' is set
+              test -d out && echo "Export dir exists: out" || echo "No out dir created"
+            displayName: 'Build frontend (export)'
+
+          # Inject backend URL into SWA config if provided
+          - script: |
+              if [ -n "$(BACKEND_BASE_URL)" ]; then
+                echo "Injecting backend URL into public/staticwebapp.config.json"
+                sed -i "s~__BACKEND_URL__~$(BACKEND_BASE_URL)~g" public/staticwebapp.config.json || true
+                # Ensure exported site contains the config
+                if [ -d out ]; then
+                  mkdir -p out
+                  cp public/staticwebapp.config.json out/staticwebapp.config.json
+                fi
+              fi
+            displayName: 'Configure SWA backend proxy (optional)'
 
           - task: PublishBuildArtifacts@1
             inputs:
-              PathtoPublish: '$(Build.SourcesDirectory)'
+              PathtoPublish: '$(Build.SourcesDirectory)/out'
               ArtifactName: '$(frontend_artifact)'
               publishLocation: 'Container'
-            displayName: 'Publish frontend artifact'
+            displayName: 'Publish frontend static artifact'
 
       - job: BuildBackend
         displayName: Build backend (Flask)
@@ -137,10 +154,21 @@ stages:
               steps:
                 - download: current
                   artifact: $(frontend_artifact)
-                - task: AzureWebApp@1
-                  inputs:
-                    azureSubscription: '$(azureServiceConnection)'
-                    appType: 'webAppLinux'
-                    appName: '$(AZURE_WEBAPP_NAME_FRONTEND)'
-                    package: '$(Pipeline.Workspace)/$(frontend_artifact)'
-                  displayName: 'Deploy frontend to $(AZURE_WEBAPP_NAME_FRONTEND)'
+                # If using Static Web Apps, use AzureStaticWebApp task instead of App Service
+                # To enable, set variable USE_SWA to 'true' and provide STATIC_WEB_APPS_API_TOKEN as a secret variable
+                - ${{ if eq(variables.USE_SWA, 'true') }}:
+                  - task: AzureStaticWebApp@0
+                    inputs:
+                      app_location: '$(Pipeline.Workspace)/$(frontend_artifact)'
+                      output_location: ''
+                      skip_app_build: true
+                      azure_static_web_apps_api_token: '$(STATIC_WEB_APPS_API_TOKEN)'
+                    displayName: 'Deploy frontend to Azure Static Web Apps'
+                - ${{ if ne(variables.USE_SWA, 'true') }}:
+                  - task: AzureWebApp@1
+                    inputs:
+                      azureSubscription: '$(azureServiceConnection)'
+                      appType: 'webAppLinux'
+                      appName: '$(AZURE_WEBAPP_NAME_FRONTEND)'
+                      package: '$(Pipeline.Workspace)/$(frontend_artifact)'
+                    displayName: 'Deploy frontend to $(AZURE_WEBAPP_NAME_FRONTEND)'
