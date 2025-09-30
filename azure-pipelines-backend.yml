@@ -1,24 +1,37 @@
 trigger:
-- main   # Or master, depending on your repo branch
+- main   # or 'master' if that's your branch
 
 pool:
   vmImage: ubuntu-latest
 
 steps:
+# 1. Set up Python
 - task: UsePythonVersion@0
   inputs:
     versionSpec: '3.10'
     architecture: 'x64'
 
+# 2. Install dependencies
 - script: |
     cd scripts
     python -m pip install --upgrade pip
     pip install -r requirements.txt
   displayName: 'Install dependencies'
 
+# 3. Archive backend files for deployment
+- task: ArchiveFiles@2
+  inputs:
+    rootFolderOrFile: 'scripts'
+    includeRootFolder: false
+    archiveFile: '$(Build.ArtifactStagingDirectory)/backend.zip'
+    replaceExistingArchive: true
+  displayName: 'Archive backend files'
+
+# 4. Deploy to Azure App Service (Flask backend)
 - task: AzureWebApp@1
   inputs:
-    azureSubscription: 'polmed-azure-connection'   # Service connection name
+    azureSubscription: 'polmed-azure-connection'   # Your Azure service connection name
     appName: 'app-polmed-backend'                  # Your App Service name
-    package: '$(System.DefaultWorkingDirectory)/scripts'
-    # Startup command in Azure portal: gunicorn -w 4 -b 0.0.0.0:8000 app:app
+    package: '$(Build.ArtifactStagingDirectory)/backend.zip'
+    runtimeStack: 'PYTHON|3.10'
+  displayName: 'Deploy Flask Backend'
