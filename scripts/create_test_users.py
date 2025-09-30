@@ -240,7 +240,6 @@ def verify_password_hashing():
     """Test password hashing to ensure it matches Flask app method"""
     test_password = "test123"
     hash1 = generate_password_hash(test_password)
-    hash2 = generate_password_hash(test_password)
     
     # Test verification
     from werkzeug.security import check_password_hash
