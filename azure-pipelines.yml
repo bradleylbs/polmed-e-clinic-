@@ -54,6 +54,8 @@ stages:
               script: |
                 . .venv/bin/activate
                 ruff --version
+                # Auto-fix safe issues, then verify clean
+                ruff check . --fix
                 ruff check .
               workingDirectory: $(projectRoot)/scripts
           - task: CmdLine@2
