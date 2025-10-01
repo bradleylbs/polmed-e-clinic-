@@ -15,6 +15,8 @@ variables:
     value: 'ubuntu-latest'
   - name: environmentName
     value: 'app-polmed-backend'
+  - name: webAppResourceGroup
+    value: ''
   - name: projectRoot
     value: $(System.DefaultWorkingDirectory)
   - name: pythonVersion
@@ -78,8 +80,21 @@ stages:
                     scriptLocation: inlineScript
                     inlineScript: |
                       set -euo pipefail
-                      RG_NAME=$(az webapp show --name $(webAppName) --query resourceGroup -o tsv)
-                      echo "Resolved resource group: ${RG_NAME}"
+                      # Resolve resource group: use provided variable if set, else auto-detect
+                      if [ -n "$(webAppResourceGroup)" ]; then
+                        RG_NAME="$(webAppResourceGroup)"
+                        echo "Using provided resource group: ${RG_NAME}"
+                      else
+                        RG_NAME=$(az webapp list --query "[?name=='$(webAppName)'].resourceGroup | [0]" -o tsv || true)
+                        if [ -z "${RG_NAME}" ]; then
+                          RG_NAME=$(az resource show --name $(webAppName) --resource-type "Microsoft.Web/sites" --query resourceGroup -o tsv || true)
+                        fi
+                        if [ -z "${RG_NAME}" ]; then
+                          echo "ERROR: Could not resolve resource group for web app '$(webAppName)'. Set 'webAppResourceGroup' variable or ensure the app exists in the current subscription." >&2
+                          exit 1
+                        fi
+                        echo "Auto-detected resource group: ${RG_NAME}"
+                      fi
                       az webapp config appsettings set \
                         --name $(webAppName) \
                         --resource-group "$RG_NAME" \
