@@ -70,6 +70,21 @@ stages:
           runOnce:
             deploy:
               steps:
+                - task: AzureCLI@2
+                  displayName: 'Ensure remote build is enabled (SCM_DO_BUILD_DURING_DEPLOYMENT)'
+                  inputs:
+                    azureSubscription: $(azureServiceConnectionId)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      RG_NAME=$(az webapp show --name $(webAppName) --query resourceGroup -o tsv)
+                      echo "Resolved resource group: ${RG_NAME}"
+                      az webapp config appsettings set \
+                        --name $(webAppName) \
+                        --resource-group "$RG_NAME" \
+                        --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
+                      echo "App setting SCM_DO_BUILD_DURING_DEPLOYMENT set to true."
                 - task: AzureWebApp@1
                   displayName: 'Deploy Azure Web App : app-polmed-backend'
                   inputs:
