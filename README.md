@@ -35,7 +35,7 @@ cd POLMEDERP
 #### Environment Variables
 Create a `.env` file in the root with:
 ```
-NEXT_PUBLIC_API_URL=https://<your-backend-api-url>
+NEXT_PUBLIC_API_BASE_URL=https://<your-backend-api-url>/api
 ```
 
 ### 3. Backend (Flask)
@@ -66,12 +66,14 @@ NEXT_PUBLIC_API_URL=https://<your-backend-api-url>
 ## Deployment
 
 ### Azure Static Web Apps (Frontend)
-- Deploy the contents of the `out/` directory.
-- Set `NEXT_PUBLIC_API_URL` in Azure portal to your backend API endpoint.
+- Deploy via Azure Static Web Apps GitHub Action (SSR supported on Standard plan).
+- Set `NEXT_PUBLIC_API_BASE_URL` in the Azure portal to your backend API endpoint (include `/api`).
 
 ### Azure App Service (Backend)
-- Deploy the Flask app in `scripts/`.
-- Set environment variables for DB connection in Azure portal.
+- Deploy the Flask app in `scripts/` (pipeline provided in `azure-pipelines.yml`).
+- Set environment variables for DB connection and secrets in Azure portal.
+
+> See `docs/azure-deployment.md` for the full end-to-end Azure walkthrough.
 
 ## Notes
 - All API calls from the frontend use `NEXT_PUBLIC_API_URL`.

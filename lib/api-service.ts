@@ -184,8 +184,9 @@ export interface UpdateReferralRequest {
 class ApiService {
   // Prefer explicit public env var; otherwise use current origin (client) falling back to localhost
   private baseUrl =
-    process.env.NEXT_PUBLIC_API_URL ||
-    (typeof window !== "undefined" ? `${window.location.origin}/api` : "http://localhost:5000/api")
+    process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+    (typeof window !== "undefined" ? `${window.location.origin.replace(/\/$/, "")}/api` : "http://localhost:5000/api")
   private token: string | null = null
 
   constructor() {
