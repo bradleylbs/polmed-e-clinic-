@@ -67,7 +67,7 @@ NEXT_PUBLIC_API_BASE_URL=https://<your-backend-api-url>/api
 
 ### Azure Static Web Apps (Frontend)
 - Deploy via Azure Static Web Apps GitHub Action (SSR supported on Standard plan).
-- Set `NEXT_PUBLIC_API_BASE_URL` in the Azure portal to your backend API endpoint (include `/api`).
+- Set `NEXT_PUBLIC_API_BASE_URL` in the Azure portal to your backend API endpoint (include `/api`). For the current production backend use `https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net/api`.
 
 ### Azure App Service (Backend)
 - Deploy the Flask app in `scripts/` (pipeline provided in `azure-pipelines.yml`).

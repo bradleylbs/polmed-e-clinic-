@@ -6,7 +6,7 @@
   "routes": [
     {
       "route": "/api/*",
-      "rewrite": "https://app-polmed-backend.azurewebsites.net/api/*",
+  "rewrite": "https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net/api/*",
       "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       "allowedRoles": ["anonymous", "authenticated"]
     }

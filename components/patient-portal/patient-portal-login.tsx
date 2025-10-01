@@ -2,6 +2,7 @@
 
 import type React from "react"
 
+import Image from "next/image"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -132,14 +133,15 @@ export function PatientPortalLogin({ onLogin, onRegister }: PatientPortalLoginPr
       <div className="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
         {/* Left side - Branding and Info */}
         <aside className="text-center lg:text-left space-y-6" aria-label="Patient Portal Info">
-          <div className="flex items-center justify-center lg:justify-start gap-3">
-            <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
-              <Stethoscope className="w-7 h-7 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">POLMED Clinic</h1>
-              <p className="text-sm text-muted-foreground">Patient Portal</p>
-            </div>
+          <div className="flex items-center justify-center lg:justify-start">
+            <Image
+              src="/polmed_logo.png"
+              alt="POLMED"
+              width={220}
+              height={72}
+              className="h-16 w-auto"
+              priority
+            />
           </div>
           <div className="space-y-4">
             <h2 className="text-3xl font-bold text-foreground">

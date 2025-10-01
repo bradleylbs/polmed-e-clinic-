@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,11 +15,7 @@ export default function LandingPage() {
       <header className="sticky top-0 z-40 bg-background/70 backdrop-blur border-b">
         <div className="container mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
           <Link href="/landing" className="flex items-center gap-2">
-            {/* Consider swapping to your logo */}
-            <div className="size-8 rounded-md bg-primary/10 flex items-center justify-center">
-              <Stethoscope className="w-4 h-4 text-primary" />
-            </div>
-            <span className="font-semibold tracking-tight">POLMED Clinic</span>
+            <Image src="/polmed_logo.png" alt="POLMED" width={140} height={40} className="w-36 h-auto" priority />
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm">
             <Link href="#features" className="hover:text-primary">
@@ -264,29 +261,63 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer id="contact" className="border-t">
-        <div className="container mx-auto max-w-7xl px-4 py-10 text-sm text-muted-foreground">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="size-6 rounded bg-primary/10 flex items-center justify-center">
-                <Stethoscope className="w-4 h-4 text-primary" />
+      <footer id="contact" className="border-t bg-background">
+        <div className="container mx-auto max-w-7xl px-4 py-12 text-sm text-muted-foreground space-y-8">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-8">
+            <div className="space-y-4 max-w-sm">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                  Powered by
+                </span>
+                <Image
+                  src="/rm_logo.png"
+                  alt="Masala Ramabulana Holdings"
+                  width={220}
+                  height={96}
+                  className="h-16 w-auto"
+                  priority
+                />
               </div>
-              <span>POLMED Clinic</span>
+              <p className="text-sm text-muted-foreground">
+                Masala Ramabulana Holdings is proud to partner in delivering innovative healthcare access across the
+                PALMED mobile clinic network.
+              </p>
             </div>
-            <div className="flex items-center gap-6">
-              <a href="mailto:info@example.com" className="hover:text-foreground">
-                info@example.com
-              </a>
-              <a href="#" className="hover:text-foreground">
-                Privacy
-              </a>
-              <a href="#" className="hover:text-foreground">
-                Terms
-              </a>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 w-full text-sm">
+              <div className="space-y-2">
+                <h4 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Head Offices</h4>
+                <p>
+                  Gauteng Office
+                  <br />Bldg 4, Villebois Office Park
+                  <br />920 Jacques Street, Pretoria
+                  <br />South Africa 0167
+                </p>
+              </div>
+              <div className="space-y-2">
+                <h4 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Warehouse</h4>
+                <p>
+                  11 Thora Cres, Wynberg
+                  <br />Sandton, Johannesburg
+                  <br />South Africa 2090
+                </p>
+              </div>
+              <div className="space-y-2">
+                <h4 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Contacts</h4>
+                <p>
+                  +27 12 997 0383
+                  <br />+27 82 264 4888
+                  <br />
+                  <a href="mailto:info@ramabulana.com" className="hover:text-foreground">
+                    info@ramabulana.com
+                  </a>
+                </p>
+              </div>
             </div>
           </div>
-          <Separator className="my-4" />
-          <div className="text-center">© {new Date().getFullYear()} POLMED. All rights reserved.</div>
+          <Separator />
+          <div className="text-center text-xs text-muted-foreground">
+            © {new Date().getFullYear()} Masala Ramabulana Holdings. All rights reserved.
+          </div>
         </div>
       </footer>
     </main>

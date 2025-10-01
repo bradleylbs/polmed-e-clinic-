@@ -73,7 +73,7 @@ This document walks through deploying the PALMED Mobile Clinic ERP stack (Next.j
 
 3. **Frontend environment variables**
    - In the Static Web App portal → *Configuration*, add:
-     - `NEXT_PUBLIC_API_BASE_URL = https://app-polmed-backend.azurewebsites.net/api`
+   - `NEXT_PUBLIC_API_BASE_URL = https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net/api`
    - Redeploy or trigger the workflow after updating settings.
 
 4. **API routing**

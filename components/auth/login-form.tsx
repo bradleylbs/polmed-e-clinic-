@@ -2,12 +2,13 @@
 
 import type React from "react"
 
+import Image from "next/image"
 import { useState, useEffect } from "react"
 import { apiService } from "@/lib/api-service"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -172,11 +173,17 @@ export function LoginForm({ onLogin }: LoginFormProps) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-4 w-16 h-16 bg-primary rounded-full flex items-center justify-center">
-            <Stethoscope className="w-8 h-8 text-primary-foreground" />
+        <CardHeader className="text-center space-y-4">
+          <div className="flex justify-center">
+            <Image
+              src="/polmed_logo.png"
+              alt="POLMED"
+              width={200}
+              height={64}
+              className="h-16 w-auto"
+              priority
+            />
           </div>
-          <CardTitle className="text-2xl font-bold text-balance">POLMED Mobile Clinic</CardTitle>
           <CardDescription className="text-pretty">Electronic Patient Management System</CardDescription>
         </CardHeader>
         <CardContent>
