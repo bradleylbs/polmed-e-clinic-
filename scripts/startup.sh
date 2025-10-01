@@ -1,37 +1,36 @@
-#!/usr/bin/env bash
-# Startup script for Azure App Service (Linux) to run the Flask API via Gunicorn
-# - Installs Python dependencies from scripts/requirements.txt
-# - Starts Gunicorn binding to $PORT with configurable workers/threads
+#!/bin/bash
+set -e
 
-set -euo pipefail
+echo "[startup] Starting PALMED Mobile Clinic ERP API..."
 
-echo "[startup] PALMED ERP backend startup initiated"
-python --version || true
-pip --version || true
+# Ensure virtual environment exists (optional but recommended)
+if [ ! -d "antenv" ]; then
+  echo "[startup] Creating virtual environment..."
+  python -m venv antenv
+fi
+source antenv/bin/activate
 
-# Install dependencies
-if [ -f scripts/requirements.txt ]; then
+# Install dependencies from the correct requirements.txt
+if [ -f requirements.txt ]; then
   echo "[startup] Installing Python dependencies..."
   python -m pip install --upgrade pip
-  pip install -r scripts/requirements.txt
+  pip install -r requirements.txt
 else
-  echo "[startup][warn] scripts/requirements.txt not found"
+  echo "[startup][WARN] requirements.txt not found!"
 fi
 
-# Defaults if not provided by App Service
-PORT="${PORT:-8000}"
-WORKERS="${WORKERS:-2}"
-THREADS="${THREADS:-4}"
-TIMEOUT="${TIMEOUT:-120}"
-BIND="0.0.0.0:${PORT}"
+# Gunicorn settings
+BIND=${BIND:-0.0.0.0:8000}
+WORKERS=${WORKERS:-4}
+THREADS=${THREADS:-2}
+TIMEOUT=${TIMEOUT:-600}
 
-# Ensure unbuffered output for better log streaming
-export PYTHONUNBUFFERED=1
+echo "[startup] Launching Gunicorn on ${BIND} with ${WORKERS} workers, ${THREADS} threads, ${TIMEOUT}s timeout"
 
-echo "[startup] Launching Gunicorn: bind=${BIND} workers=${WORKERS} threads=${THREADS} timeout=${TIMEOUT}"
+# Start Gunicorn pointing directly to app.py
 exec gunicorn \
   --bind "${BIND}" \
   --workers "${WORKERS}" \
   --threads "${THREADS}" \
   --timeout "${TIMEOUT}" \
-  scripts.app:app
+  app:app
