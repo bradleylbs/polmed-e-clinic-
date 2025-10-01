@@ -181,11 +181,14 @@ export interface UpdateReferralRequest {
   notes?: string
 }
 
+const DEFAULT_REMOTE_API_BASE_URL = "https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net/api"
+
 class ApiService {
-  // Prefer explicit public env var; otherwise use current origin (client) falling back to localhost
+  // Prefer explicit public env var; otherwise use published backend, falling back to same-origin proxy and localhost
   private baseUrl =
     process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
     process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+    DEFAULT_REMOTE_API_BASE_URL ||
     (typeof window !== "undefined" ? `${window.location.origin.replace(/\/$/, "")}/api` : "http://localhost:5000/api")
   private token: string | null = null
 

@@ -1,5 +1,7 @@
 import { apiService, type ApiResponse } from "./api-service"
 
+const DEFAULT_REMOTE_API_BASE_URL = "https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net/api"
+
 export interface PatientPortalUser {
   id: number
   patient_id: number
@@ -110,6 +112,7 @@ class PatientPortalService {
   private baseUrl =
     process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
     process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+    DEFAULT_REMOTE_API_BASE_URL ||
     (typeof window !== "undefined" ? `${window.location.origin.replace(/\/$/, "")}/api` : "http://localhost:5000/api")
 
   // Patient Portal Authentication
