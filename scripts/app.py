@@ -24,7 +24,7 @@ cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS') or os.environ.get('FRO
 if cors_origins_env:
     allowed_origins = [o.strip() for o in cors_origins_env.split(',') if o.strip()]
 else:
-    allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    allowed_origins = ["http://localhost:3000", "https://ambitious-smoke-079250a03.2.azurestaticapps.net"]
 
 CORS(
     app,
