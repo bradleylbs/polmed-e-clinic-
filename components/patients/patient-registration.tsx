@@ -24,6 +24,7 @@ interface PatientData {
   medicalAidNumber: string
   dateOfBirth: string
   gender: string
+  idNumber: string
   emergencyContact: string
   emergencyPhone: string
   knownAllergies: string
@@ -56,6 +57,7 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
     medicalAidNumber: "",
     dateOfBirth: "",
     gender: "",
+    idNumber: "",
     emergencyContact: "",
     emergencyPhone: "",
     knownAllergies: "",
@@ -120,7 +122,8 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
       // ...existing validation code...
       if (!formData.fullName.trim()) { setError("Full name is required"); setIsSubmitting(false); return }
       if (!formData.dateOfBirth) { setError("Date of birth is required"); setIsSubmitting(false); return }
-      if (!formData.gender) { setError("Gender is required"); setIsSubmitting(false); return }
+  if (!formData.gender) { setError("Gender is required"); setIsSubmitting(false); return }
+  if (!formData.idNumber.trim()) { setError("ID number is required"); setIsSubmitting(false); return }
       if (!formData.telephone.trim()) { setError("Phone number is required"); setIsSubmitting(false); return }
 
       const g = formData.gender.trim().toLowerCase()
@@ -130,6 +133,7 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
         last_name: lastName.trim() || "N/A",
         date_of_birth: formData.dateOfBirth.trim(),
         gender: genderForApi,
+  id_number: formData.idNumber.trim(),
         phone_number: formData.telephone.trim(),
         medical_aid_number: formData.medicalAidNumber.trim() || null,
         email: formData.email.trim() || null,
@@ -174,6 +178,7 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
           medicalAidNumber: "",
           dateOfBirth: "",
           gender: "",
+          idNumber: "",
           emergencyContact: "",
           emergencyPhone: "",
           knownAllergies: "",
@@ -303,6 +308,17 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                     <SelectItem value="Other">Other</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="idNumber">ID Number *</Label>
+                <Input
+                  id="idNumber"
+                  value={formData.idNumber}
+                  onChange={(e) => updateFormData("idNumber", e.target.value)}
+                  required
+                  placeholder="Enter national ID number"
+                />
               </div>
 
               <div className="space-y-2">

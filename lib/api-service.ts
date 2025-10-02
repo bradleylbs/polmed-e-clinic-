@@ -29,6 +29,7 @@ export interface CreatePatientRequest {
   date_of_birth: string // YYYY-MM-DD
   gender: string // 'Male' | 'Female' | 'Other'
   phone_number: string
+  id_number: string
 
   // Optional
   medical_aid_number?: string | null
@@ -41,7 +42,6 @@ export interface CreatePatientRequest {
   chronic_conditions?: string[] | string
   allergies?: string[] | string
   current_medications?: string[] | string
-  id_number?: string | null
 }
 
 interface Route {
