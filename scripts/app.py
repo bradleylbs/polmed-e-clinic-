@@ -850,7 +850,6 @@ def create_patient_visit(patient_id: int):
 # ----------------------------------------------------------------------------
 # VITAL SIGNS ENDPOINTS
 # ----------------------------------------------------------------------------
-
 @app.route('/api/visits/<int:visit_id>/vital-signs', methods=['POST'])
 @token_required
 @role_required(['administrator', 'doctor', 'nurse'])
@@ -858,6 +857,8 @@ def add_vital_signs(visit_id: int):
     """Record vital signs for a visit; optionally capture nursing assessment notes"""
     try:
         data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            data = {}
 
         def to_int(val):
             try:
@@ -881,46 +882,42 @@ def add_vital_signs(visit_id: int):
         blood_glucose = to_float(data.get('blood_glucose'))
         respiratory_rate = to_int(data.get('respiratory_rate'))
 
-        raw_additional = data.get('additional_measurements') or {}
-        additional = {}
-        if isinstance(raw_additional, dict):
-            additional.update(raw_additional)
-        else:
-            try:
-                additional = json.loads(raw_additional)
-            except Exception:
-                additional = {}
-
+        additional = data.get('additional_measurements') or {}
         if respiratory_rate is not None:
             additional['respiratory_rate'] = respiratory_rate
 
-        additional_payload = json.dumps(additional) if additional else json.dumps({})
-
-        ok = DatabaseManager.execute_query(
-            """
-            INSERT INTO vital_signs (
-                visit_id, recorded_by, systolic_bp, diastolic_bp, heart_rate, temperature,
-                weight, height, oxygen_saturation, blood_glucose, additional_measurements
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                visit_id,
-                request.current_user['id'],
-                systolic_bp,
-                diastolic_bp,
-                heart_rate,
-                temperature,
-                weight,
-                height,
-                oxygen_saturation,
-                blood_glucose,
-                additional_payload,
-            ),
-            fetch=False,
+        # Insert vitals only if at least one measurement is provided; allow notes-only submissions
+        has_any_vital = any(
+            v is not None for v in [
+                systolic_bp, diastolic_bp, heart_rate, temperature, weight, height, oxygen_saturation, blood_glucose, respiratory_rate
+            ]
         )
+        if has_any_vital:
+            ok = DatabaseManager.execute_query(
+                """
+                INSERT INTO vital_signs (
+                    visit_id, recorded_by, systolic_bp, diastolic_bp, heart_rate, temperature,
+                    weight, height, oxygen_saturation, blood_glucose, additional_measurements
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    visit_id,
+                    request.current_user['id'],
+                    systolic_bp,
+                    diastolic_bp,
+                    heart_rate,
+                    temperature,
+                    weight,
+                    height,
+                    oxygen_saturation,
+                    blood_glucose,
+                    json.dumps(additional) if additional else None,
+                ),
+                fetch=False,
+            )
 
-        if not ok:
-            return jsonify({'success': False, 'error': 'Failed to record vital signs'}), 500
+            if not ok:
+                return jsonify({'success': False, 'error': 'Failed to record vital signs'}), 500
 
         # Optional nursing assessment note
         nursing_notes = (data.get('nursing_notes') or '').strip()
@@ -935,7 +932,11 @@ def add_vital_signs(visit_id: int):
                 fetch=False,
             )
 
-        return jsonify({'success': True, 'message': 'Vital signs recorded'}), 201
+        # If neither vitals nor notes were provided, return a 400 to signal empty submission
+        if not has_any_vital and not nursing_notes:
+            return jsonify({'success': False, 'error': 'No vital signs or notes provided'}), 400
+
+        return jsonify({'success': True, 'message': 'Vital signs and/or nursing notes recorded'}), 201
 
     except Exception as e:
         logger.error(f"Add vital signs error: {e}", exc_info=True)
