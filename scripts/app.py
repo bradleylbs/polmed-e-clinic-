@@ -882,14 +882,36 @@ def add_vital_signs(visit_id: int):
         blood_glucose = to_float(data.get('blood_glucose'))
         respiratory_rate = to_int(data.get('respiratory_rate'))
 
-        additional = data.get('additional_measurements') or {}
+        bmi = None
+        height_m = None
+        if height is not None:
+            height_m = height / 100.0 if height > 10 else height
+            if height_m and height_m > 0 and weight is not None:
+                try:
+                    bmi = round(weight / (height_m ** 2), 2)
+                except (ZeroDivisionError, TypeError):
+                    bmi = None
+
+        raw_additional = data.get('additional_measurements') or {}
+        if not isinstance(raw_additional, dict):
+            try:
+                raw_additional = json.loads(raw_additional)
+                if not isinstance(raw_additional, dict):
+                    raw_additional = {}
+            except Exception:
+                raw_additional = {}
+
+        additional = dict(raw_additional)
         if respiratory_rate is not None:
             additional['respiratory_rate'] = respiratory_rate
+
+        additional_payload = json.dumps(additional) if additional else json.dumps({})
 
         # Insert vitals only if at least one measurement is provided; allow notes-only submissions
         has_any_vital = any(
             v is not None for v in [
-                systolic_bp, diastolic_bp, heart_rate, temperature, weight, height, oxygen_saturation, blood_glucose, respiratory_rate
+                systolic_bp, diastolic_bp, heart_rate, temperature, weight, height, bmi,
+                oxygen_saturation, blood_glucose, respiratory_rate
             ]
         )
         if has_any_vital:
@@ -897,8 +919,8 @@ def add_vital_signs(visit_id: int):
                 """
                 INSERT INTO vital_signs (
                     visit_id, recorded_by, systolic_bp, diastolic_bp, heart_rate, temperature,
-                    weight, height, oxygen_saturation, blood_glucose, additional_measurements
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    weight, height, bmi, oxygen_saturation, blood_glucose, additional_measurements
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     visit_id,
@@ -909,9 +931,10 @@ def add_vital_signs(visit_id: int):
                     temperature,
                     weight,
                     height,
+                    bmi,
                     oxygen_saturation,
                     blood_glucose,
-                    json.dumps(additional) if additional else None,
+                    additional_payload,
                 ),
                 fetch=False,
             )
