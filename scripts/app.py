@@ -1,3 +1,4 @@
+import re
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -33,6 +34,7 @@ CORS(
     allow_headers=["Content-Type", "Authorization"],
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 )
+
 
 # Utilities
 def _to_jsonable(obj):
@@ -275,7 +277,7 @@ def login():
             try:
                 import json
                 geographic_restrictions = json.loads(user_data['geographic_restrictions'])
-            except Exception:
+            except:
                 geographic_restrictions = []
 
         response_data = {
@@ -473,7 +475,7 @@ def get_patients():
                         province_placeholders = ','.join(['%s'] * len(provinces))
                         base_query += f" AND p.province IN ({province_placeholders})"
                         params.extend(provinces)
-                except Exception:
+                except:
                     pass
         
         base_query += " GROUP BY p.id ORDER BY p.created_at DESC LIMIT %s OFFSET %s"
@@ -506,6 +508,7 @@ def get_patients():
     except Exception as e:
         logger.error(f"Get patients error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 @app.route('/api/patients', methods=['POST'])
 @token_required
 @role_required(['administrator', 'doctor', 'clerk'])
@@ -515,8 +518,6 @@ def create_patient():
         data = request.get_json() or {}
         
         logger.info(f"[PATIENT_CREATE] Received data from user {request.current_user.get('email', 'unknown')}: {data}")
-        logger.info(f"[PATIENT_CREATE] Request content type: {request.content_type}")
-        logger.info(f"[PATIENT_CREATE] Request headers: {dict(request.headers)}")
 
         # Support payloads with full_name and telephone_number, etc.
         if 'first_name' not in data and data.get('full_name'):
@@ -531,10 +532,8 @@ def create_patient():
         if 'phone_number' not in data:
             if data.get('telephone'):
                 data['phone_number'] = data.get('telephone')
-                logger.info(f"[PATIENT_CREATE] Mapped telephone to phone_number: {data['phone_number']}")
             elif data.get('telephone_number'):
                 data['phone_number'] = data.get('telephone_number')
-                logger.info(f"[PATIENT_CREATE] Mapped telephone_number to phone_number: {data['phone_number']}")
             
         if 'physical_address' not in data and data.get('address'):
             data['physical_address'] = data.get('address')
@@ -564,13 +563,6 @@ def create_patient():
         if 'is_palmed_member' not in data and data.get('medical_aid_number'):
             data['is_palmed_member'] = True
 
-        logger.info("[PATIENT_CREATE] After normalization:")
-        logger.info(f"[PATIENT_CREATE] first_name: '{data.get('first_name')}'")
-        logger.info(f"[PATIENT_CREATE] last_name: '{data.get('last_name')}'")
-        logger.info(f"[PATIENT_CREATE] date_of_birth: '{data.get('date_of_birth')}'")
-        logger.info(f"[PATIENT_CREATE] gender: '{data.get('gender')}'")
-        logger.info(f"[PATIENT_CREATE] phone_number: '{data.get('phone_number')}'")
-
         # Require minimal fields; allow missing date_of_birth and default gender later
         required_fields = ['first_name', 'last_name', 'phone_number']
         missing_fields = []
@@ -582,6 +574,7 @@ def create_patient():
         
         if missing_fields:
             error_msg = f'Missing required fields: {", ".join(missing_fields)}'
+            logger.error(f"[PATIENT_CREATE] Validation failed: {error_msg}")
             return jsonify({
                 'success': False, 
                 'error': error_msg,
@@ -597,6 +590,7 @@ def create_patient():
             try:
                 datetime.strptime(data['date_of_birth'], '%Y-%m-%d')
             except ValueError:
+                logger.error(f"[PATIENT_CREATE] Invalid date format: {data.get('date_of_birth')}")
                 return jsonify({
                     'success': False, 
                     'error': 'date_of_birth must be in YYYY-MM-DD format'
@@ -614,13 +608,13 @@ def create_patient():
                     gender_match = valid_gender
                     break
             if not gender_match:
+                logger.error(f"[PATIENT_CREATE] Invalid gender: {gender_input}")
                 return jsonify({
                     'success': False, 
                     'error': f'gender must be one of: {valid_genders}'
                 }), 400
             data['gender'] = gender_match
 
-        # Uniqueness checks
         if data.get('id_number'):
             existing_id = DatabaseManager.execute_query(
                 "SELECT id FROM patients WHERE id_number = %s",
@@ -677,7 +671,7 @@ def create_patient():
             data.get('medical_aid_number'),
             data['first_name'],
             data['last_name'],
-            data.get('date_of_birth'),
+            data['date_of_birth'],
             data['gender'],
             data.get('id_number'),
             data['phone_number'],
@@ -694,17 +688,17 @@ def create_patient():
             datetime.utcnow()
         )
         
-        # IMPORTANT: get the inserted patient ID (not just affected rows)
-        patient_id = DatabaseManager.execute_insert_return_id(insert_query, insert_values)
+        logger.info(f"Executing insert with values: {insert_values}")
         
-        if patient_id:
+        result = DatabaseManager.execute_query(insert_query, insert_values)
+        
+        if result and result > 0:
             try:
                 log_query = """
                 INSERT INTO audit_log (user_id, table_name, action, new_values, created_at)
                 VALUES (%s, 'patients', 'INSERT', %s, %s)
                 """
                 new_values = json.dumps({
-                    'id': patient_id,
                     'first_name': data['first_name'],
                     'last_name': data['last_name'],
                     'medical_aid_number': data.get('medical_aid_number')
@@ -717,26 +711,30 @@ def create_patient():
             except Exception as log_error:
                 logger.warning(f"[PATIENT_CREATE] Failed to log patient creation: {log_error}")
             
+            logger.info(f"[PATIENT_CREATE] Patient created successfully by user {request.current_user.get('email')}, affected rows: {result}")
+            
             return jsonify({
                 'success': True,
                 'message': 'Patient created successfully',
-                'patient_id': patient_id
+                'patient_id': result
             }), 201
         else:
+            logger.error("[PATIENT_CREATE] Database insert failed - no rows affected")
             return jsonify({'success': False, 'error': 'Failed to create patient'}), 500
             
     except Exception as e:
         logger.error(f"[PATIENT_CREATE] Unexpected error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
-
-
+# ============================================================================
+# ENHANCED VISIT AND WORKFLOW MANAGEMENT
+# ============================================================================
 
 @app.route('/api/patients/<int:patient_id>/visits', methods=['POST'])
 @token_required
-@role_required(['administrator', 'doctor', 'nurse'])
+@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
 def create_patient_visit(patient_id: int):
-    """Create new patient visit aligned with schema (patient_visits.id as AUTO_INCREMENT)"""
+    """Create new patient visit aligned with schema"""
     try:
         data = request.get_json(silent=True) or {}
 
@@ -782,7 +780,7 @@ def create_patient_visit(patient_id: int):
         if route_province and allowed_provinces and route_province not in allowed_provinces:
             return jsonify({'success': False, 'error': f'You do not have geographic access to {route_province}'}), 403
 
-        # If no explicit location, set a generic location including province suffix that the trigger expects
+        # If no explicit location, set a generic location including province suffix
         if not location and effective_province:
             location = f"Clinic Visit, {effective_province}"
         chief_complaint = data.get('chief_complaint')
@@ -827,177 +825,18 @@ def create_patient_visit(patient_id: int):
         return jsonify({
             'success': True,
             'message': 'Visit created successfully',
-            'visit_id': new_visit_id
+            'data': {'visit_id': new_visit_id}
         }), 201
 
     except Exception as e:
         logger.error(f"Create visit error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
-# ----------------------------------------------------------------------------
-# VITAL SIGNS ENDPOINTS
-# ----------------------------------------------------------------------------
-@app.route('/api/visits/<int:visit_id>/vital-signs', methods=['POST'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse'])
-def add_vital_signs(visit_id: int):
-    """Record vital signs for a visit; optionally capture nursing assessment notes"""
-    try:
-        data = request.get_json(silent=True) or {}
-        if not isinstance(data, dict):
-            return jsonify({'success': False, 'error': 'Invalid JSON data'}), 400
-
-        # 🔹 Step 1: Ensure visit exists and is tied to a valid patient
-        visit = DatabaseManager.execute_query(
-            "SELECT id, patient_id FROM patient_visits WHERE id = %s",
-            (visit_id,),
-            fetch=True
-        )
-        if not visit:
-            return jsonify({'success': False, 'error': f'Visit {visit_id} not found'}), 404
-
-        if not visit[0].get('patient_id'):
-            return jsonify({'success': False, 'error': f'Visit {visit_id} has no patient linked'}), 400
-
-        # --- Data cleaning & validation helpers ---
-        def clean_value(val):
-            if val is None or val == '':
-                return None
-            if isinstance(val, str):
-                val = val.strip()
-                if val == '':
-                    return None
-            return val
-
-        def to_int(val):
-            try:
-                cleaned = clean_value(val)
-                return int(cleaned) if cleaned is not None else None
-            except (ValueError, TypeError):
-                return None
-
-        def to_float(val):
-            try:
-                cleaned = clean_value(val)
-                return float(cleaned) if cleaned is not None else None
-            except (ValueError, TypeError):
-                return None
-
-        # Extract and clean vitals
-        systolic_bp = to_int(data.get('systolic_bp'))
-        diastolic_bp = to_int(data.get('diastolic_bp'))
-        heart_rate = to_int(data.get('heart_rate'))
-        temperature = to_float(data.get('temperature'))
-        weight = to_float(data.get('weight'))
-        height = to_float(data.get('height'))
-        oxygen_saturation = to_int(data.get('oxygen_saturation'))
-        blood_glucose = to_float(data.get('blood_glucose'))
-        respiratory_rate = to_int(data.get('respiratory_rate'))
-
-        # Calculate BMI if possible
-        bmi = None
-        if height is not None and weight is not None:
-            try:
-                height_m = height / 100.0 if height > 10 else height
-                if height_m and height_m > 0:
-                    bmi = round(weight / (height_m ** 2), 2)
-            except (ZeroDivisionError, TypeError):
-                bmi = None
-
-        # Handle additional measurements
-        raw_additional = data.get('additional_measurements') or {}
-        if not isinstance(raw_additional, dict):
-            try:
-                if isinstance(raw_additional, str):
-                    raw_additional = json.loads(raw_additional)
-                if not isinstance(raw_additional, dict):
-                    raw_additional = {}
-            except Exception:
-                raw_additional = {}
-
-        additional = dict(raw_additional)
-        if respiratory_rate is not None:
-            additional['respiratory_rate'] = respiratory_rate
-
-        additional_payload = json.dumps(additional) if additional else json.dumps({})
-
-        # Check if at least one vital or note exists
-        has_any_vital = any(
-            v is not None for v in [
-                systolic_bp, diastolic_bp, heart_rate, temperature, 
-                weight, height, oxygen_saturation, blood_glucose, 
-                respiratory_rate
-            ]
-        )
-
-        nursing_notes = clean_value(data.get('nursing_notes'))
-
-        if not has_any_vital and not nursing_notes:
-            return jsonify({
-                'success': False, 
-                'error': 'No vital signs measurements or nursing notes provided'
-            }), 400
-
-        # Insert vitals if provided
-        if has_any_vital:
-            ok = DatabaseManager.execute_query(
-                """
-                INSERT INTO vital_signs (
-                    visit_id, recorded_by, systolic_bp, diastolic_bp, heart_rate, temperature,
-                    weight, height, bmi, oxygen_saturation, blood_glucose, additional_measurements
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    visit_id,
-                    request.current_user['id'],
-                    systolic_bp,
-                    diastolic_bp,
-                    heart_rate,
-                    temperature,
-                    weight,
-                    height,
-                    bmi,
-                    oxygen_saturation,
-                    blood_glucose,
-                    additional_payload,
-                ),
-                fetch=False,
-            )
-
-            if not ok:
-                return jsonify({'success': False, 'error': 'Failed to record vital signs'}), 500
-
-        # Insert nursing note if provided
-        if nursing_notes:
-            try:
-                DatabaseManager.execute_query(
-                    """
-                    INSERT INTO clinical_notes (
-                        visit_id, note_type, content, created_by
-                    ) VALUES (%s, 'Assessment', %s, %s)
-                    """,
-                    (visit_id, nursing_notes, request.current_user['id']),
-                    fetch=False,
-                )
-            except Exception as note_error:
-                logger.error(f"Database error recording nursing notes: {note_error}")
-                # Notes fail doesn’t kill request
-
-        return jsonify({
-            'success': True, 
-            'message': 'Vital signs and/or nursing notes recorded successfully'
-        }), 201
-
-    except Exception as e:
-        logger.error(f"Add vital signs error: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-
 @app.route('/api/patients/<int:patient_id>/visits/latest', methods=['GET'])
 @token_required
 @role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
 def get_latest_visit(patient_id: int):
-    """Return the most recent visit for a patient (by id desc)."""
+    """Return the most recent visit for a patient"""
     try:
         row = DatabaseManager.execute_query(
             """
@@ -1016,11 +855,95 @@ def get_latest_visit(patient_id: int):
         logger.error(f"Get latest visit error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
+# ============================================================================
+# ENHANCED VITAL SIGNS MANAGEMENT
+# ============================================================================
+
+@app.route('/api/visits/<int:visit_id>/vital-signs', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def add_vital_signs(visit_id: int):
+    """Record vital signs for a visit with nursing assessment notes"""
+    try:
+        data = request.get_json(silent=True) or {}
+
+        def to_int(val):
+            try:
+                return int(val) if val is not None and str(val).strip() != '' else None
+            except (ValueError, TypeError):
+                return None
+
+        def to_float(val):
+            try:
+                return float(val) if val is not None and str(val).strip() != '' else None
+            except (ValueError, TypeError):
+                return None
+
+        systolic_bp = to_int(data.get('systolic_bp'))
+        diastolic_bp = to_int(data.get('diastolic_bp'))
+        heart_rate = to_int(data.get('heart_rate'))
+        temperature = to_float(data.get('temperature'))
+        weight = to_float(data.get('weight'))
+        height = to_float(data.get('height'))
+        oxygen_saturation = to_int(data.get('oxygen_saturation'))
+        blood_glucose = to_float(data.get('blood_glucose'))
+        respiratory_rate = to_int(data.get('respiratory_rate'))
+
+        additional = data.get('additional_measurements') or {}
+        if respiratory_rate is not None:
+            additional['respiratory_rate'] = respiratory_rate
+
+        # Insert vital signs
+        vital_result = DatabaseManager.execute_query(
+            """
+            INSERT INTO vital_signs (
+                visit_id, recorded_by, systolic_bp, diastolic_bp, heart_rate, temperature,
+                weight, height, oxygen_saturation, blood_glucose, additional_measurements
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                visit_id,
+                request.current_user['id'],
+                systolic_bp,
+                diastolic_bp,
+                heart_rate,
+                temperature,
+                weight,
+                height,
+                oxygen_saturation,
+                blood_glucose,
+                json.dumps(additional) if additional else None,
+            ),
+            fetch=False,
+        )
+
+        if not vital_result:
+            return jsonify({'success': False, 'error': 'Failed to record vital signs'}), 500
+
+        # Optional nursing assessment note
+        nursing_notes = (data.get('nursing_notes') or '').strip()
+        if nursing_notes:
+            DatabaseManager.execute_query(
+                """
+                INSERT INTO clinical_notes (
+                    visit_id, patient_id, note_type, content, created_by
+                ) VALUES (%s, (SELECT patient_id FROM patient_visits WHERE id = %s), 'Assessment', %s, %s)
+                """,
+                (visit_id, visit_id, nursing_notes, request.current_user['id']),
+                fetch=False,
+            )
+
+        return jsonify({'success': True, 'message': 'Vital signs recorded successfully'}), 201
+
+    except Exception as e:
+        logger.error(f"Add vital signs error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 @app.route('/api/visits/<int:visit_id>/vital-signs', methods=['GET'])
 @token_required
 @role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
 def get_visit_vitals(visit_id: int):
-    """Return vitals summary for a visit (count and latest record)."""
+    """Return vitals summary for a visit"""
     try:
         summary = DatabaseManager.execute_query(
             "SELECT COUNT(*) AS count FROM vital_signs WHERE visit_id = %s",
@@ -1061,1069 +984,23 @@ def get_visit_vitals(visit_id: int):
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 # ============================================================================
-# ROUTE PLANNING ENDPOINTS
+# ENHANCED CLINICAL NOTES MANAGEMENT  
 # ============================================================================
 
-@app.route('/api/routes', methods=['GET'])
-@token_required
-# Allow read access for roles that have 'routes: read' capability
-@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
-def get_routes():
-    """Get routes list with filtering"""
-    try:
-        province = request.args.get('province', '')
-        date_from = request.args.get('date_from', '')
-        date_to = request.args.get('date_to', '')
-        
-        # Return UI-friendly fields to match the frontend expectations
-        query = """
-        SELECT 
-            r.id,
-            r.route_name AS name,
-            r.description,
-            r.province,
-            r.route_type,
-            -- Map to UI location_type values for icons
-            CASE 
-                WHEN r.route_type = 'Police Stations' THEN 'police_station'
-                WHEN r.route_type = 'Schools' THEN 'school'
-                WHEN r.route_type = 'Community Centers' THEN 'community_center'
-                ELSE 'mixed'
-            END AS location_type,
-            -- Representative location and times from associated route locations (if any)
-            COALESCE(MIN(l.location_name), r.province) AS location,
-            r.start_date AS scheduled_date,
-            MIN(rl.start_time) AS start_time,
-            MAX(rl.end_time) AS end_time,
-            r.max_appointments_per_day AS max_appointments,
-            CASE 
-                WHEN r.is_active = TRUE AND CURDATE() BETWEEN r.start_date AND r.end_date THEN 'active'
-                WHEN r.is_active = TRUE AND CURDATE() < r.start_date THEN 'published'
-                WHEN CURDATE() > r.end_date THEN 'completed'
-                WHEN r.is_active = FALSE THEN 'draft'
-                ELSE 'draft'
-            END AS status,
-            u.first_name, u.last_name,
-            COUNT(a.id) as total_appointments,
-            COUNT(CASE WHEN a.status = 'Booked' THEN 1 END) as booked_appointments
-        FROM routes r
-        LEFT JOIN users u ON r.created_by = u.id
-        LEFT JOIN route_locations rl ON r.id = rl.route_id
-        LEFT JOIN locations l ON rl.location_id = l.id
-        LEFT JOIN appointments a ON rl.id = a.route_location_id
-        WHERE r.is_active = TRUE
-        """
-        
-        params = []
-        
-        if province:
-            query += " AND r.province = %s"
-            params.append(province)
-        
-        if date_from:
-            query += " AND r.start_date >= %s"
-            params.append(date_from)
-        
-        if date_to:
-            query += " AND r.end_date <= %s"
-            params.append(date_to)
-        
-        # Role-based filtering
-        user_role = request.current_user.get('role_name')
-        if user_role == 'doctor':
-            geographic_restrictions = request.current_user.get('geographic_restrictions')
-            if geographic_restrictions:
-                try:
-                    import json
-                    provinces = json.loads(geographic_restrictions)
-                    if provinces and len(provinces) > 0:
-                        province_placeholders = ','.join(['%s'] * len(provinces))
-                        query += f" AND r.province IN ({province_placeholders})"
-                        params.extend(provinces)
-                except Exception:
-                    pass
-        
-        query += " GROUP BY r.id ORDER BY r.start_date DESC"
-        
-        routes = DatabaseManager.execute_query(query, tuple(params), fetch=True)
-        
-        return jsonify({
-            'success': True,
-            'routes': routes or []
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Get routes error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-@app.route('/api/routes', methods=['POST'])
-@token_required
-@role_required(['administrator', 'doctor'])
-def create_route():
-    """Create a new route (minimal persist). Note: route_locations are not created here."""
-    try:
-        data = request.get_json() or {}
-
-        route_name = str(data.get('route_name', '')).strip()
-        description = str(data.get('description', '')).strip() or None
-        start_date = data.get('start_date')
-        end_date = data.get('end_date')
-        province = str(data.get('province', '')).strip()
-        max_per_day = int(data.get('max_appointments_per_day') or 100)
-
-        # Derive route_type or default
-        route_type_input = (data.get('route_type') or '').strip()
-        valid_types = ['Police Stations', 'Schools', 'Community Centers', 'Mixed']
-        if route_type_input in valid_types:
-            route_type = route_type_input
-        else:
-            # Try to infer from a provided location_type
-            lt = (data.get('location_type') or '').strip().lower()
-            if lt == 'police_station':
-                route_type = 'Police Stations'
-            elif lt == 'school':
-                route_type = 'Schools'
-            elif lt == 'community_center':
-                route_type = 'Community Centers'
-            else:
-                route_type = 'Mixed'
-
-        # Basic validation
-        missing = []
-        if not route_name:
-            missing.append('route_name')
-        if not start_date:
-            missing.append('start_date')
-        if not end_date:
-            missing.append('end_date')
-        if not province:
-            missing.append('province')
-
-        if missing:
-            return jsonify({'success': False, 'error': f"Missing required fields: {', '.join(missing)}"}), 400
-
-        insert_sql = (
-            """
-            INSERT INTO routes (route_name, description, start_date, end_date, province, route_type,
-                                max_appointments_per_day, created_by, is_active)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
-            """
-        )
-        user_id = request.current_user.get('id')
-        result = DatabaseManager.execute_query(
-            insert_sql,
-            (route_name, description, start_date, end_date, province, route_type, max_per_day, user_id),
-            fetch=False,
-        )
-
-        logger.info(f"Insert routes rowcount: {result}")
-
-        if not result:
-            return jsonify({'success': False, 'error': 'Failed to create route'}), 500
-
-        # Best-effort fetch of the inserted id (no reliance on LAST_INSERT_ID across connections)
-        sel = DatabaseManager.execute_query(
-            "SELECT id FROM routes WHERE route_name = %s AND created_by = %s ORDER BY id DESC LIMIT 1",
-            (route_name, user_id),
-            fetch=True,
-        )
-        new_id = sel[0]['id'] if sel else None
-
-        # Return a UI-friendly record similar to GET /api/routes
-        route_row = DatabaseManager.execute_query(
-            """
-            SELECT 
-                r.id,
-                r.route_name AS name,
-                r.description,
-                r.province,
-                r.route_type,
-                CASE 
-                    WHEN r.route_type = 'Police Stations' THEN 'police_station'
-                    WHEN r.route_type = 'Schools' THEN 'school'
-                    WHEN r.route_type = 'Community Centers' THEN 'community_center'
-                    ELSE 'mixed'
-                END AS location_type,
-                COALESCE((SELECT MIN(l.location_name) FROM route_locations rl JOIN locations l ON rl.location_id = l.id WHERE rl.route_id = r.id), r.province) AS location,
-                r.start_date AS scheduled_date,
-                (SELECT MIN(rl.start_time) FROM route_locations rl WHERE rl.route_id = r.id) AS start_time,
-                (SELECT MAX(rl.end_time) FROM route_locations rl WHERE rl.route_id = r.id) AS end_time,
-                r.max_appointments_per_day AS max_appointments,
-                CASE 
-                    WHEN r.is_active = TRUE AND CURDATE() BETWEEN r.start_date AND r.end_date THEN 'active'
-                    WHEN r.is_active = TRUE AND CURDATE() < r.start_date THEN 'published'
-                    WHEN CURDATE() > r.end_date THEN 'completed'
-                    WHEN r.is_active = FALSE THEN 'draft'
-                    ELSE 'draft'
-                END AS status
-            FROM routes r
-            WHERE r.id = %s
-            """,
-            (new_id,),
-            fetch=True,
-        )
-
-        logger.info(f"Route created successfully with id={new_id}, name={route_name}, province={province}, type={route_type}")
-        return jsonify({'success': True, 'data': route_row[0] if route_row else {'id': new_id}}), 201
-
-    except Exception as e:
-        logger.error(f"Create route error: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-# ============================================================================
-# REFERRAL MANAGEMENT ENDPOINTS
-# ============================================================================
-
-@app.route('/api/patients/<int:patient_id>/referrals', methods=['GET'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
-def list_referrals(patient_id: int):
-    """List referrals for a patient"""
-    try:
-        rows = DatabaseManager.execute_query(
-            """
-            SELECT r.*, u.first_name AS created_by_first, u.last_name AS created_by_last
-            FROM referrals r
-            LEFT JOIN users u ON u.id = r.created_by
-            WHERE r.patient_id = %s
-            ORDER BY r.created_at DESC
-            """,
-            (patient_id,),
-            fetch=True,
-        )
-        return jsonify({'success': True, 'data': rows or []}), 200
-    except Exception as e:
-        logger.error(f"List referrals error: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-
-@app.route('/api/patients/<int:patient_id>/referrals', methods=['POST'])
+@app.route('/api/visits/<int:visit_id>/clinical-notes', methods=['GET'])
 @token_required
 @role_required(['administrator', 'doctor', 'nurse', 'social_work', 'social_worker'])
-def create_referral(patient_id: int):
-    """Create a referral (internal or external)"""
+def get_clinical_notes(visit_id: int):
+    """Get clinical notes for a visit"""
     try:
-        data = request.get_json(silent=True) or {}
-        referral_type = (data.get('referral_type') or 'internal').lower()
-        from_stage = data.get('from_stage')
-        to_stage = data.get('to_stage') if referral_type == 'internal' else None
-        external_provider = data.get('external_provider') if referral_type == 'external' else None
-        department = data.get('department') if referral_type == 'external' else None
-        reason = (data.get('reason') or '').strip()
-        notes = data.get('notes')
-        visit_id = data.get('visit_id')  # optional INT
-        appointment_date = data.get('appointment_date')  # optional 'YYYY-MM-DD'
-
-        missing = []
-        if not from_stage:
-            missing.append('from_stage')
-        if referral_type == 'internal' and not to_stage:
-            missing.append('to_stage')
-        if referral_type == 'external' and not external_provider:
-            missing.append('external_provider')
-        if not reason:
-            missing.append('reason')
-        if missing:
-            return jsonify({'success': False, 'error': f"Missing required fields: {', '.join(missing)}"}), 400
-
-        if appointment_date:
-            try:
-                datetime.strptime(appointment_date, '%Y-%m-%d')
-            except ValueError:
-                return jsonify({'success': False, 'error': 'appointment_date must be YYYY-MM-DD'}), 400
-
-        ok = DatabaseManager.execute_query(
+        notes = DatabaseManager.execute_query(
             """
-            INSERT INTO referrals
-            (patient_id, visit_id, referral_type, from_stage, to_stage, external_provider, department,
-             reason, notes, status, appointment_date, created_by, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s, %s)
-            """,
-            (
-                patient_id, visit_id,
-                'external' if referral_type == 'external' else 'internal',
-                from_stage, to_stage, external_provider, department,
-                reason, notes, appointment_date,
-                request.current_user['id'], datetime.now(timezone.utc),
-            ),
-            fetch=False,
-        )
-        if not ok:
-            return jsonify({'success': False, 'error': 'Failed to create referral'}), 500
-
-        row = DatabaseManager.execute_query(
-            """
-            SELECT r.*, u.first_name AS created_by_first, u.last_name AS created_by_last
-            FROM referrals r
-            LEFT JOIN users u ON u.id = r.created_by
-            WHERE r.patient_id = %s
-            ORDER BY r.id DESC
-            LIMIT 1
-            """,
-            (patient_id,),
-            fetch=True,
-        )
-        return jsonify({'success': True, 'data': (row[0] if row else None)}), 201
-    except Exception as e:
-        logger.error(f"Create referral error: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-@app.route('/api/routes/<int:route_id>', methods=['PUT'])
-@token_required
-@role_required(['administrator', 'doctor'])
-def update_route(route_id: int):
-    """Update an existing route's core fields"""
-    try:
-        data = request.get_json() or {}
-
-        # Only allow updating specific fields
-        name = (data.get('name') or data.get('route_name') or '').strip()
-        description = (data.get('description') or '').strip() or None
-        scheduled_date = data.get('scheduled_date') or data.get('start_date')
-        end_date = data.get('end_date') or scheduled_date
-        province = (data.get('province') or '').strip()
-        route_type = (data.get('route_type') or '').strip() or None
-        max_appointments = data.get('max_appointments') or data.get('max_appointments_per_day')
-
-        # Build dynamic update
-        sets = []
-        params = []
-        if name:
-            sets.append('route_name = %s')
-            params.append(name)
-        if description is not None:
-            sets.append('description = %s')
-            params.append(description)
-        if scheduled_date:
-            sets.append('start_date = %s')
-            params.append(scheduled_date)
-        if end_date:
-            sets.append('end_date = %s')
-            params.append(end_date)
-        if province:
-            sets.append('province = %s')
-            params.append(province)
-        if route_type:
-            sets.append('route_type = %s')
-            params.append(route_type)
-        if max_appointments is not None:
-            sets.append('max_appointments_per_day = %s')
-            params.append(int(max_appointments))
-
-        if not sets:
-            return jsonify({'success': False, 'error': 'No updatable fields provided'}), 400
-
-        params.append(route_id)
-
-        update_sql = f"UPDATE routes SET {', '.join(sets)} WHERE id = %s"
-        res = DatabaseManager.execute_query(update_sql, tuple(params))
-        if res is None:
-            return jsonify({'success': False, 'error': 'Failed to update route'}), 500
-
-        # Return updated minimal payload
-        row = DatabaseManager.execute_query(
-            """
-            SELECT id, route_name AS name, description, province, start_date AS scheduled_date,
-                   route_type, max_appointments_per_day AS max_appointments
-            FROM routes WHERE id = %s
-            """,
-            (route_id,),
-            fetch=True,
-        )
-        data = row[0] if row else { 'id': route_id }
-        return jsonify({'success': True, 'data': data}), 200
-    except Exception as e:
-        logger.error(f"Update route error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-
-@app.route('/api/referrals/<int:referral_id>', methods=['PATCH'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse', 'social_work', 'social_worker', 'clerk'])
-def update_referral(referral_id: int):
-    """Update referral status, appointment date, or notes"""
-    try:
-        data = request.get_json(silent=True) or {}
-        sets, params = [], []
-
-        status = data.get('status')
-        if status:
-            if status not in ['pending','sent','accepted','completed','cancelled']:
-                return jsonify({'success': False, 'error': 'Invalid status'}), 400
-            sets.append("status = %s")
-            params.append(status)
-
-        appointment_date = data.get('appointment_date')
-        if appointment_date:
-            try:
-                datetime.strptime(appointment_date, '%Y-%m-%d')
-            except ValueError:
-                return jsonify({'success': False, 'error': 'appointment_date must be YYYY-MM-DD'}), 400
-            sets.append("appointment_date = %s")
-            params.append(appointment_date)
-
-        if 'notes' in data:
-            sets.append("notes = %s")
-            params.append(data.get('notes'))
-
-        if not sets:
-            return jsonify({'success': False, 'error': 'No changes provided'}), 400
-
-        sets.append("updated_at = %s")
-        params.append(datetime.now(timezone.utc))
-        params.append(referral_id)
-
-        ok = DatabaseManager.execute_query(
-            f"UPDATE referrals SET {', '.join(sets)} WHERE id = %s",
-            tuple(params),
-            fetch=False,
-        )
-        if not ok:
-            return jsonify({'success': False, 'error': 'Update failed'}), 500
-
-        row = DatabaseManager.execute_query(
-            """
-            SELECT r.*, u.first_name AS created_by_first, u.last_name AS created_by_last
-            FROM referrals r
-            LEFT JOIN users u ON u.id = r.created_by
-            WHERE r.id = %s
-            """,
-            (referral_id,),
-            fetch=True,
-        )
-        return jsonify({'success': True, 'data': (row[0] if row else None)}), 200
-    except Exception as e:
-        logger.error(f"Update referral error: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-# ============================================================================
-# INVENTORY MANAGEMENT ENDPOINTS
-# ============================================================================
-# Removed duplicate legacy inventory endpoints to avoid route conflicts.
-
-# ============================================================================
-# DASHBOARD AND ANALYTICS ENDPOINTS
-# ============================================================================
-
-@app.route('/api/dashboard/stats', methods=['GET'])
-@token_required
-def get_dashboard_stats():
-    """Get role-specific dashboard statistics"""
-    try:
-        # Get user role and normalize it
-        raw_role = (request.current_user or {}).get('role_name', '')
-        user_role = str(raw_role).strip().lower().replace(' ', '_')
-        user_id = request.current_user.get('id')
-
-        # Base stats structure
-        stats = {
-            'todayPatients': 0,
-            'weeklyPatients': 0,
-            'monthlyPatients': 0,
-            'pendingAppointments': 0,
-            'completedWorkflows': 0,
-            'activeRoutes': 0,
-            'lowStockAlerts': 0,
-            'maintenanceAlerts': 0,
-            'recentActivity': [],
-            'upcomingTasks': [],
-            'roleSpecificMetrics': {}
-        }
-
-        # Role-specific metrics with proper queries
-        if user_role == 'clerk':
-            # Clerk: Track registrations and appointment bookings
-            reg_stats = DatabaseManager.execute_query(
-                """
-                SELECT 
-                    COUNT(CASE WHEN DATE(p.created_at) = CURDATE() THEN 1 END) AS today_registrations,
-                    COUNT(CASE WHEN DATE(p.created_at) >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS week_registrations,
-                    COUNT(CASE WHEN DATE(p.created_at) >= CURDATE() - INTERVAL 30 DAY THEN 1 END) AS month_registrations
-                FROM patients p
-                WHERE p.created_by = %s
-                """,
-                (user_id,),
-                fetch=True,
-            )
-            
-            booking_stats = DatabaseManager.execute_query(
-                """
-                SELECT 
-                    COUNT(CASE WHEN DATE(a.booked_at) = CURDATE() AND a.status = 'Booked' THEN 1 END) AS today_bookings,
-                    COUNT(CASE WHEN DATE(a.booked_at) >= CURDATE() - INTERVAL 7 DAY AND a.status = 'Booked' THEN 1 END) AS week_bookings,
-                    COUNT(CASE WHEN DATE(a.booked_at) >= CURDATE() - INTERVAL 30 DAY AND a.status = 'Booked' THEN 1 END) AS month_bookings
-                FROM appointments a
-                """,
-                fetch=True,
-            )
-            
-            reg_data = reg_stats[0] if reg_stats else {}
-            booking_data = booking_stats[0] if booking_stats else {}
-            
-            stats['todayPatients'] = int(reg_data.get('today_registrations', 0))
-            stats['weeklyPatients'] = int(reg_data.get('week_registrations', 0))
-            stats['monthlyPatients'] = int(reg_data.get('month_registrations', 0))
-            
-            stats['roleSpecificMetrics'] = {
-                'todayBookings': int(booking_data.get('today_bookings', 0)),
-                'weekBookings': int(booking_data.get('week_bookings', 0)),
-                'monthBookings': int(booking_data.get('month_bookings', 0)),
-                'metricType': 'registrations'
-            }
-
-        elif user_role == 'nurse':
-            # Nurse: Track vital signs and nursing assessments
-            vitals_stats = DatabaseManager.execute_query(
-                """
-                SELECT 
-                    COUNT(CASE WHEN DATE(vs.recorded_at) = CURDATE() THEN 1 END) AS today_vitals,
-                    COUNT(CASE WHEN DATE(vs.recorded_at) >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS week_vitals,
-                    COUNT(CASE WHEN DATE(vs.recorded_at) >= CURDATE() - INTERVAL 30 DAY THEN 1 END) AS month_vitals
-                FROM vital_signs vs
-                WHERE vs.recorded_by = %s
-                """,
-                (user_id,),
-                fetch=True,
-            )
-            
-            assessment_stats = DatabaseManager.execute_query(
-                """
-                SELECT 
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) = CURDATE() THEN cn.visit_id END) AS today_assessments,
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 7 DAY THEN cn.visit_id END) AS week_assessments,
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 30 DAY THEN cn.visit_id END) AS month_assessments
-                FROM clinical_notes cn
-                WHERE cn.created_by = %s AND cn.note_type = 'Assessment'
-                """,
-                (user_id,),
-                fetch=True,
-            )
-            
-            vitals_data = vitals_stats[0] if vitals_stats else {}
-            assessment_data = assessment_stats[0] if assessment_stats else {}
-            
-            stats['todayPatients'] = int(vitals_data.get('today_vitals', 0))
-            stats['weeklyPatients'] = int(vitals_data.get('week_vitals', 0))
-            stats['monthlyPatients'] = int(vitals_data.get('month_vitals', 0))
-            
-            stats['roleSpecificMetrics'] = {
-                'todayAssessments': int(assessment_data.get('today_assessments', 0)),
-                'weekAssessments': int(assessment_data.get('week_assessments', 0)),
-                'monthAssessments': int(assessment_data.get('month_assessments', 0)),
-                'metricType': 'vitals'
-            }
-
-        elif user_role == 'doctor':
-            # Doctor: Track diagnoses and treatments
-            clinical_stats = DatabaseManager.execute_query(
-                """
-                SELECT 
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) = CURDATE() THEN cn.visit_id END) AS today_clinical,
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 7 DAY THEN cn.visit_id END) AS week_clinical,
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 30 DAY THEN cn.visit_id END) AS month_clinical
-                FROM clinical_notes cn
-                WHERE cn.created_by = %s AND cn.note_type IN ('Diagnosis', 'Treatment')
-                """,
-                (user_id,),
-                fetch=True,
-            )
-            
-            diagnosis_stats = DatabaseManager.execute_query(
-                """
-                SELECT 
-                    COUNT(CASE WHEN DATE(cn.created_at) = CURDATE() AND cn.note_type = 'Diagnosis' THEN 1 END) AS today_diagnosis,
-                    COUNT(CASE WHEN DATE(cn.created_at) = CURDATE() AND cn.note_type = 'Treatment' THEN 1 END) AS today_treatment
-                FROM clinical_notes cn
-                WHERE cn.created_by = %s
-                """,
-                (user_id,),
-                fetch=True,
-            )
-            
-            clinical_data = clinical_stats[0] if clinical_stats else {}
-            diagnosis_data = diagnosis_stats[0] if diagnosis_stats else {}
-            
-            stats['todayPatients'] = int(clinical_data.get('today_clinical', 0))
-            stats['weeklyPatients'] = int(clinical_data.get('week_clinical', 0))
-            stats['monthlyPatients'] = int(clinical_data.get('month_clinical', 0))
-            
-            stats['roleSpecificMetrics'] = {
-                'todayDiagnoses': int(diagnosis_data.get('today_diagnosis', 0)),
-                'todayTreatments': int(diagnosis_data.get('today_treatment', 0)),
-                'metricType': 'clinical'
-            }
-
-        elif user_role == 'social_worker':
-            # Social Worker: Track counseling sessions and referrals
-            counseling_stats = DatabaseManager.execute_query(
-                """
-                SELECT 
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) = CURDATE() THEN cn.visit_id END) AS today_counseling,
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 7 DAY THEN cn.visit_id END) AS week_counseling,
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 30 DAY THEN cn.visit_id END) AS month_counseling
-                FROM clinical_notes cn
-                WHERE cn.created_by = %s AND cn.note_type IN ('Counseling', 'Referral')
-                """,
-                (user_id,),
-                fetch=True,
-            )
-            
-            referral_stats = DatabaseManager.execute_query(
-                """
-                SELECT 
-                    COUNT(CASE WHEN DATE(r.created_at) = CURDATE() THEN 1 END) AS today_referrals,
-                    COUNT(CASE WHEN DATE(r.created_at) >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS week_referrals
-                FROM referrals r
-                WHERE r.created_by = %s
-                """,
-                (user_id,),
-                fetch=True,
-            )
-            
-            counseling_data = counseling_stats[0] if counseling_stats else {}
-            referral_data = referral_stats[0] if referral_stats else {}
-            
-            stats['todayPatients'] = int(counseling_data.get('today_counseling', 0))
-            stats['weeklyPatients'] = int(counseling_data.get('week_counseling', 0))
-            stats['monthlyPatients'] = int(counseling_data.get('month_counseling', 0))
-            
-            stats['roleSpecificMetrics'] = {
-                'todayReferrals': int(referral_data.get('today_referrals', 0)),
-                'weekReferrals': int(referral_data.get('week_referrals', 0)),
-                'metricType': 'counseling'
-            }
-
-        else:
-            # Administrator or unknown role: Overall system metrics
-            system_stats = DatabaseManager.execute_query(
-                """
-                SELECT 
-                    COUNT(CASE WHEN visit_date = CURDATE() THEN 1 END) AS visits_today,
-                    COUNT(CASE WHEN visit_date >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS visits_7d,
-                    COUNT(CASE WHEN visit_date >= CURDATE() - INTERVAL 30 DAY THEN 1 END) AS visits_30d
-                FROM patient_visits
-                """,
-                fetch=True,
-            )
-            
-            system_data = system_stats[0] if system_stats else {}
-            stats['todayPatients'] = int(system_data.get('visits_today', 0))
-            stats['weeklyPatients'] = int(system_data.get('visits_7d', 0))
-            stats['monthlyPatients'] = int(system_data.get('visits_30d', 0))
-            
-            stats['roleSpecificMetrics'] = {
-                'metricType': 'system_overview'
-            }
-
-        # Common metrics for all roles
-        
-        # Pending appointments for today
-        pending_appointments = DatabaseManager.execute_query(
-            """
-            SELECT COUNT(*) AS pending
-            FROM appointments a
-            JOIN route_locations rl ON a.route_location_id = rl.id
-            WHERE rl.visit_date = CURDATE() AND a.status = 'Booked'
-            """,
-            fetch=True,
-        )
-        stats['pendingAppointments'] = int((pending_appointments or [{}])[0].get('pending') or 0)
-
-        # Completed workflows (user-specific for non-admins)
-        if user_role != 'administrator':
-            completed_wf = DatabaseManager.execute_query(
-                """
-                SELECT COUNT(*) AS completed
-                FROM visit_workflow_progress vwp
-                WHERE vwp.assigned_user_id = %s
-                AND vwp.is_completed = TRUE
-                AND vwp.completed_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
-                """,
-                (user_id,),
-                fetch=True,
-            )
-        else:
-            completed_wf = DatabaseManager.execute_query(
-                """
-                SELECT COUNT(*) AS completed
-                FROM visit_workflow_progress
-                WHERE is_completed = TRUE
-                AND completed_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
-                """,
-                fetch=True,
-            )
-        stats['completedWorkflows'] = int((completed_wf or [{}])[0].get('completed') or 0)
-
-        # Active routes
-        active_routes = DatabaseManager.execute_query(
-            """
-            SELECT COUNT(*) AS active
-            FROM routes
-            WHERE is_active = TRUE AND CURDATE() BETWEEN start_date AND end_date
-            """,
-            fetch=True,
-        )
-        stats['activeRoutes'] = int((active_routes or [{}])[0].get('active') or 0)
-
-        # Inventory alerts (only for relevant roles)
-        if user_role in ['administrator', 'doctor', 'nurse']:
-            low_stock = DatabaseManager.execute_query(
-                """
-                SELECT COUNT(*) AS low_stock
-                FROM inventory_stock s
-                JOIN consumables c ON s.consumable_id = c.id
-                WHERE s.quantity_current <= c.reorder_level
-                """,
-                fetch=True,
-            )
-            stats['lowStockAlerts'] = int((low_stock or [{}])[0].get('low_stock') or 0)
-
-            maintenance = DatabaseManager.execute_query(
-                """
-                SELECT COUNT(*) AS maintenance_alerts
-                FROM assets
-                WHERE status = 'Maintenance Required'
-                   OR (next_maintenance_date IS NOT NULL AND next_maintenance_date <= CURDATE())
-                """,
-                fetch=True,
-            )
-            stats['maintenanceAlerts'] = int((maintenance or [{}])[0].get('maintenance_alerts') or 0)
-
-        # Recent activity (user-specific)
-        recent_activity = DatabaseManager.execute_query(
-            """
-            SELECT 
-                al.id,
-                al.action,
-                al.table_name,
-                al.created_at,
-                CASE 
-                    WHEN al.table_name = 'patients' THEN 'patient'
-                    WHEN al.table_name = 'appointments' THEN 'appointment'
-                    WHEN al.table_name = 'inventory_usage' THEN 'inventory'
-                    WHEN al.table_name = 'routes' THEN 'route'
-                    ELSE 'system'
-                END AS activity_type,
-                CASE 
-                    WHEN al.action = 'INSERT' THEN CONCAT('Created new ', al.table_name, ' record')
-                    WHEN al.action = 'UPDATE' THEN CONCAT('Updated ', al.table_name, ' record')
-                    ELSE CONCAT(al.action, ' ', al.table_name)
-                END AS description
-            FROM audit_log al
-            WHERE al.user_id = %s
-            AND al.created_at >= CURDATE() - INTERVAL 7 DAY
-            ORDER BY al.created_at DESC
-            LIMIT 10
-            """,
-            (user_id,),
-            fetch=True,
-        )
-
-        stats['recentActivity'] = [
-            {
-                'id': str(activity['id']),
-                'type': activity['activity_type'],
-                'description': activity['description'],
-                'timestamp': activity['created_at'].isoformat() if activity['created_at'] else '',
-                'status': 'completed'
-            }
-            for activity in (recent_activity or [])
-        ]
-
-        return jsonify({'success': True, 'stats': stats}), 200
-
-    except Exception as e:
-        logger.error(f"Dashboard stats error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-# ============================================================================
-# ERROR HANDLERS
-# ============================================================================
-
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({'success': False, 'error': 'Endpoint not found'}), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-# ============================================================================
-# HEALTH CHECK
-# ============================================================================
-
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    """Health check endpoint (always 200 to avoid restart loops on transient DB issues)."""
-    try:
-        # Test database connection quickly
-        connection = DatabaseManager.get_connection()
-        db_status = 'healthy' if connection else 'unhealthy'
-        if connection:
-            try:
-                connection.close()
-            except Exception:
-                pass
-
-        return jsonify({
-            'status': 'ok',
-            'database': db_status,
-            'timestamp': datetime.utcnow().isoformat()
-        }), 200
-
-    except Exception as e:
-        logger.error(f"Health check error: {e}")
-        return jsonify({
-            'status': 'ok',
-            'database': 'unknown',
-            'error': str(e),
-            'timestamp': datetime.utcnow().isoformat()
-        }), 200
-
-# ============================================================================
-# CLINICAL WORKFLOW ENDPOINTS
-# ============================================================================
-
-# ============================================================================
-# USER MANAGEMENT (Admin)
-# ============================================================================
-
-@app.route('/api/users', methods=['GET'])
-@token_required
-@role_required(['administrator'])
-def list_users():
-    """List users with optional search, role, and status filters."""
-    try:
-        search = request.args.get('search', '').strip()
-        role = request.args.get('role', '').strip()
-        status = request.args.get('status', '').strip().lower()
-
-        query = (
-            "SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.phone_number, u.mp_number, "
-            "u.is_active, u.requires_approval, u.approved_at, u.created_at, u.last_login, "
-            "u.geographic_restrictions, ur.role_name "
-            "FROM users u JOIN user_roles ur ON u.role_id = ur.id WHERE 1=1"
-        )
-        params: list = []
-
-        if search:
-            query += " AND (u.username LIKE %s OR u.email LIKE %s OR u.first_name LIKE %s OR u.last_name LIKE %s)"
-            s = f"%{search}%"
-            params.extend([s, s, s, s])
-
-        if role:
-            query += " AND LOWER(REPLACE(ur.role_name, ' ', '_')) = %s"
-            params.append(role.lower().replace(' ', '_'))
-
-        if status in ('active', 'pending', 'suspended', 'inactive'):
-            if status == 'active':
-                query += " AND u.is_active = TRUE AND (u.requires_approval = FALSE OR u.approved_at IS NOT NULL)"
-            elif status == 'pending':
-                query += " AND u.requires_approval = TRUE AND (u.approved_at IS NULL)"
-            else:  # suspended/inactive
-                query += " AND u.is_active = FALSE"
-
-        query += " ORDER BY u.created_at DESC"
-
-        rows = DatabaseManager.execute_query(query, tuple(params) if params else None, fetch=True) or []
-        return jsonify({'success': True, 'users': _to_jsonable(rows)}), 200
-    except Exception as e:
-        logger.error(f"List users error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-
-@app.route('/api/users', methods=['POST'])
-@token_required
-@role_required(['administrator'])
-def create_user_admin():
-    """Create a new user account (admin only). Doctors require approval by default."""
-    try:
-        data = request.get_json(silent=True) or {}
-        required = ['username', 'email', 'first_name', 'last_name', 'role', 'phone_number']
-        missing = [f for f in required if not str(data.get(f, '')).strip()]
-        if missing:
-            return jsonify({'success': False, 'error': f"Missing required fields: {', '.join(missing)}"}), 400
-
-        email = data['email'].strip().lower()
-        if '@' not in email or '.' not in email:
-            return jsonify({'success': False, 'error': 'Invalid email address'}), 400
-
-        # Role resolution
-        role_key = data['role'].strip().lower().replace(' ', '_')
-        role_row = DatabaseManager.execute_query("SELECT id, role_name FROM user_roles WHERE LOWER(REPLACE(role_name, ' ', '_')) = %s", (role_key,), fetch=True)
-        if not role_row:
-            return jsonify({'success': False, 'error': f"Invalid role: {data['role']}"}), 400
-        role_id = role_row[0]['id']
-        role_name = role_row[0]['role_name']
-
-        # Unique email and username checks
-        existing_email = DatabaseManager.execute_query("SELECT id FROM users WHERE email = %s", (email,), fetch=True)
-        if existing_email:
-            return jsonify({'success': False, 'error': 'Email already exists'}), 409
-        existing_username = DatabaseManager.execute_query("SELECT id FROM users WHERE username = %s", (data['username'],), fetch=True)
-        if existing_username:
-            return jsonify({'success': False, 'error': 'Username already exists'}), 409
-
-        # Geographic restrictions (store as JSON array of provinces)
-        assigned_province = data.get('assigned_province')
-        geo_json = None
-        if assigned_province:
-            try:
-                import json as _json
-                geo_json = _json.dumps([assigned_province])
-            except Exception:
-                geo_json = None
-
-        # Approval logic
-        requires_approval = (role_name.strip().lower() == 'doctor')
-        is_active = not requires_approval
-
-        # Temporary password
-        temp_password = f"Temp-{uuid.uuid4().hex[:8]}"
-        password_hash = generate_password_hash(temp_password)
-
-        insert_q = (
-            "INSERT INTO users (username, email, password_hash, role_id, first_name, last_name, phone_number, mp_number, geographic_restrictions, is_active, requires_approval, created_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-        )
-        ivals = (
-            data['username'].strip(),
-            email,
-            password_hash,
-            role_id,
-            data['first_name'].strip(),
-            data['last_name'].strip(),
-            data['phone_number'].strip(),
-            (data.get('mp_number') or None),
-            geo_json,
-            is_active,
-            requires_approval,
-            datetime.now(timezone.utc)
-        )
-        result = DatabaseManager.execute_query(insert_q, ivals)
-        if not result:
-            return jsonify({'success': False, 'error': 'Failed to create user'}), 500
-
-        # Respond with created minimal details (do not expose password); admins can reset separately
-        return jsonify({
-            'success': True,
-            'data': {
-                'username': data['username'],
-                'email': email,
-                'requires_approval': requires_approval,
-                'status': 'pending' if requires_approval else 'active'
-            },
-            'message': 'User created'
-        }), 201
-    except Exception as e:
-        logger.error(f"Create user error: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-
-@app.route('/api/users/<int:user_id>', methods=['PUT', 'PATCH'])
-@token_required
-@role_required(['administrator'])
-def update_user_admin(user_id: int):
-    """Update user fields or approve/suspend users."""
-    try:
-        data = request.get_json(silent=True) or {}
-
-        # Approval flow
-        approve = bool(data.get('approve'))
-        status = (data.get('status') or '').strip().lower()
-
-        fields = []
-        params: list = []
-
-        if approve:
-            fields.append("requires_approval = FALSE")
-            fields.append("is_active = TRUE")
-            fields.append("approved_at = %s")
-            params.append(datetime.now(timezone.utc))
-
-        if status in ('active', 'suspended', 'inactive'):
-            if status == 'active':
-                fields.append("is_active = TRUE")
-            else:
-                fields.append("is_active = FALSE")
-
-        if 'mp_number' in data:
-            fields.append("mp_number = %s")
-            params.append(data.get('mp_number') or None)
-
-        if 'phone_number' in data:
-            fields.append("phone_number = %s")
-            params.append(data.get('phone_number') or '')
-
-        if 'assigned_province' in data:
-            try:
-                import json as _json
-                fields.append("geographic_restrictions = %s")
-                params.append(_json.dumps([data.get('assigned_province')]))
-            except Exception:
-                pass
-
-        if not fields:
-            return jsonify({'success': False, 'error': 'No valid fields to update'}), 400
-
-        update_q = "UPDATE users SET " + ", ".join(fields) + " WHERE id = %s"
-        params.append(user_id)
-        result = DatabaseManager.execute_query(update_q, tuple(params))
-        if not result:
-            return jsonify({'success': False, 'error': 'Update failed'}), 500
-
-        # Return updated record minimal
-        row = DatabaseManager.execute_query(
-            "SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.is_active, u.requires_approval, u.approved_at FROM users u WHERE u.id = %s",
-            (user_id,),
-            fetch=True,
-        )
-        return jsonify({'success': True, 'data': _to_jsonable(row[0]) if row else {}}), 200
-    except Exception as e:
-        logger.error(f"Update user error: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-@app.route('/api/workflow/stages', methods=['GET'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
-def get_workflow_stages():
-    """Get all workflow stages in order"""
-    try:
-        stages = DatabaseManager.execute_query(
-            """
-            SELECT ws.*, ur.role_name as required_role
-            FROM workflow_stages ws
-            JOIN user_roles ur ON ws.required_role_id = ur.id
-            ORDER BY ws.stage_order
-            """,
-            fetch=True
-        )
-        
-        return jsonify({
-            'success': True,
-            'stages': stages or []
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Get workflow stages error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-@app.route('/api/visits/<int:visit_id>/workflow', methods=['GET'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
-def get_visit_workflow(visit_id: int):
-    """Get workflow progress for a visit"""
-    try:
-        workflow = DatabaseManager.execute_query(
-            """
-            SELECT vwp.*, ws.stage_name, ws.stage_order, ur.role_name as required_role,
-                   u.first_name, u.last_name
-            FROM visit_workflow_progress vwp
-            JOIN workflow_stages ws ON vwp.stage_id = ws.id
-            JOIN user_roles ur ON ws.required_role_id = ur.id
-            LEFT JOIN users u ON vwp.assigned_user_id = u.id
-            WHERE vwp.visit_id = %s
-            ORDER BY ws.stage_order
+            SELECT cn.*, u.first_name, u.last_name, ur.role_name
+            FROM clinical_notes cn
+            JOIN users u ON cn.created_by = u.id
+            LEFT JOIN user_roles ur ON u.role_id = ur.id
+            WHERE cn.visit_id = %s
+            ORDER BY cn.created_at DESC
             """,
             (visit_id,),
             fetch=True
@@ -2131,26 +1008,469 @@ def get_visit_workflow(visit_id: int):
         
         return jsonify({
             'success': True,
-            'workflow': workflow or []
+            'data': _to_jsonable(notes) or []
         }), 200
         
     except Exception as e:
-        logger.error(f"Get visit workflow error: {e}")
+        logger.error(f"Get clinical notes error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/visits/<int:visit_id>/clinical-notes', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'social_work', 'social_worker'])
+def create_clinical_note(visit_id: int):
+    """Create a clinical note with enhanced features"""
+    try:
+        data = request.get_json() or {}
+        
+        note_type = data.get('note_type')
+        content = data.get('content', '').strip()
+        icd10_codes = data.get('icd10_codes', [])
+        medications_prescribed = data.get('medications_prescribed', [])
+        follow_up_required = data.get('follow_up_required', False)
+        follow_up_date = data.get('follow_up_date')
+        
+        if not note_type or not content:
+            return jsonify({'success': False, 'error': 'note_type and content are required'}), 400
+        
+        valid_note_types = ['Assessment', 'Diagnosis', 'Treatment', 'Referral', 'Counseling', 'Closure']
+        if note_type not in valid_note_types:
+            return jsonify({'success': False, 'error': f'note_type must be one of: {valid_note_types}'}), 400
+        
+        # Get patient_id from visit
+        visit_info = DatabaseManager.execute_query(
+            "SELECT patient_id FROM patient_visits WHERE id = %s",
+            (visit_id,),
+            fetch=True
+        )
+        
+        if not visit_info:
+            return jsonify({'success': False, 'error': 'Visit not found'}), 404
+            
+        patient_id = visit_info[0]['patient_id']
+        
+        result = DatabaseManager.execute_query(
+            """
+            INSERT INTO clinical_notes (
+                visit_id, patient_id, note_type, content, icd10_codes, medications_prescribed,
+                follow_up_required, follow_up_date, created_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                visit_id,
+                patient_id,
+                note_type,
+                content,
+                json.dumps(icd10_codes) if icd10_codes else None,
+                json.dumps(medications_prescribed) if medications_prescribed else None,
+                follow_up_required,
+                follow_up_date,
+                request.current_user['id']
+            )
+        )
+        
+        if result:
+            return jsonify({
+                'success': True,
+                'message': 'Clinical note created successfully'
+            }), 201
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create clinical note'}), 500
+        
+    except Exception as e:
+        logger.error(f"Create clinical note error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+# ============================================================================
+# ENHANCED MEDICATION MANAGEMENT
+# ============================================================================
+
+@app.route('/api/drug-database', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def get_drug_database():
+    """Get available drugs from database"""
+    try:
+        search = request.args.get('search', '')
+        limit = int(request.args.get('limit', 50))
+        
+        query = """
+        SELECT id, drug_name, generic_name, drug_class, available_strengths, 
+               available_forms, standard_dosages, contraindications, side_effects
+        FROM drug_database
+        WHERE is_active = TRUE
+        """
+        
+        params = []
+        if search:
+            query += " AND (drug_name LIKE %s OR generic_name LIKE %s OR drug_class LIKE %s)"
+            search_param = f"%{search}%"
+            params.extend([search_param, search_param, search_param])
+        
+        query += " ORDER BY drug_name LIMIT %s"
+        params.append(limit)
+        
+        drugs = DatabaseManager.execute_query(query, tuple(params), fetch=True)
+        
+        return jsonify({
+            'success': True,
+            'data': _to_jsonable(drugs) or []
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get drug database error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/visits/<int:visit_id>/prescriptions', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor'])
+def create_prescription(visit_id: int):
+    """Create a prescription with enhanced tracking"""
+    try:
+        data = request.get_json() or {}
+        
+        required_fields = ['drug_id', 'dosage', 'frequency', 'duration']
+        missing_fields = [field for field in required_fields if not data.get(field)]
+        
+        if missing_fields:
+            return jsonify({
+                'success': False, 
+                'error': f'Missing required fields: {", ".join(missing_fields)}'
+            }), 400
+        
+        # Get patient_id and drug info
+        visit_info = DatabaseManager.execute_query(
+            "SELECT patient_id FROM patient_visits WHERE id = %s",
+            (visit_id,),
+            fetch=True
+        )
+        
+        if not visit_info:
+            return jsonify({'success': False, 'error': 'Visit not found'}), 404
+            
+        patient_id = visit_info[0]['patient_id']
+        
+        # Calculate start and end dates
+        start_date = data.get('start_date', datetime.now().strftime('%Y-%m-%d'))
+        
+        # Parse duration to calculate end_date
+        duration = data.get('duration', '')
+        end_date = None
+        
+        if duration:
+            try:
+                # Simple duration parsing (e.g., "5 days", "2 weeks", "1 month")
+                duration_lower = duration.lower()
+                if 'day' in duration_lower:
+                    days = int(re.findall(r'\d+', duration)[0])
+                    end_date = (datetime.strptime(start_date, '%Y-%m-%d') + timedelta(days=days)).strftime('%Y-%m-%d')
+                elif 'week' in duration_lower:
+                    weeks = int(re.findall(r'\d+', duration)[0])
+                    end_date = (datetime.strptime(start_date, '%Y-%m-%d') + timedelta(weeks=weeks)).strftime('%Y-%m-%d')
+                elif 'month' in duration_lower:
+                    months = int(re.findall(r'\d+', duration)[0])
+                    end_date = (datetime.strptime(start_date, '%Y-%m-%d') + timedelta(days=months*30)).strftime('%Y-%m-%d')
+            except:
+                pass  # If parsing fails, leave end_date as None
+        
+        result = DatabaseManager.execute_query(
+            """
+            INSERT INTO prescriptions (
+                visit_id, patient_id, drug_id, custom_drug_name, dosage, route, frequency, 
+                duration, quantity_prescribed, instructions, start_date, end_date, prescribed_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                visit_id,
+                patient_id,
+                data.get('drug_id'),
+                data.get('custom_drug_name'),
+                data['dosage'],
+                data.get('route', 'oral'),
+                data['frequency'],
+                data['duration'],
+                data.get('quantity_prescribed'),
+                data.get('instructions'),
+                start_date,
+                end_date,
+                request.current_user['id']
+            )
+        )
+        
+        if result:
+            return jsonify({
+                'success': True,
+                'message': 'Prescription created successfully'
+            }), 201
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create prescription'}), 500
+        
+    except Exception as e:
+        logger.error(f"Create prescription error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/visits/<int:visit_id>/prescriptions', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def get_visit_prescriptions(visit_id: int):
+    """Get prescriptions for a visit"""
+    try:
+        prescriptions = DatabaseManager.execute_query(
+            """
+            SELECT p.*, d.drug_name, d.generic_name, d.drug_class,
+                   u.first_name, u.last_name
+            FROM prescriptions p
+            LEFT JOIN drug_database d ON p.drug_id = d.id
+            JOIN users u ON p.prescribed_by = u.id
+            WHERE p.visit_id = %s
+            ORDER BY p.created_at DESC
+            """,
+            (visit_id,),
+            fetch=True
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': _to_jsonable(prescriptions) or []
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get visit prescriptions error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+# ============================================================================
+# SMART SUGGESTIONS AND AI FEATURES
+# ============================================================================
+
+@app.route('/api/smart-suggestions', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def get_smart_suggestions():
+    """Get AI-powered clinical suggestions"""
+    try:
+        data = request.get_json() or {}
+        
+        input_text = data.get('input_text', '').lower()
+        suggestion_type = data.get('suggestion_type', 'all')  # 'icd10', 'medication', 'investigation', 'all'
+        patient_context = data.get('patient_context', {})
+        
+        suggestions = []
+        
+        # ICD-10 Code Suggestions
+        if suggestion_type in ['icd10', 'all']:
+            icd10_suggestions = []
+            
+            # Common symptom to ICD-10 mappings
+            if any(word in input_text for word in ['hypertension', 'high blood pressure', 'bp']):
+                icd10_suggestions.append({
+                    'type': 'icd10',
+                    'code': 'I10',
+                    'text': 'Essential hypertension',
+                    'confidence': 0.95
+                })
+            
+            if any(word in input_text for word in ['diabetes', 'sugar', 'dm']):
+                icd10_suggestions.append({
+                    'type': 'icd10', 
+                    'code': 'E11.9',
+                    'text': 'Type 2 diabetes mellitus without complications',
+                    'confidence': 0.90
+                })
+            
+            if any(word in input_text for word in ['headache', 'cephalgia']):
+                icd10_suggestions.append({
+                    'type': 'icd10',
+                    'code': 'R51',
+                    'text': 'Headache',
+                    'confidence': 0.85
+                })
+            
+            if any(word in input_text for word in ['chest pain', 'angina']):
+                icd10_suggestions.append({
+                    'type': 'icd10',
+                    'code': 'R07.9',
+                    'text': 'Chest pain, unspecified',
+                    'confidence': 0.80
+                })
+            
+            if any(word in input_text for word in ['fever', 'pyrexia']):
+                icd10_suggestions.append({
+                    'type': 'icd10',
+                    'code': 'R50.9',
+                    'text': 'Fever, unspecified',
+                    'confidence': 0.85
+                })
+            
+            suggestions.extend(icd10_suggestions)
+        
+        # Medication Suggestions
+        if suggestion_type in ['medication', 'all']:
+            medication_suggestions = []
+            
+            if any(word in input_text for word in ['pain', 'analgesic', 'ache']):
+                medication_suggestions.append({
+                    'type': 'medication',
+                    'text': 'Paracetamol 500mg TDS for 5 days',
+                    'confidence': 0.85
+                })
+                medication_suggestions.append({
+                    'type': 'medication',
+                    'text': 'Ibuprofen 400mg TDS for 3 days',
+                    'confidence': 0.80
+                })
+            
+            if any(word in input_text for word in ['infection', 'antibiotic', 'bacterial']):
+                medication_suggestions.append({
+                    'type': 'medication',
+                    'text': 'Amoxicillin 500mg TDS for 7 days',
+                    'confidence': 0.85
+                })
+            
+            if any(word in input_text for word in ['hypertension', 'blood pressure']):
+                medication_suggestions.append({
+                    'type': 'medication',
+                    'text': 'Amlodipine 5mg OD ongoing',
+                    'confidence': 0.90
+                })
+                medication_suggestions.append({
+                    'type': 'medication',
+                    'text': 'Enalapril 10mg BD ongoing',
+                    'confidence': 0.85
+                })
+            
+            if any(word in input_text for word in ['diabetes', 'sugar']):
+                medication_suggestions.append({
+                    'type': 'medication',
+                    'text': 'Metformin 500mg BD with meals ongoing',
+                    'confidence': 0.90
+                })
+            
+            suggestions.extend(medication_suggestions)
+        
+        # Investigation Suggestions
+        if suggestion_type in ['investigation', 'all']:
+            investigation_suggestions = []
+            
+            if any(word in input_text for word in ['chest', 'respiratory', 'cough']):
+                investigation_suggestions.append({
+                    'type': 'investigation',
+                    'text': 'Chest X-Ray (CXR)',
+                    'confidence': 0.80
+                })
+            
+            if any(word in input_text for word in ['diabetes', 'sugar']):
+                investigation_suggestions.append({
+                    'type': 'investigation', 
+                    'text': 'HbA1c',
+                    'confidence': 0.90
+                })
+                investigation_suggestions.append({
+                    'type': 'investigation',
+                    'text': 'Fasting Blood Glucose',
+                    'confidence': 0.85
+                })
+            
+            if any(word in input_text for word in ['heart', 'cardiac', 'chest pain']):
+                investigation_suggestions.append({
+                    'type': 'investigation',
+                    'text': 'ECG (Electrocardiogram)',
+                    'confidence': 0.85
+                })
+            
+            if any(word in input_text for word in ['blood', 'anemia', 'fatigue']):
+                investigation_suggestions.append({
+                    'type': 'investigation',
+                    'text': 'Full Blood Count (FBC)',
+                    'confidence': 0.80
+                })
+            
+            if any(word in input_text for word in ['kidney', 'renal', 'creatinine']):
+                investigation_suggestions.append({
+                    'type': 'investigation',
+                    'text': 'Urea & Electrolytes (U&E)',
+                    'confidence': 0.85
+                })
+            
+            suggestions.extend(investigation_suggestions)
+        
+        # Log the suggestion request for learning
+        try:
+            DatabaseManager.execute_query(
+                """
+                INSERT INTO smart_suggestions (
+                    suggestion_type, input_context, suggestion_data, 
+                    confidence_score, user_id, patient_context
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    suggestion_type,
+                    input_text,
+                    json.dumps(suggestions),
+                    max([s['confidence'] for s in suggestions]) if suggestions else 0.0,
+                    request.current_user['id'],
+                    json.dumps(patient_context)
+                )
+            )
+        except Exception as log_error:
+            logger.warning(f"Failed to log smart suggestion: {log_error}")
+        
+        return jsonify({
+            'success': True,
+            'suggestions': suggestions
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Smart suggestions error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/smart-suggestions/<int:suggestion_id>/feedback', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def provide_suggestion_feedback(suggestion_id: int):
+    """Provide feedback on AI suggestions for learning"""
+    try:
+        data = request.get_json() or {}
+        
+        was_accepted = data.get('was_accepted', False)
+        feedback_score = data.get('feedback_score')  # 1-5 rating
+        feedback_notes = data.get('feedback_notes', '')
+        
+        result = DatabaseManager.execute_query(
+            """
+            UPDATE smart_suggestions 
+            SET was_accepted = %s, feedback_score = %s, feedback_notes = %s, accepted_at = %s
+            WHERE id = %s
+            """,
+            (
+                was_accepted,
+                feedback_score,
+                feedback_notes,
+                datetime.now(timezone.utc) if was_accepted else None,
+                suggestion_id
+            )
+        )
+        
+        if result:
+            return jsonify({
+                'success': True,
+                'message': 'Feedback recorded successfully'
+            }), 200
+        else:
+            return jsonify({'success': False, 'error': 'Suggestion not found'}), 404
+        
+    except Exception as e:
+        logger.error(f"Suggestion feedback error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+# ============================================================================
+# ENHANCED WORKFLOW STATUS TRACKING
+# ============================================================================
 
 @app.route('/api/visits/<int:visit_id>/workflow/status', methods=['GET'])
 @token_required
 @role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
 def get_visit_workflow_status(visit_id: int):
-    """Return high-level workflow status for a visit used by the frontend to route roles.
-
-    Stages covered (in order):
-    - Registration (assumed complete when a visit exists)
-    - Nursing Assessment (completed when any vital_signs exist for the visit)
-    - Doctor Consultation (completed when any clinical_notes of type Assessment/Diagnosis/Treatment exist)
-    - Counseling Session (completed when a clinical_note of type Counseling exists)
-    - File Closure (completed when a clinical_note of type Closure exists)
-    """
+    """Return high-level workflow status for a visit"""
     try:
         # Visit metadata (for Registration timestamp)
         visit_rows = DatabaseManager.execute_query(
@@ -2251,191 +1571,430 @@ def get_visit_workflow_status(visit_id: int):
             },
         ]
 
-        return jsonify({'success': True, 'workflow': workflow}), 200
+        return jsonify({'success': True, 'data': workflow}), 200
     except Exception as e:
         logger.error(f"Get workflow status error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
-@app.route('/api/visits/<int:visit_id>/workflow/advance', methods=['POST'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
-def advance_workflow_stage(visit_id: int):
-    """Advance workflow to next stage"""
-    try:
-        data = request.get_json() or {}
-        current_stage_id = data.get('current_stage_id')
-        notes = data.get('notes', '')
-        data_collected = data.get('data_collected', {})
-        
-        if not current_stage_id:
-            return jsonify({'success': False, 'error': 'current_stage_id is required'}), 400
-        
-        connection = DatabaseManager.get_connection()
-        if not connection:
-            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
-        
-        try:
-            cursor = connection.cursor()
-            cursor.callproc('sp_advance_workflow_stage', [
-                visit_id,
-                current_stage_id,
-                request.current_user['id'],
-                notes,
-                json.dumps(data_collected) if data_collected else None
-            ])
-            
-            # Get the result
-            for result in cursor.stored_results():
-                row = result.fetchone()
-                if row:
-                    result_message = row[0]
-                    break
-            
-            connection.commit()
-            
-            if result_message.startswith('SUCCESS'):
-                return jsonify({
-                    'success': True,
-                    'message': result_message
-                }), 200
-            else:
-                return jsonify({
-                    'success': False,
-                    'error': result_message
-                }), 400
-                
-        finally:
-            cursor.close()
-            connection.close()
-        
-    except Exception as e:
-        logger.error(f"Advance workflow error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-@app.route('/api/visits/<int:visit_id>/workflow/initialize', methods=['POST'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
-def initialize_visit_workflow(visit_id: int):
-    """Initialize workflow for a visit"""
-    try:
-        connection = DatabaseManager.get_connection()
-        if not connection:
-            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
-        
-        try:
-            cursor = connection.cursor()
-            cursor.callproc('sp_initialize_visit_workflow', [visit_id])
-            
-            # Get the result
-            for result in cursor.stored_results():
-                row = result.fetchone()
-                if row:
-                    result_message = row[0]
-                    break
-            
-            connection.commit()
-            
-            if result_message.startswith('SUCCESS'):
-                return jsonify({
-                    'success': True,
-                    'message': 'Workflow initialized successfully'
-                }), 200
-            else:
-                return jsonify({
-                    'success': False,
-                    'error': result_message
-                }), 400
-                
-        finally:
-            cursor.close()
-            connection.close()
-        
-    except Exception as e:
-        logger.error(f"Initialize workflow error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
 # ============================================================================
-# CLINICAL NOTES ENDPOINTS
+# REFERRAL MANAGEMENT
 # ============================================================================
 
-@app.route('/api/visits/<int:visit_id>/clinical-notes', methods=['GET'])
+@app.route('/api/patients/<int:patient_id>/referrals', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
+def list_referrals(patient_id: int):
+    """List referrals for a patient"""
+    try:
+        rows = DatabaseManager.execute_query(
+            """
+            SELECT r.*, u.first_name AS created_by_first, u.last_name AS created_by_last
+            FROM referrals r
+            LEFT JOIN users u ON u.id = r.created_by
+            WHERE r.patient_id = %s
+            ORDER BY r.created_at DESC
+            """,
+            (patient_id,),
+            fetch=True,
+        )
+        return jsonify({'success': True, 'data': _to_jsonable(rows) or []}), 200
+    except Exception as e:
+        logger.error(f"List referrals error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/patients/<int:patient_id>/referrals', methods=['POST'])
 @token_required
 @role_required(['administrator', 'doctor', 'nurse', 'social_work', 'social_worker'])
-def get_clinical_notes(visit_id: int):
-    """Get clinical notes for a visit"""
+def create_referral(patient_id: int):
+    """Create a referral (internal or external)"""
     try:
-        notes = DatabaseManager.execute_query(
+        data = request.get_json(silent=True) or {}
+        referral_type = (data.get('referral_type') or 'internal').lower()
+        from_stage = data.get('from_stage')
+        to_stage = data.get('to_stage') if referral_type == 'internal' else None
+        external_provider = data.get('external_provider') if referral_type == 'external' else None
+        department = data.get('department') if referral_type == 'external' else None
+        reason = (data.get('reason') or '').strip()
+        notes = data.get('notes')
+        visit_id = data.get('visit_id')  # optional INT
+        appointment_date = data.get('appointment_date')  # optional 'YYYY-MM-DD'
+
+        missing = []
+        if not from_stage: missing.append('from_stage')
+        if referral_type == 'internal' and not to_stage: missing.append('to_stage')
+        if referral_type == 'external' and not external_provider: missing.append('external_provider')
+        if not reason: missing.append('reason')
+        if missing:
+            return jsonify({'success': False, 'error': f"Missing required fields: {', '.join(missing)}"}), 400
+
+        if appointment_date:
+            try:
+                datetime.strptime(appointment_date, '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'success': False, 'error': 'appointment_date must be YYYY-MM-DD'}), 400
+
+        ok = DatabaseManager.execute_query(
             """
-            SELECT cn.*, u.first_name, u.last_name
-            FROM clinical_notes cn
-            JOIN users u ON cn.created_by = u.id
-            WHERE cn.visit_id = %s
-            ORDER BY cn.created_at DESC
+            INSERT INTO referrals
+            (patient_id, visit_id, referral_type, from_stage, to_stage, external_provider, department,
+             reason, notes, status, appointment_date, created_by, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s, %s)
             """,
-            (visit_id,),
-            fetch=True
+            (
+                patient_id, visit_id,
+                'external' if referral_type == 'external' else 'internal',
+                from_stage, to_stage, external_provider, department,
+                reason, notes, appointment_date,
+                request.current_user['id'], datetime.now(timezone.utc),
+            ),
+            fetch=False,
         )
+        if not ok:
+            return jsonify({'success': False, 'error': 'Failed to create referral'}), 500
+
+        row = DatabaseManager.execute_query(
+            """
+            SELECT r.*, u.first_name AS created_by_first, u.last_name AS created_by_last
+            FROM referrals r
+            LEFT JOIN users u ON u.id = r.created_by
+            WHERE r.patient_id = %s
+            ORDER BY r.id DESC
+            LIMIT 1
+            """,
+            (patient_id,),
+            fetch=True,
+        )
+        return jsonify({'success': True, 'data': _to_jsonable(row[0]) if row else None}), 201
+    except Exception as e:
+        logger.error(f"Create referral error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/referrals/<int:referral_id>', methods=['PATCH'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'social_work', 'social_worker', 'clerk'])
+def update_referral(referral_id: int):
+    """Update referral status, appointment date, or notes"""
+    try:
+        data = request.get_json(silent=True) or {}
+        sets, params = [], []
+
+        status = data.get('status')
+        if status:
+            if status not in ['pending','sent','accepted','completed','cancelled']:
+                return jsonify({'success': False, 'error': 'Invalid status'}), 400
+            sets.append("status = %s"); params.append(status)
+
+        appointment_date = data.get('appointment_date')
+        if appointment_date:
+            try:
+                datetime.strptime(appointment_date, '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'success': False, 'error': 'appointment_date must be YYYY-MM-DD'}), 400
+            sets.append("appointment_date = %s"); params.append(appointment_date)
+
+        if 'notes' in data:
+            sets.append("notes = %s"); params.append(data.get('notes'))
+
+        if not sets:
+            return jsonify({'success': False, 'error': 'No changes provided'}), 400
+
+        sets.append("updated_at = %s"); params.append(datetime.now(timezone.utc))
+        params.append(referral_id)
+
+        ok = DatabaseManager.execute_query(
+            f"UPDATE referrals SET {', '.join(sets)} WHERE id = %s",
+            tuple(params),
+            fetch=False,
+        )
+        if not ok:
+            return jsonify({'success': False, 'error': 'Update failed'}), 500
+
+        row = DatabaseManager.execute_query(
+            """
+            SELECT r.*, u.first_name AS created_by_first, u.last_name AS created_by_last
+            FROM referrals r
+            LEFT JOIN users u ON u.id = r.created_by
+            WHERE r.id = %s
+            """,
+            (referral_id,),
+            fetch=True,
+        )
+        return jsonify({'success': True, 'data': _to_jsonable(row[0]) if row else None}), 200
+    except Exception as e:
+        logger.error(f"Update referral error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+# ============================================================================
+# ROUTE PLANNING ENDPOINTS
+# ============================================================================
+
+@app.route('/api/routes', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
+def get_routes():
+    """Get routes list with filtering"""
+    try:
+        province = request.args.get('province', '')
+        date_from = request.args.get('date_from', '')
+        date_to = request.args.get('date_to', '')
+        
+        # Return UI-friendly fields to match the frontend expectations
+        query = """
+        SELECT 
+            r.id,
+            r.route_name AS name,
+            r.description,
+            r.province,
+            r.route_type,
+            -- Map to UI location_type values for icons
+            CASE 
+                WHEN r.route_type = 'Police Stations' THEN 'police_station'
+                WHEN r.route_type = 'Schools' THEN 'school'
+                WHEN r.route_type = 'Community Centers' THEN 'community_center'
+                ELSE 'mixed'
+            END AS location_type,
+            -- Representative location and times from associated route locations (if any)
+            COALESCE(MIN(l.location_name), r.province) AS location,
+            r.start_date AS scheduled_date,
+            MIN(rl.start_time) AS start_time,
+            MAX(rl.end_time) AS end_time,
+            r.max_appointments_per_day AS max_appointments,
+            CASE 
+                WHEN r.is_active = TRUE AND CURDATE() BETWEEN r.start_date AND r.end_date THEN 'active'
+                WHEN r.is_active = TRUE AND CURDATE() < r.start_date THEN 'published'
+                WHEN CURDATE() > r.end_date THEN 'completed'
+                WHEN r.is_active = FALSE THEN 'draft'
+                ELSE 'draft'
+            END AS status,
+            u.first_name, u.last_name,
+            COUNT(a.id) as total_appointments,
+            COUNT(CASE WHEN a.status = 'Booked' THEN 1 END) as booked_appointments
+        FROM routes r
+        LEFT JOIN users u ON r.created_by = u.id
+        LEFT JOIN route_locations rl ON r.id = rl.route_id
+        LEFT JOIN locations l ON rl.location_id = l.id
+        LEFT JOIN appointments a ON rl.id = a.route_location_id
+        WHERE r.is_active = TRUE
+        """
+        
+        params = []
+        
+        if province:
+            query += " AND r.province = %s"
+            params.append(province)
+        
+        if date_from:
+            query += " AND r.start_date >= %s"
+            params.append(date_from)
+        
+        if date_to:
+            query += " AND r.end_date <= %s"
+            params.append(date_to)
+        
+        # Role-based filtering
+        user_role = request.current_user.get('role_name')
+        if user_role == 'doctor':
+            geographic_restrictions = request.current_user.get('geographic_restrictions')
+            if geographic_restrictions:
+                try:
+                    import json
+                    provinces = json.loads(geographic_restrictions)
+                    if provinces and len(provinces) > 0:
+                        province_placeholders = ','.join(['%s'] * len(provinces))
+                        query += f" AND r.province IN ({province_placeholders})"
+                        params.extend(provinces)
+                except:
+                    pass
+        
+        query += " GROUP BY r.id ORDER BY r.start_date DESC"
+        
+        routes = DatabaseManager.execute_query(query, tuple(params), fetch=True)
         
         return jsonify({
             'success': True,
-            'notes': notes or []
+            'routes': routes or []
         }), 200
         
     except Exception as e:
-        logger.error(f"Get clinical notes error: {e}")
+        logger.error(f"Get routes error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
-@app.route('/api/visits/<int:visit_id>/clinical-notes', methods=['POST'])
+@app.route('/api/routes', methods=['POST'])
 @token_required
-@role_required(['administrator', 'doctor', 'nurse', 'social_work', 'social_worker'])
-def create_clinical_note(visit_id: int):
-    """Create a clinical note"""
+@role_required(['administrator', 'doctor'])
+def create_route():
+    """Create a new route (minimal persist). Note: route_locations are not created here."""
     try:
         data = request.get_json() or {}
-        
-        note_type = data.get('note_type')
-        content = data.get('content', '').strip()
-        icd10_codes = data.get('icd10_codes', [])
-        medications_prescribed = data.get('medications_prescribed', [])
-        follow_up_required = data.get('follow_up_required', False)
-        follow_up_date = data.get('follow_up_date')
-        
-        if not note_type or not content:
-            return jsonify({'success': False, 'error': 'note_type and content are required'}), 400
-        
-        valid_note_types = ['Assessment', 'Diagnosis', 'Treatment', 'Referral', 'Counseling', 'Closure']
-        if note_type not in valid_note_types:
-            return jsonify({'success': False, 'error': f'note_type must be one of: {valid_note_types}'}), 400
-        
-        result = DatabaseManager.execute_query(
-            """
-            INSERT INTO clinical_notes (
-                visit_id, note_type, content, icd10_codes, medications_prescribed,
-                follow_up_required, follow_up_date, created_by
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                visit_id,
-                note_type,
-                content,
-                json.dumps(icd10_codes) if icd10_codes else None,
-                json.dumps(medications_prescribed) if medications_prescribed else None,
-                follow_up_required,
-                follow_up_date,
-                request.current_user['id']
-            )
-        )
-        
-        if result:
-            return jsonify({
-                'success': True,
-                'message': 'Clinical note created successfully'
-            }), 201
+
+        route_name = str(data.get('route_name', '')).strip()
+        description = str(data.get('description', '')).strip() or None
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        province = str(data.get('province', '')).strip()
+        max_per_day = int(data.get('max_appointments_per_day') or 100)
+
+        # Derive route_type or default
+        route_type_input = (data.get('route_type') or '').strip()
+        valid_types = ['Police Stations', 'Schools', 'Community Centers', 'Mixed']
+        if route_type_input in valid_types:
+            route_type = route_type_input
         else:
-            return jsonify({'success': False, 'error': 'Failed to create clinical note'}), 500
-        
+            # Try to infer from a provided location_type
+            lt = (data.get('location_type') or '').strip().lower()
+            if lt == 'police_station':
+                route_type = 'Police Stations'
+            elif lt == 'school':
+                route_type = 'Schools'
+            elif lt == 'community_center':
+                route_type = 'Community Centers'
+            else:
+                route_type = 'Mixed'
+
+        # Basic validation
+        missing = []
+        if not route_name: missing.append('route_name')
+        if not start_date: missing.append('start_date')
+        if not end_date: missing.append('end_date')
+        if not province: missing.append('province')
+
+        if missing:
+            return jsonify({'success': False, 'error': f"Missing required fields: {', '.join(missing)}"}), 400
+
+        insert_sql = (
+            """
+            INSERT INTO routes (route_name, description, start_date, end_date, province, route_type,
+                                max_appointments_per_day, created_by, is_active)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+            """
+        )
+        user_id = request.current_user.get('id')
+        result = DatabaseManager.execute_query(
+            insert_sql,
+            (route_name, description, start_date, end_date, province, route_type, max_per_day, user_id),
+            fetch=False,
+        )
+
+        logger.info(f"Insert routes rowcount: {result}")
+
+        if not result:
+            return jsonify({'success': False, 'error': 'Failed to create route'}), 500
+
+        # Best-effort fetch of the inserted id (no reliance on LAST_INSERT_ID across connections)
+        sel = DatabaseManager.execute_query(
+            "SELECT id FROM routes WHERE route_name = %s AND created_by = %s ORDER BY id DESC LIMIT 1",
+            (route_name, user_id),
+            fetch=True,
+        )
+        new_id = sel[0]['id'] if sel else None
+
+        # Return a UI-friendly record similar to GET /api/routes
+        route_row = DatabaseManager.execute_query(
+            """
+            SELECT 
+                r.id,
+                r.route_name AS name,
+                r.description,
+                r.province,
+                r.route_type,
+                CASE 
+                    WHEN r.route_type = 'Police Stations' THEN 'police_station'
+                    WHEN r.route_type = 'Schools' THEN 'school'
+                    WHEN r.route_type = 'Community Centers' THEN 'community_center'
+                    ELSE 'mixed'
+                END AS location_type,
+                COALESCE((SELECT MIN(l.location_name) FROM route_locations rl JOIN locations l ON rl.location_id = l.id WHERE rl.route_id = r.id), r.province) AS location,
+                r.start_date AS scheduled_date,
+                (SELECT MIN(rl.start_time) FROM route_locations rl WHERE rl.route_id = r.id) AS start_time,
+                (SELECT MAX(rl.end_time) FROM route_locations rl WHERE rl.route_id = r.id) AS end_time,
+                r.max_appointments_per_day AS max_appointments,
+                CASE 
+                    WHEN r.is_active = TRUE AND CURDATE() BETWEEN r.start_date AND r.end_date THEN 'active'
+                    WHEN r.is_active = TRUE AND CURDATE() < r.start_date THEN 'published'
+                    WHEN CURDATE() > r.end_date THEN 'completed'
+                    WHEN r.is_active = FALSE THEN 'draft'
+                    ELSE 'draft'
+                END AS status
+            FROM routes r
+            WHERE r.id = %s
+            """,
+            (new_id,),
+            fetch=True,
+        )
+
+        logger.info(f"Route created successfully with id={new_id}, name={route_name}, province={province}, type={route_type}")
+        return jsonify({'success': True, 'data': route_row[0] if route_row else {'id': new_id}}), 201
+
     except Exception as e:
-        logger.error(f"Create clinical note error: {e}")
+        logger.error(f"Create route error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/routes/<int:route_id>', methods=['PUT'])
+@token_required
+@role_required(['administrator', 'doctor'])
+def update_route(route_id: int):
+    """Update an existing route's core fields"""
+    try:
+        data = request.get_json() or {}
+
+        # Only allow updating specific fields
+        name = (data.get('name') or data.get('route_name') or '').strip()
+        description = (data.get('description') or '').strip() or None
+        scheduled_date = data.get('scheduled_date') or data.get('start_date')
+        end_date = data.get('end_date') or scheduled_date
+        province = (data.get('province') or '').strip()
+        route_type = (data.get('route_type') or '').strip() or None
+        max_appointments = data.get('max_appointments') or data.get('max_appointments_per_day')
+
+        # Build dynamic update
+        sets = []
+        params = []
+        if name:
+            sets.append('route_name = %s')
+            params.append(name)
+        if description is not None:
+            sets.append('description = %s')
+            params.append(description)
+        if scheduled_date:
+            sets.append('start_date = %s')
+            params.append(scheduled_date)
+        if end_date:
+            sets.append('end_date = %s')
+            params.append(end_date)
+        if province:
+            sets.append('province = %s')
+            params.append(province)
+        if route_type:
+            sets.append('route_type = %s')
+            params.append(route_type)
+        if max_appointments is not None:
+            sets.append('max_appointments_per_day = %s')
+            params.append(int(max_appointments))
+
+        if not sets:
+            return jsonify({'success': False, 'error': 'No updatable fields provided'}), 400
+
+        params.append(route_id)
+
+        update_sql = f"UPDATE routes SET {', '.join(sets)} WHERE id = %s"
+        res = DatabaseManager.execute_query(update_sql, tuple(params))
+        if res is None:
+            return jsonify({'success': False, 'error': 'Failed to update route'}), 500
+
+        # Return updated minimal payload
+        row = DatabaseManager.execute_query(
+            """
+            SELECT id, route_name AS name, description, province, start_date AS scheduled_date,
+                   route_type, max_appointments_per_day AS max_appointments
+            FROM routes WHERE id = %s
+            """,
+            (route_id,),
+            fetch=True,
+        )
+        data = row[0] if row else { 'id': route_id }
+        return jsonify({'success': True, 'data': data}), 200
+    except Exception as e:
+        logger.error(f"Update route error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 # ============================================================================
@@ -2466,10 +2025,10 @@ def get_available_appointments():
             r.route_name,
             r.route_type
         FROM appointments a
-    JOIN route_locations rl ON a.route_location_id = rl.id
-    JOIN routes r ON rl.route_id = r.id
-    JOIN locations l ON rl.location_id = l.id
-    LEFT JOIN location_types lt ON l.location_type_id = lt.id
+        JOIN route_locations rl ON a.route_location_id = rl.id
+        JOIN routes r ON rl.route_id = r.id
+        JOIN locations l ON rl.location_id = l.id
+        LEFT JOIN location_types lt ON l.location_type_id = lt.id
         WHERE a.status = 'Available'
         AND r.is_active = TRUE
         AND rl.visit_date >= CURDATE()
@@ -2618,681 +2177,6 @@ def generate_appointment_slots(route_location_id: int):
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 # ============================================================================
-# ADMIN: PUBLISH UPCOMING SLOTS (UTILITY)
-# ============================================================================
-
-@app.route('/api/admin/publish-upcoming-slots', methods=['POST'])
-@token_required
-@role_required(['administrator', 'doctor'])
-def publish_upcoming_slots():
-    """
-    Ensure appointment slots exist for upcoming route locations.
-    Body (optional): { "date_from": "YYYY-MM-DD", "date_to": "YYYY-MM-DD" }
-    Defaults: date_from = today, date_to = today + 30 days
-    """
-    try:
-        data = request.get_json(silent=True) or {}
-        today = datetime.now().date()
-        date_from = data.get('date_from') or today.isoformat()
-        # Default 30 days window
-        date_to = data.get('date_to') or (today + timedelta(days=30)).isoformat()
-
-        connection = DatabaseManager.get_connection()
-        if not connection:
-            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
-
-        published = 0
-        already_had = 0
-        checked = 0
-        route_locations = []
-
-        try:
-            cursor = connection.cursor(dictionary=True)
-            # Find active route locations in window
-            rl_query = """
-                SELECT rl.id
-                FROM route_locations rl
-                JOIN routes r ON rl.route_id = r.id
-                WHERE r.is_active = TRUE
-                  AND rl.visit_date BETWEEN %s AND %s
-            """
-            cursor.execute(rl_query, (date_from, date_to))
-            rl_rows = cursor.fetchall() or []
-
-            for row in rl_rows:
-                rl_id = int(row['id'])
-                checked += 1
-                # Check if slots already exist
-                cursor2 = connection.cursor()
-                try:
-                    cursor2.execute("SELECT COUNT(*) FROM appointments WHERE route_location_id = %s", (rl_id,))
-                    count = cursor2.fetchone()[0]
-                finally:
-                    cursor2.close()
-
-                if count and int(count) > 0:
-                    already_had += 1
-                    continue
-
-                # Generate slots for this route location
-                gen_cursor = connection.cursor()
-                try:
-                    args = [rl_id, None]
-                    result_args = gen_cursor.callproc('sp_generate_appointment_slots', args)
-                    result_message = result_args[1]
-                    connection.commit()
-                    if result_message and str(result_message).startswith('SUCCESS'):
-                        published += 1
-                        route_locations.append({ 'route_location_id': rl_id, 'result': result_message })
-                    else:
-                        route_locations.append({ 'route_location_id': rl_id, 'result': result_message or 'FAILED' })
-                finally:
-                    gen_cursor.close()
-
-            return jsonify({
-                'success': True,
-                'data': {
-                    'checked': checked,
-                    'published': published,
-                    'already_had': already_had,
-                    'details': route_locations
-                },
-                'message': f'Processed {checked} route locations; published {published} new slot sets.'
-            }), 200
-        finally:
-            cursor.close()
-            connection.close()
-    except Exception as e:
-        logger.error(f"Publish upcoming slots error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-# ============================================================================
-# ENHANCED INVENTORY MANAGEMENT
-# ============================================================================
-
-@app.route('/api/inventory/assets', methods=['GET'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
-def get_assets():
-    """Get assets with category information and maintenance status"""
-    try:
-        status = request.args.get('status', '')
-        category = request.args.get('category', '')
-        location = request.args.get('location', '')
-        maintenance_due = request.args.get('maintenance_due', '')
-        
-        query = """
-        SELECT a.*, 
-               ac.category_name,
-               ac.requires_calibration,
-               ac.calibration_frequency_months,
-               u.first_name as assigned_first_name,
-               u.last_name as assigned_last_name,
-               CASE 
-                   WHEN a.warranty_expiry IS NOT NULL AND a.warranty_expiry < CURDATE() THEN 'Expired'
-                   WHEN a.warranty_expiry IS NOT NULL AND a.warranty_expiry <= DATE_ADD(CURDATE(), INTERVAL 30 DAY) THEN 'Expiring Soon'
-                   WHEN a.warranty_expiry IS NOT NULL THEN 'Valid'
-                   ELSE 'No Warranty'
-               END as warranty_status,
-               CASE 
-                   WHEN a.next_maintenance_date IS NOT NULL AND a.next_maintenance_date < CURDATE() THEN 'Overdue'
-                   WHEN a.next_maintenance_date IS NOT NULL AND a.next_maintenance_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) THEN 'Due This Week'
-                   WHEN a.next_maintenance_date IS NOT NULL AND a.next_maintenance_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY) THEN 'Due This Month'
-                   WHEN a.next_maintenance_date IS NOT NULL THEN 'Scheduled'
-                   ELSE 'No Schedule'
-               END as maintenance_status,
-               DATEDIFF(a.warranty_expiry, CURDATE()) as warranty_days_remaining,
-               DATEDIFF(a.next_maintenance_date, CURDATE()) as maintenance_days_remaining
-        FROM assets a
-        LEFT JOIN asset_categories ac ON a.category_id = ac.id
-        LEFT JOIN users u ON a.assigned_to = u.id
-        WHERE 1=1
-        """
-        
-        params = []
-        
-        if status:
-            query += " AND a.status = %s"
-            params.append(status)
-        
-        if category:
-            query += " AND a.category_id = %s"
-            params.append(category)
-            
-        if location:
-            query += " AND a.location LIKE %s"
-            params.append(f"%{location}%")
-            
-        if maintenance_due == 'overdue':
-            query += " AND a.next_maintenance_date < CURDATE()"
-        elif maintenance_due == 'due_soon':
-            query += " AND a.next_maintenance_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)"
-        
-        query += " ORDER BY a.asset_name"
-        
-        assets = DatabaseManager.execute_query(query, tuple(params), fetch=True)
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'assets': _to_jsonable(assets) or []
-            }
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Get assets error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-@app.route('/api/inventory/assets', methods=['POST'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse'])
-def create_asset():
-    """Create a new medical asset"""
-    try:
-        data = request.get_json() or {}
-        
-        required_fields = ['asset_name', 'asset_tag', 'manufacturer', 'category_id']
-        missing_fields = [field for field in required_fields if not data.get(field)]
-        
-        if missing_fields:
-            return jsonify({
-                'success': False, 
-                'error': f'Missing required fields: {", ".join(missing_fields)}'
-            }), 400
-
-        # Check if asset tag already exists
-        existing_asset = DatabaseManager.execute_query(
-            "SELECT id FROM assets WHERE asset_tag = %s",
-            (data['asset_tag'],),
-            fetch=True
-        )
-        
-        if existing_asset:
-            return jsonify({
-                'success': False, 
-                'error': 'Asset with this tag already exists'
-            }), 409
-
-        # Set next maintenance date based on category if not provided
-        next_maintenance = data.get('next_maintenance_date')
-        if not next_maintenance and data.get('purchase_date'):
-            category_info = DatabaseManager.execute_query(
-                "SELECT calibration_frequency_months FROM asset_categories WHERE id = %s",
-                (data['category_id'],),
-                fetch=True
-            )
-            if category_info and category_info[0]['calibration_frequency_months']:
-                frequency = category_info[0]['calibration_frequency_months']
-                purchase_date = datetime.strptime(data['purchase_date'], '%Y-%m-%d')
-                next_maintenance = (purchase_date + timedelta(days=frequency * 30)).strftime('%Y-%m-%d')
-
-        insert_query = """
-        INSERT INTO assets (
-            asset_tag, serial_number, asset_name, category_id, manufacturer, model,
-            purchase_date, warranty_expiry, status, location, assigned_to,
-            purchase_cost, current_value, maintenance_notes, next_maintenance_date,
-            created_at, updated_at
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        
-        result = DatabaseManager.execute_query(insert_query, (
-            data['asset_tag'],
-            data.get('serial_number'),
-            data['asset_name'],
-            data['category_id'],
-            data['manufacturer'],
-            data.get('model'),
-            data.get('purchase_date'),
-            data.get('warranty_expiry'),
-            data.get('status', 'Operational'),
-            data.get('location', 'Mobile Clinic'),
-            data.get('assigned_to'),
-            data.get('purchase_cost', 0),
-            data.get('current_value', data.get('purchase_cost', 0)),
-            data.get('maintenance_notes'),
-            next_maintenance,
-            datetime.now(timezone.utc),
-            datetime.now(timezone.utc)
-        ))
-        
-        if result:
-            return jsonify({
-                'success': True,
-                'message': 'Asset created successfully'
-            }), 201
-        else:
-            return jsonify({'success': False, 'error': 'Failed to create asset'}), 500
-            
-    except Exception as e:
-        logger.error(f"Create asset error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-@app.route('/api/inventory/assets/<int:asset_id>', methods=['PUT'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse'])
-def update_asset(asset_id):
-    """Update an existing asset"""
-    try:
-        data = request.get_json() or {}
-        
-        update_fields = []
-        params = []
-        
-        updatable_fields = [
-            'asset_name', 'serial_number', 'manufacturer', 'model', 'status', 
-            'location', 'assigned_to', 'purchase_cost', 'current_value', 
-            'maintenance_notes', 'last_maintenance_date', 'next_maintenance_date', 
-            'warranty_expiry'
-        ]
-        
-        for field in updatable_fields:
-            if field in data:
-                update_fields.append(f"{field} = %s")
-                params.append(data[field])
-        
-        if not update_fields:
-            return jsonify({'success': False, 'error': 'No fields to update'}), 400
-        
-        update_fields.append("updated_at = %s")
-        params.append(datetime.now(timezone.utc))
-        params.append(asset_id)
-        
-        update_query = f"UPDATE assets SET {', '.join(update_fields)} WHERE id = %s"
-        result = DatabaseManager.execute_query(update_query, tuple(params))
-        
-        if result:
-            return jsonify({
-                'success': True,
-                'message': 'Asset updated successfully'
-            }), 200
-        else:
-            return jsonify({'success': False, 'error': 'Asset not found or update failed'}), 404
-            
-    except Exception as e:
-        logger.error(f"Update asset error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-@app.route('/api/inventory/assets/<int:asset_id>/maintenance', methods=['POST'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse'])
-def record_asset_maintenance(asset_id):
-    """Record maintenance performed on an asset"""
-    try:
-        data = request.get_json() or {}
-        
-        maintenance_date = data.get('maintenance_date', datetime.now().strftime('%Y-%m-%d'))
-        maintenance_notes = data.get('maintenance_notes', '').strip()
-        next_maintenance_date = data.get('next_maintenance_date')
-        
-        if not maintenance_notes:
-            return jsonify({'success': False, 'error': 'Maintenance notes are required'}), 400
-        
-        # Get asset category to calculate next maintenance if not provided
-        if not next_maintenance_date:
-            asset_info = DatabaseManager.execute_query(
-                """
-                SELECT ac.calibration_frequency_months 
-                FROM assets a 
-                JOIN asset_categories ac ON a.category_id = ac.id 
-                WHERE a.id = %s
-                """,
-                (asset_id,),
-                fetch=True
-            )
-            if asset_info and asset_info[0]['calibration_frequency_months']:
-                frequency = asset_info[0]['calibration_frequency_months']
-                maint_date = datetime.strptime(maintenance_date, '%Y-%m-%d')
-                next_maintenance_date = (maint_date + timedelta(days=frequency * 30)).strftime('%Y-%m-%d')
-        
-        # Update asset maintenance record
-        update_query = """
-        UPDATE assets 
-        SET last_maintenance_date = %s, 
-            next_maintenance_date = %s,
-            maintenance_notes = %s,
-            status = CASE WHEN status = 'Maintenance Required' THEN 'Operational' ELSE status END,
-            updated_at = %s
-        WHERE id = %s
-        """
-        
-        result = DatabaseManager.execute_query(update_query, (
-            maintenance_date,
-            next_maintenance_date,
-            maintenance_notes,
-            datetime.now(timezone.utc),
-            asset_id
-        ))
-        
-        if result:
-            return jsonify({
-                'success': True,
-                'message': 'Maintenance recorded successfully'
-            }), 200
-        else:
-            return jsonify({'success': False, 'error': 'Asset not found'}), 404
-            
-    except Exception as e:
-        logger.error(f"Record maintenance error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-@app.route('/api/inventory/asset-categories', methods=['GET'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
-def get_asset_categories():
-    """List asset categories"""
-    try:
-        rows = DatabaseManager.execute_query(
-            """
-            SELECT id, category_name, description, requires_calibration, calibration_frequency_months,
-                   COUNT(a.id) as asset_count
-            FROM asset_categories ac
-            LEFT JOIN assets a ON ac.id = a.category_id
-            GROUP BY ac.id
-            ORDER BY ac.category_name
-            """,
-            fetch=True,
-        )
-        return jsonify({
-            'success': True, 
-            'data': {
-                'categories': rows or []
-            }
-        }), 200
-    except Exception as e:
-        logger.error(f"Get asset categories error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-# Dedicated categories endpoint for Asset Management form
-@app.route('/api/inventory/assets/categories', methods=['GET'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
-def get_asset_categories_for_assets():
-    """List asset categories (form-specific endpoint)"""
-    try:
-        rows = DatabaseManager.execute_query(
-            """
-            SELECT id, category_name, description, requires_calibration, calibration_frequency_months
-            FROM asset_categories
-            ORDER BY category_name
-            """,
-            fetch=True,
-        )
-        return jsonify({
-            'success': True,
-            'data': {
-                'categories': rows or []
-            }
-        }), 200
-    except Exception as e:
-        logger.error(f"Get asset categories (assets) error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-# ============================================================================
-# CONSUMABLES MANAGEMENT ENDPOINTS
-# ============================================================================
-
-@app.route('/api/inventory/consumables', methods=['GET'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
-def get_consumables():
-    """Get consumables with aggregated stock information"""
-    try:
-        category = request.args.get('category', '')
-        expiry_filter = request.args.get('expiry_filter', '')
-        stock_filter = request.args.get('stock_filter', '')
-        
-        query = """
-        SELECT 
-            c.id,
-            c.item_code,
-            c.item_name,
-            c.category_id,
-            cc.category_name,
-            c.generic_name,
-            c.strength,
-            c.dosage_form,
-            c.unit_of_measure,
-            c.reorder_level,
-            c.max_stock_level,
-            c.storage_temperature_min,
-            c.storage_temperature_max,
-            c.is_controlled_substance,
-            c.created_at,
-            COALESCE(SUM(CASE WHEN ist.status = 'Active' THEN ist.quantity_current ELSE 0 END), 0) as total_quantity,
-            COUNT(CASE WHEN ist.status = 'Active' THEN ist.id END) as active_batches,
-            MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) as earliest_expiry,
-            MAX(CASE WHEN ist.status = 'Active' THEN ist.received_date END) as latest_received,
-            AVG(CASE WHEN ist.status = 'Active' THEN ist.unit_cost END) as avg_unit_cost,
-            CASE 
-                WHEN MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) IS NOT NULL 
-                     AND MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) <= CURDATE() THEN 'expired'
-                WHEN MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) IS NOT NULL 
-                     AND MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) <= DATE_ADD(CURDATE(), INTERVAL 30 DAY) THEN 'expiring_soon'
-                WHEN MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) IS NOT NULL 
-                     AND MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'warning'
-                ELSE 'good'
-            END as expiry_status,
-            CASE 
-                WHEN COALESCE(SUM(CASE WHEN ist.status = 'Active' THEN ist.quantity_current ELSE 0 END), 0) = 0 THEN 'out_of_stock'
-                WHEN COALESCE(SUM(CASE WHEN ist.status = 'Active' THEN ist.quantity_current ELSE 0 END), 0) <= c.reorder_level THEN 'low_stock'
-                WHEN COALESCE(SUM(CASE WHEN ist.status = 'Active' THEN ist.quantity_current ELSE 0 END), 0) >= c.max_stock_level THEN 'overstock'
-                ELSE 'normal'
-            END as stock_status
-        FROM consumables c
-        LEFT JOIN consumable_categories cc ON c.category_id = cc.id
-        LEFT JOIN inventory_stock ist ON c.id = ist.consumable_id
-        WHERE 1=1
-        """
-        
-        params = []
-        
-        if category:
-            query += " AND c.category_id = %s"
-            params.append(category)
-        
-        query += " GROUP BY c.id"
-        
-        # Apply filters based on computed values
-        having_conditions = []
-        if expiry_filter == 'expired':
-            having_conditions.append("MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) <= CURDATE()")
-        elif expiry_filter == 'expiring_soon':
-            having_conditions.append("MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)")
-        elif expiry_filter == 'warning':
-            having_conditions.append("MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) <= DATE_ADD(CURDATE(), INTERVAL 90 DAY)")
-            
-        if stock_filter == 'low_stock':
-            having_conditions.append("COALESCE(SUM(CASE WHEN ist.status = 'Active' THEN ist.quantity_current ELSE 0 END), 0) <= c.reorder_level")
-        elif stock_filter == 'out_of_stock':
-            having_conditions.append("COALESCE(SUM(CASE WHEN ist.status = 'Active' THEN ist.quantity_current ELSE 0 END), 0) = 0")
-        
-        if having_conditions:
-            query += " HAVING " + " AND ".join(having_conditions)
-        
-        query += " ORDER BY c.item_name"
-        
-        consumables = DatabaseManager.execute_query(query, tuple(params), fetch=True)
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'consumables': _to_jsonable(consumables) or []
-            }
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Get consumables error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-@app.route('/api/inventory/consumables/<int:consumable_id>/batches', methods=['GET'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
-def get_consumable_batches(consumable_id):
-    """Get all batches for a specific consumable"""
-    try:
-        query = """
-        SELECT ist.*, s.supplier_name,
-               CASE 
-                   WHEN ist.expiry_date <= CURDATE() THEN 'expired'
-                   WHEN ist.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY) THEN 'expiring_soon'
-                   WHEN ist.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'warning'
-                   ELSE 'good'
-               END as expiry_status,
-               DATEDIFF(ist.expiry_date, CURDATE()) as days_to_expiry,
-               (ist.quantity_current * ist.unit_cost) as total_value
-        FROM inventory_stock ist
-        LEFT JOIN suppliers s ON ist.supplier_id = s.id
-        WHERE ist.consumable_id = %s
-        ORDER BY ist.expiry_date ASC, ist.received_date ASC
-        """
-        
-        batches = DatabaseManager.execute_query(query, (consumable_id,), fetch=True)
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'batches': _to_jsonable(batches) or []
-            }
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Get consumable batches error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-@app.route('/api/inventory/consumables', methods=['POST'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse'])
-def create_consumable():
-    """Create a new consumable item"""
-    try:
-        data = request.get_json() or {}
-        
-        required_fields = ['item_name', 'item_code', 'unit_of_measure', 'category_id']
-        missing_fields = [field for field in required_fields if not data.get(field)]
-        
-        if missing_fields:
-            return jsonify({
-                'success': False, 
-                'error': f'Missing required fields: {", ".join(missing_fields)}'
-            }), 400
-
-        # Check if item code already exists
-        existing_item = DatabaseManager.execute_query(
-            "SELECT id FROM consumables WHERE item_code = %s",
-            (data['item_code'],),
-            fetch=True
-        )
-        
-        if existing_item:
-            return jsonify({
-                'success': False, 
-                'error': 'Item with this code already exists'
-            }), 409
-
-        insert_query = """
-        INSERT INTO consumables (
-            item_code, item_name, category_id, generic_name, strength, dosage_form,
-            unit_of_measure, reorder_level, max_stock_level, storage_temperature_min,
-            storage_temperature_max, is_controlled_substance, created_at
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        
-        result = DatabaseManager.execute_query(insert_query, (
-            data['item_code'],
-            data['item_name'],
-            data['category_id'],
-            data.get('generic_name'),
-            data.get('strength'),
-            data.get('dosage_form'),
-            data['unit_of_measure'],
-            data.get('reorder_level', 10),
-            data.get('max_stock_level', 1000),
-            data.get('storage_temperature_min'),
-            data.get('storage_temperature_max'),
-            data.get('is_controlled_substance', False),
-            datetime.now(timezone.utc)
-        ))
-        
-        if result:
-            return jsonify({
-                'success': True,
-                'message': 'Consumable created successfully'
-            }), 201
-        else:
-            return jsonify({'success': False, 'error': 'Failed to create consumable'}), 500
-            
-    except Exception as e:
-        logger.error(f"Create consumable error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-@app.route('/api/inventory/consumables/<int:consumable_id>', methods=['PUT'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse'])
-def update_consumable(consumable_id):
-    """Update an existing consumable"""
-    try:
-        data = request.get_json() or {}
-        
-        update_fields = []
-        params = []
-        
-        updatable_fields = [
-            'item_name', 'generic_name', 'strength', 'dosage_form',
-            'unit_of_measure', 'reorder_level', 'max_stock_level',
-            'storage_temperature_min', 'storage_temperature_max', 'is_controlled_substance'
-        ]
-        
-        for field in updatable_fields:
-            if field in data:
-                update_fields.append(f"{field} = %s")
-                params.append(data[field])
-        
-        if not update_fields:
-            return jsonify({'success': False, 'error': 'No fields to update'}), 400
-        
-        params.append(consumable_id)
-        update_query = f"UPDATE consumables SET {', '.join(update_fields)} WHERE id = %s"
-        result = DatabaseManager.execute_query(update_query, tuple(params))
-        
-        if result:
-            return jsonify({
-                'success': True,
-                'message': 'Consumable updated successfully'
-            }), 200
-        else:
-            return jsonify({'success': False, 'error': 'Consumable not found or update failed'}), 404
-            
-    except Exception as e:
-        logger.error(f"Update consumable error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-@app.route('/api/inventory/consumable-categories', methods=['GET'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
-def get_consumable_categories():
-    """List consumable categories with item counts"""
-    try:
-        rows = DatabaseManager.execute_query(
-            """
-            SELECT cc.*, COUNT(c.id) as item_count
-            FROM consumable_categories cc
-            LEFT JOIN consumables c ON cc.id = c.category_id
-            GROUP BY cc.id
-            ORDER BY cc.category_name
-            """,
-            fetch=True,
-        )
-        return jsonify({
-            'success': True, 
-            'data': {
-                'categories': rows or []
-            }
-        }), 200
-    except Exception as e:
-        logger.error(f"Get consumable categories error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-# ============================================================================
 # INVENTORY STOCK MANAGEMENT
 # ============================================================================
 
@@ -3415,8 +2299,9 @@ def adjust_inventory_stock(stock_id):
         
         if not current_stock:
             return jsonify({'success': False, 'error': 'Stock record not found'}), 404
-        
+            
         current_quantity = current_stock[0]['quantity_current']
+        consumable_id = current_stock[0]['consumable_id']
         
         # Calculate new quantity
         if adjustment_type == 'increase':
