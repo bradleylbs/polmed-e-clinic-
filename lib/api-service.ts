@@ -214,6 +214,13 @@ class ApiService {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+    if (!this.token && typeof window !== "undefined") {
+      const storedToken = localStorage.getItem("token")
+      if (storedToken) {
+        this.token = storedToken
+      }
+    }
+
     const url = `${this.baseUrl}${endpoint}`
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -233,7 +240,7 @@ class ApiService {
       }
     }
 
-    if (this.token) {
+    if (this.token && !headers.Authorization) {
       headers.Authorization = `Bearer ${this.token}`
     }
 
