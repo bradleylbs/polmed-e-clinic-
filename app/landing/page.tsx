@@ -272,9 +272,9 @@ export default function LandingPage() {
                 <Image
                   src="/rm_logo.png"
                   alt="Masala Ramabulana Holdings"
-                  width={220}
-                  height={96}
-                  className="h-16 w-auto"
+                  width={320}
+                  height={140}
+                  className="h-20 w-auto sm:h-24"
                   priority
                 />
               </div>
