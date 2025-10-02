@@ -881,9 +881,20 @@ def add_vital_signs(visit_id: int):
         blood_glucose = to_float(data.get('blood_glucose'))
         respiratory_rate = to_int(data.get('respiratory_rate'))
 
-        additional = data.get('additional_measurements') or {}
+        raw_additional = data.get('additional_measurements') or {}
+        additional = {}
+        if isinstance(raw_additional, dict):
+            additional.update(raw_additional)
+        else:
+            try:
+                additional = json.loads(raw_additional)
+            except Exception:
+                additional = {}
+
         if respiratory_rate is not None:
             additional['respiratory_rate'] = respiratory_rate
+
+        additional_payload = json.dumps(additional) if additional else json.dumps({})
 
         ok = DatabaseManager.execute_query(
             """
@@ -903,7 +914,7 @@ def add_vital_signs(visit_id: int):
                 height,
                 oxygen_saturation,
                 blood_glucose,
-                json.dumps(additional) if additional else None,
+                additional_payload,
             ),
             fetch=False,
         )
