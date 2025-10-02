@@ -113,16 +113,9 @@ export default function LandingPage() {
                 </Card>
                 <Card>
                   <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-semibold">Upcoming Outreach</div>
-                        <div className="text-sm text-muted-foreground">Check published schedules near you</div>
-                      </div>
-                      <Link href="/book-appointment">
-                        <Button size="sm" variant="secondary">
-                          Browse
-                        </Button>
-                      </Link>
+                    <div>
+                      <div className="font-semibold">Upcoming Outreach</div>
+                      <div className="text-sm text-muted-foreground">Check published schedules near you</div>
                     </div>
                   </CardContent>
                 </Card>
@@ -224,7 +217,7 @@ export default function LandingPage() {
       <section id="how" className="container mx-auto max-w-7xl px-4 py-16">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {[
-            { step: 1, title: "Find a location", desc: "Browse published mobile clinic stops near you." },
+            { step: 1, title: "Find a location", desc: "Discover published mobile clinic stops near you." },
             { step: 2, title: "Choose a time", desc: "Select an open time slot that suits your schedule." },
             { step: 3, title: "Confirm booking", desc: "Enter your details and receive a confirmation." },
           ].map((s) => (
