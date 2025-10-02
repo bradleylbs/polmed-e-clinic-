@@ -858,20 +858,37 @@ def add_vital_signs(visit_id: int):
     try:
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):
-            data = {}
+            return jsonify({'success': False, 'error': 'Invalid JSON data'}), 400
+
+        # Enhanced data cleaning and validation
+        def clean_value(val):
+            if val is None or val == '':
+                return None
+            if isinstance(val, str):
+                val = val.strip()
+                if val == '':
+                    return None
+            return val
 
         def to_int(val):
             try:
-                return int(val) if val is not None and str(val).strip() != '' else None
+                cleaned = clean_value(val)
+                if cleaned is None:
+                    return None
+                return int(cleaned) if str(cleaned).strip() != '' else None
             except (ValueError, TypeError):
                 return None
 
         def to_float(val):
             try:
-                return float(val) if val is not None and str(val).strip() != '' else None
+                cleaned = clean_value(val)
+                if cleaned is None:
+                    return None
+                return float(cleaned) if str(cleaned).strip() != '' else None
             except (ValueError, TypeError):
                 return None
 
+        # Extract and clean all vital signs data
         systolic_bp = to_int(data.get('systolic_bp'))
         diastolic_bp = to_int(data.get('diastolic_bp'))
         heart_rate = to_int(data.get('heart_rate'))
@@ -882,20 +899,22 @@ def add_vital_signs(visit_id: int):
         blood_glucose = to_float(data.get('blood_glucose'))
         respiratory_rate = to_int(data.get('respiratory_rate'))
 
+        # Calculate BMI
         bmi = None
-        height_m = None
-        if height is not None:
-            height_m = height / 100.0 if height > 10 else height
-            if height_m and height_m > 0 and weight is not None:
-                try:
+        if height is not None and weight is not None:
+            try:
+                height_m = height / 100.0 if height > 10 else height
+                if height_m and height_m > 0:
                     bmi = round(weight / (height_m ** 2), 2)
-                except (ZeroDivisionError, TypeError):
-                    bmi = None
+            except (ZeroDivisionError, TypeError):
+                bmi = None
 
+        # Handle additional measurements
         raw_additional = data.get('additional_measurements') or {}
         if not isinstance(raw_additional, dict):
             try:
-                raw_additional = json.loads(raw_additional)
+                if isinstance(raw_additional, str):
+                    raw_additional = json.loads(raw_additional)
                 if not isinstance(raw_additional, dict):
                     raw_additional = {}
             except Exception:
@@ -907,59 +926,77 @@ def add_vital_signs(visit_id: int):
 
         additional_payload = json.dumps(additional) if additional else json.dumps({})
 
-        # Insert vitals only if at least one measurement is provided; allow notes-only submissions
+        # Check if we have at least one vital sign measurement
         has_any_vital = any(
             v is not None for v in [
-                systolic_bp, diastolic_bp, heart_rate, temperature, weight, height, bmi,
-                oxygen_saturation, blood_glucose, respiratory_rate
+                systolic_bp, diastolic_bp, heart_rate, temperature, 
+                weight, height, oxygen_saturation, blood_glucose, 
+                respiratory_rate
             ]
         )
-        if has_any_vital:
-            ok = DatabaseManager.execute_query(
-                """
-                INSERT INTO vital_signs (
-                    visit_id, recorded_by, systolic_bp, diastolic_bp, heart_rate, temperature,
-                    weight, height, bmi, oxygen_saturation, blood_glucose, additional_measurements
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    visit_id,
-                    request.current_user['id'],
-                    systolic_bp,
-                    diastolic_bp,
-                    heart_rate,
-                    temperature,
-                    weight,
-                    height,
-                    bmi,
-                    oxygen_saturation,
-                    blood_glucose,
-                    additional_payload,
-                ),
-                fetch=False,
-            )
 
-            if not ok:
-                return jsonify({'success': False, 'error': 'Failed to record vital signs'}), 500
+        nursing_notes = clean_value(data.get('nursing_notes'))
 
-        # Optional nursing assessment note
-        nursing_notes = (data.get('nursing_notes') or '').strip()
-        if nursing_notes:
-            DatabaseManager.execute_query(
-                """
-                INSERT INTO clinical_notes (
-                    visit_id, note_type, content, created_by
-                ) VALUES (%s, 'Assessment', %s, %s)
-                """,
-                (visit_id, nursing_notes, request.current_user['id']),
-                fetch=False,
-            )
-
-        # If neither vitals nor notes were provided, return a 400 to signal empty submission
+        # If neither vitals nor notes were provided, return error
         if not has_any_vital and not nursing_notes:
-            return jsonify({'success': False, 'error': 'No vital signs or notes provided'}), 400
+            return jsonify({
+                'success': False, 
+                'error': 'No vital signs measurements or nursing notes provided'
+            }), 400
 
-        return jsonify({'success': True, 'message': 'Vital signs and/or nursing notes recorded'}), 201
+        # Insert vitals if we have any measurements
+        if has_any_vital:
+            try:
+                ok = DatabaseManager.execute_query(
+                    """
+                    INSERT INTO vital_signs (
+                        visit_id, recorded_by, systolic_bp, diastolic_bp, heart_rate, temperature,
+                        weight, height, bmi, oxygen_saturation, blood_glucose, additional_measurements
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        visit_id,
+                        request.current_user['id'],
+                        systolic_bp,
+                        diastolic_bp,
+                        heart_rate,
+                        temperature,
+                        weight,
+                        height,
+                        bmi,
+                        oxygen_saturation,
+                        blood_glucose,
+                        additional_payload,
+                    ),
+                    fetch=False,
+                )
+
+                if not ok:
+                    return jsonify({'success': False, 'error': 'Failed to record vital signs'}), 500
+            except Exception as db_error:
+                logger.error(f"Database error recording vital signs: {db_error}")
+                return jsonify({'success': False, 'error': 'Database error recording vital signs'}), 500
+
+        # Insert nursing assessment note if provided
+        if nursing_notes:
+            try:
+                DatabaseManager.execute_query(
+                    """
+                    INSERT INTO clinical_notes (
+                        visit_id, note_type, content, created_by
+                    ) VALUES (%s, 'Assessment', %s, %s)
+                    """,
+                    (visit_id, nursing_notes, request.current_user['id']),
+                    fetch=False,
+                )
+            except Exception as note_error:
+                logger.error(f"Database error recording nursing notes: {note_error}")
+                # Don't fail the entire request if notes fail
+
+        return jsonify({
+            'success': True, 
+            'message': 'Vital signs and/or nursing notes recorded successfully'
+        }), 201
 
     except Exception as e:
         logger.error(f"Add vital signs error: {e}", exc_info=True)

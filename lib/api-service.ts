@@ -181,6 +181,21 @@ export interface UpdateReferralRequest {
   notes?: string
 }
 
+// Vital Signs Interface
+export interface VitalSignsRequest {
+  systolic_bp?: number
+  diastolic_bp?: number
+  heart_rate?: number
+  temperature?: number
+  weight?: number
+  height?: number
+  oxygen_saturation?: number
+  blood_glucose?: number
+  respiratory_rate?: number
+  nursing_notes?: string
+  additional_measurements?: Record<string, any>
+}
+
 const DEFAULT_REMOTE_API_BASE_URL = "https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net/api"
 
 class ApiService {
@@ -402,22 +417,25 @@ class ApiService {
 
   async addVitalSigns(
     visitId: number,
-    payload: {
-      systolic_bp?: number | string
-      diastolic_bp?: number | string
-      heart_rate?: number | string
-      temperature?: number | string
-      weight?: number | string
-      height?: number | string
-      oxygen_saturation?: number | string
-      blood_glucose?: number | string
-      respiratory_rate?: number | string
-      nursing_notes?: string
-    },
+    payload: VitalSignsRequest
   ): Promise<ApiResponse<any>> {
+    // Clean the payload - convert empty strings to undefined and ensure numbers
+    const cleanPayload: Record<string, any> = {};
+    
+    for (const [key, value] of Object.entries(payload)) {
+      if (value === '' || value === null) {
+        cleanPayload[key] = undefined;
+      } else if (typeof value === 'string' && !isNaN(Number(value)) && key !== 'nursing_notes') {
+        // Convert numeric strings to numbers, except for nursing_notes
+        cleanPayload[key] = Number(value);
+      } else {
+        cleanPayload[key] = value;
+      }
+    }
+
     return this.request<any>(`/visits/${visitId}/vital-signs`, {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(cleanPayload),
     })
   }
 
@@ -767,6 +785,4 @@ class ApiService {
 }
 
 export const apiService = new ApiService()
-// Note: Supplier and StockReceiptRequest are already exported above via `export interface`,
-// so we don't re-export them here to avoid TS2484 conflicts.
 export type { Patient, Route, Asset, Consumable, DashboardStats }
