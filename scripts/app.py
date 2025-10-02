@@ -506,7 +506,6 @@ def get_patients():
     except Exception as e:
         logger.error(f"Get patients error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
 @app.route('/api/patients', methods=['POST'])
 @token_required
 @role_required(['administrator', 'doctor', 'clerk'])
@@ -519,9 +518,7 @@ def create_patient():
         logger.info(f"[PATIENT_CREATE] Request content type: {request.content_type}")
         logger.info(f"[PATIENT_CREATE] Request headers: {dict(request.headers)}")
 
-        # -----------------------------
-        # Field Normalization
-        # -----------------------------
+        # Support payloads with full_name and telephone_number, etc.
         if 'first_name' not in data and data.get('full_name'):
             full_name = str(data.get('full_name', '')).strip()
             parts = [p for p in full_name.split(' ') if p]
@@ -530,97 +527,152 @@ def create_patient():
                 data['last_name'] = ' '.join(parts[1:]) if len(parts) > 1 else 'N/A'
                 logger.info(f"[PATIENT_CREATE] Split full_name '{full_name}' into first_name='{data['first_name']}' and last_name='{data['last_name']}'")
             
+        # Handle various phone number field names
         if 'phone_number' not in data:
             if data.get('telephone'):
                 data['phone_number'] = data.get('telephone')
+                logger.info(f"[PATIENT_CREATE] Mapped telephone to phone_number: {data['phone_number']}")
             elif data.get('telephone_number'):
                 data['phone_number'] = data.get('telephone_number')
-
+                logger.info(f"[PATIENT_CREATE] Mapped telephone_number to phone_number: {data['phone_number']}")
+            
         if 'physical_address' not in data and data.get('address'):
             data['physical_address'] = data.get('address')
-
+            
         if 'is_palmed_member' not in data and data.get('is_member') is not None:
             data['is_palmed_member'] = bool(data.get('is_member'))
-
+            
         if 'member_type' not in data and data.get('membership_status'):
             data['member_type'] = data.get('membership_status')
 
+        # Map alternate keys for date of birth
         if not data.get('date_of_birth'):
             for alt_key in ['dateOfBirth', 'dob', 'birth_date', 'birthDate', 'dateofbirth']:
                 if data.get(alt_key):
                     data['date_of_birth'] = data.get(alt_key)
+                    logger.info(f"[PATIENT_CREATE] Mapped {alt_key} to date_of_birth: {data['date_of_birth']}")
                     break
 
+        # Map alternate keys for gender
         if not data.get('gender'):
             alt_gender = data.get('Gender') or data.get('sex') or data.get('Sex') or data.get('gender_identity')
-            if alt_gender:
+            if alt_gender is not None and str(alt_gender).strip():
                 data['gender'] = alt_gender
+                logger.info(f"[PATIENT_CREATE] Mapped alternate gender key to gender: {data['gender']}")
 
+        # If member flag not provided, infer from presence of medical_aid_number
         if 'is_palmed_member' not in data and data.get('medical_aid_number'):
             data['is_palmed_member'] = True
 
-        # -----------------------------
-        # Field Validation
-        # -----------------------------
-        required_fields = ['first_name', 'last_name', 'phone_number']
-        missing_fields = [f for f in required_fields if not str(data.get(f) or '').strip()]
+        logger.info("[PATIENT_CREATE] After normalization:")
+        logger.info(f"[PATIENT_CREATE] first_name: '{data.get('first_name')}'")
+        logger.info(f"[PATIENT_CREATE] last_name: '{data.get('last_name')}'")
+        logger.info(f"[PATIENT_CREATE] date_of_birth: '{data.get('date_of_birth')}'")
+        logger.info(f"[PATIENT_CREATE] gender: '{data.get('gender')}'")
+        logger.info(f"[PATIENT_CREATE] phone_number: '{data.get('phone_number')}'")
 
+        # Require minimal fields; allow missing date_of_birth and default gender later
+        required_fields = ['first_name', 'last_name', 'phone_number']
+        missing_fields = []
+        
+        for field in required_fields:
+            value = data.get(field)
+            if value is None or (isinstance(value, str) and not value.strip()):
+                missing_fields.append(field)
+        
         if missing_fields:
+            error_msg = f'Missing required fields: {", ".join(missing_fields)}'
             return jsonify({
-                'success': False,
-                'error': f'Missing required fields: {", ".join(missing_fields)}',
+                'success': False, 
+                'error': error_msg,
                 'debug_info': {
                     'received_fields': list(data.keys()),
                     'missing_fields': missing_fields,
+                    'field_values': {field: data.get(field) for field in required_fields}
                 }
             }), 400
 
+        # If a DOB is provided, validate its format; otherwise allow NULL
         if data.get('date_of_birth'):
             try:
                 datetime.strptime(data['date_of_birth'], '%Y-%m-%d')
             except ValueError:
-                return jsonify({'success': False, 'error': 'date_of_birth must be YYYY-MM-DD'}), 400
-
+                return jsonify({
+                    'success': False, 
+                    'error': 'date_of_birth must be in YYYY-MM-DD format'
+                }), 400
+        
+        # Gender: default to 'Other' if not provided, else normalize/validate
         valid_genders = ['Male', 'Female', 'Other']
         if not data.get('gender'):
             data['gender'] = 'Other'
         else:
             gender_input = str(data['gender']).strip()
-            if gender_input.lower() not in [g.lower() for g in valid_genders]:
-                return jsonify({'success': False, 'error': f'gender must be one of {valid_genders}'}), 400
-            data['gender'] = next(g for g in valid_genders if g.lower() == gender_input.lower())
+            gender_match = None
+            for valid_gender in valid_genders:
+                if gender_input.lower() == valid_gender.lower():
+                    gender_match = valid_gender
+                    break
+            if not gender_match:
+                return jsonify({
+                    'success': False, 
+                    'error': f'gender must be one of: {valid_genders}'
+                }), 400
+            data['gender'] = gender_match
 
+        # Uniqueness checks
         if data.get('id_number'):
             existing_id = DatabaseManager.execute_query(
-                "SELECT id FROM patients WHERE id_number = %s", (data['id_number'],), fetch=True
+                "SELECT id FROM patients WHERE id_number = %s",
+                (data['id_number'],),
+                fetch=True
             )
             if existing_id:
                 return jsonify({'success': False, 'error': 'Patient with this ID number already exists'}), 409
-
+        
         if data.get('medical_aid_number'):
             existing_medical_aid = DatabaseManager.execute_query(
-                "SELECT id FROM patients WHERE medical_aid_number = %s", (data['medical_aid_number'],), fetch=True
+                "SELECT id FROM patients WHERE medical_aid_number = %s",
+                (data['medical_aid_number'],),
+                fetch=True
             )
             if existing_medical_aid:
                 return jsonify({'success': False, 'error': 'Patient with this medical aid number already exists'}), 409
+        
+        chronic_conditions = data.get('chronic_conditions', [])
+        allergies = data.get('allergies', [])
+        current_medications = data.get('current_medications', [])
+        
+        if isinstance(chronic_conditions, list):
+            chronic_conditions = json.dumps(chronic_conditions)
+        elif isinstance(chronic_conditions, str) and chronic_conditions.strip():
+            chronic_conditions = json.dumps([chronic_conditions.strip()])
+        else:
+            chronic_conditions = json.dumps([])
+            
+        if isinstance(allergies, list):
+            allergies = json.dumps(allergies)
+        elif isinstance(allergies, str) and allergies.strip():
+            allergies = json.dumps([allergies.strip()])
+        else:
+            allergies = json.dumps([])
+            
+        if isinstance(current_medications, list):
+            current_medications = json.dumps(current_medications)
+        elif isinstance(current_medications, str) and current_medications.strip():
+            current_medications = json.dumps([current_medications.strip()])
+        else:
+            current_medications = json.dumps([])
 
-        # JSON encode array fields
-        chronic_conditions = json.dumps(data.get('chronic_conditions', [])) if isinstance(data.get('chronic_conditions'), list) else json.dumps([])
-        allergies = json.dumps(data.get('allergies', [])) if isinstance(data.get('allergies'), list) else json.dumps([])
-        current_medications = json.dumps(data.get('current_medications', [])) if isinstance(data.get('current_medications'), list) else json.dumps([])
-
-        # -----------------------------
-        # Insert Patient
-        # -----------------------------
         insert_query = """
-        INSERT INTO patients (
-            medical_aid_number, first_name, last_name, date_of_birth, gender,
-            id_number, phone_number, email, physical_address, emergency_contact_name,
-            emergency_contact_phone, is_palmed_member, member_type, chronic_conditions,
-            allergies, current_medications, created_by, created_at
-        )
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        INSERT INTO patients (medical_aid_number, first_name, last_name, date_of_birth,
+                             gender, id_number, phone_number, email, physical_address,
+                             emergency_contact_name, emergency_contact_phone, is_palmed_member,
+                             member_type, chronic_conditions, allergies, current_medications,
+                             created_by, created_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
+        
         insert_values = (
             data.get('medical_aid_number'),
             data['first_name'],
@@ -641,45 +693,43 @@ def create_patient():
             request.current_user['id'],
             datetime.utcnow()
         )
-
-        cursor = DatabaseManager.get_cursor()
-        cursor.execute(insert_query, insert_values)
-        db.commit()
-
-        patient_id = cursor.lastrowid   # ✅ capture the real AUTO_INCREMENT id
-
-        # -----------------------------
-        # Audit Logging
-        # -----------------------------
-        try:
-            log_query = """
-            INSERT INTO audit_log (user_id, table_name, action, new_values, created_at)
-            VALUES (%s, 'patients', 'INSERT', %s, %s)
-            """
-            new_values = json.dumps({
-                'first_name': data['first_name'],
-                'last_name': data['last_name'],
-                'medical_aid_number': data.get('medical_aid_number')
-            })
-            cursor.execute(log_query, (
-                request.current_user['id'],
-                new_values,
-                datetime.now(timezone.utc)
-            ))
-            db.commit()
-        except Exception as log_error:
-            logger.warning(f"[PATIENT_CREATE] Failed to log patient creation: {log_error}")
-
-        return jsonify({
-            'success': True,
-            'message': 'Patient created successfully',
-            'patient_id': patient_id   # ✅ real DB id returned to caller
-        }), 201
-
+        
+        # IMPORTANT: get the inserted patient ID (not just affected rows)
+        patient_id = DatabaseManager.execute_insert_return_id(insert_query, insert_values)
+        
+        if patient_id:
+            try:
+                log_query = """
+                INSERT INTO audit_log (user_id, table_name, action, new_values, created_at)
+                VALUES (%s, 'patients', 'INSERT', %s, %s)
+                """
+                new_values = json.dumps({
+                    'id': patient_id,
+                    'first_name': data['first_name'],
+                    'last_name': data['last_name'],
+                    'medical_aid_number': data.get('medical_aid_number')
+                })
+                DatabaseManager.execute_query(log_query, (
+                    request.current_user['id'],
+                    new_values,
+                    datetime.now(timezone.utc)
+                ))
+            except Exception as log_error:
+                logger.warning(f"[PATIENT_CREATE] Failed to log patient creation: {log_error}")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Patient created successfully',
+                'patient_id': patient_id
+            }), 201
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create patient'}), 500
+            
     except Exception as e:
         logger.error(f"[PATIENT_CREATE] Unexpected error: {e}", exc_info=True)
-        db.rollback()
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
 
 
 @app.route('/api/patients/<int:patient_id>/visits', methods=['POST'])
@@ -797,7 +847,19 @@ def add_vital_signs(visit_id: int):
         if not isinstance(data, dict):
             return jsonify({'success': False, 'error': 'Invalid JSON data'}), 400
 
-        # Enhanced data cleaning and validation
+        # 🔹 Step 1: Ensure visit exists and is tied to a valid patient
+        visit = DatabaseManager.execute_query(
+            "SELECT id, patient_id FROM patient_visits WHERE id = %s",
+            (visit_id,),
+            fetch=True
+        )
+        if not visit:
+            return jsonify({'success': False, 'error': f'Visit {visit_id} not found'}), 404
+
+        if not visit[0].get('patient_id'):
+            return jsonify({'success': False, 'error': f'Visit {visit_id} has no patient linked'}), 400
+
+        # --- Data cleaning & validation helpers ---
         def clean_value(val):
             if val is None or val == '':
                 return None
@@ -810,22 +872,18 @@ def add_vital_signs(visit_id: int):
         def to_int(val):
             try:
                 cleaned = clean_value(val)
-                if cleaned is None:
-                    return None
-                return int(cleaned) if str(cleaned).strip() != '' else None
+                return int(cleaned) if cleaned is not None else None
             except (ValueError, TypeError):
                 return None
 
         def to_float(val):
             try:
                 cleaned = clean_value(val)
-                if cleaned is None:
-                    return None
-                return float(cleaned) if str(cleaned).strip() != '' else None
+                return float(cleaned) if cleaned is not None else None
             except (ValueError, TypeError):
                 return None
 
-        # Extract and clean all vital signs data
+        # Extract and clean vitals
         systolic_bp = to_int(data.get('systolic_bp'))
         diastolic_bp = to_int(data.get('diastolic_bp'))
         heart_rate = to_int(data.get('heart_rate'))
@@ -836,7 +894,7 @@ def add_vital_signs(visit_id: int):
         blood_glucose = to_float(data.get('blood_glucose'))
         respiratory_rate = to_int(data.get('respiratory_rate'))
 
-        # Calculate BMI
+        # Calculate BMI if possible
         bmi = None
         if height is not None and weight is not None:
             try:
@@ -863,7 +921,7 @@ def add_vital_signs(visit_id: int):
 
         additional_payload = json.dumps(additional) if additional else json.dumps({})
 
-        # Check if we have at least one vital sign measurement
+        # Check if at least one vital or note exists
         has_any_vital = any(
             v is not None for v in [
                 systolic_bp, diastolic_bp, heart_rate, temperature, 
@@ -874,47 +932,42 @@ def add_vital_signs(visit_id: int):
 
         nursing_notes = clean_value(data.get('nursing_notes'))
 
-        # If neither vitals nor notes were provided, return error
         if not has_any_vital and not nursing_notes:
             return jsonify({
                 'success': False, 
                 'error': 'No vital signs measurements or nursing notes provided'
             }), 400
 
-        # Insert vitals if we have any measurements
+        # Insert vitals if provided
         if has_any_vital:
-            try:
-                ok = DatabaseManager.execute_query(
-                    """
-                    INSERT INTO vital_signs (
-                        visit_id, recorded_by, systolic_bp, diastolic_bp, heart_rate, temperature,
-                        weight, height, bmi, oxygen_saturation, blood_glucose, additional_measurements
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        visit_id,
-                        request.current_user['id'],
-                        systolic_bp,
-                        diastolic_bp,
-                        heart_rate,
-                        temperature,
-                        weight,
-                        height,
-                        bmi,
-                        oxygen_saturation,
-                        blood_glucose,
-                        additional_payload,
-                    ),
-                    fetch=False,
-                )
+            ok = DatabaseManager.execute_query(
+                """
+                INSERT INTO vital_signs (
+                    visit_id, recorded_by, systolic_bp, diastolic_bp, heart_rate, temperature,
+                    weight, height, bmi, oxygen_saturation, blood_glucose, additional_measurements
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    visit_id,
+                    request.current_user['id'],
+                    systolic_bp,
+                    diastolic_bp,
+                    heart_rate,
+                    temperature,
+                    weight,
+                    height,
+                    bmi,
+                    oxygen_saturation,
+                    blood_glucose,
+                    additional_payload,
+                ),
+                fetch=False,
+            )
 
-                if not ok:
-                    return jsonify({'success': False, 'error': 'Failed to record vital signs'}), 500
-            except Exception as db_error:
-                logger.error(f"Database error recording vital signs: {db_error}")
-                return jsonify({'success': False, 'error': 'Database error recording vital signs'}), 500
+            if not ok:
+                return jsonify({'success': False, 'error': 'Failed to record vital signs'}), 500
 
-        # Insert nursing assessment note if provided
+        # Insert nursing note if provided
         if nursing_notes:
             try:
                 DatabaseManager.execute_query(
@@ -928,7 +981,7 @@ def add_vital_signs(visit_id: int):
                 )
             except Exception as note_error:
                 logger.error(f"Database error recording nursing notes: {note_error}")
-                # Don't fail the entire request if notes fail
+                # Notes fail doesn’t kill request
 
         return jsonify({
             'success': True, 
@@ -938,6 +991,7 @@ def add_vital_signs(visit_id: int):
     except Exception as e:
         logger.error(f"Add vital signs error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 
 @app.route('/api/patients/<int:patient_id>/visits/latest', methods=['GET'])
 @token_required
