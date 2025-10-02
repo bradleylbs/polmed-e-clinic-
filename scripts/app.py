@@ -3140,6 +3140,338 @@ def sync_palmed_member():
         logger.error(f"PALMED sync error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
+
+@app.route('/api/dashboard/stats', methods=['GET'])
+@token_required
+def get_dashboard_stats():
+    """Get role-specific dashboard statistics"""
+    try:
+        # Get user role and normalize it
+        raw_role = (request.current_user or {}).get('role_name', '')
+        user_role = str(raw_role).strip().lower().replace(' ', '_')
+        user_id = request.current_user.get('id')
+
+        # Base stats structure
+        stats = {
+            'todayPatients': 0,
+            'weeklyPatients': 0,
+            'monthlyPatients': 0,
+            'pendingAppointments': 0,
+            'completedWorkflows': 0,
+            'activeRoutes': 0,
+            'lowStockAlerts': 0,
+            'maintenanceAlerts': 0,
+            'recentActivity': [],
+            'upcomingTasks': [],
+            'roleSpecificMetrics': {}
+        }
+
+        # Role-specific metrics with proper queries
+        if user_role == 'clerk':
+            # Clerk: Track registrations and appointment bookings
+            reg_stats = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(CASE WHEN DATE(p.created_at) = CURDATE() THEN 1 END) AS today_registrations,
+                    COUNT(CASE WHEN DATE(p.created_at) >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS week_registrations,
+                    COUNT(CASE WHEN DATE(p.created_at) >= CURDATE() - INTERVAL 30 DAY THEN 1 END) AS month_registrations
+                FROM patients p
+                WHERE p.created_by = %s
+                """,
+                (user_id,),
+                fetch=True,
+            )
+            
+            booking_stats = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(CASE WHEN DATE(a.booked_at) = CURDATE() AND a.status = 'Booked' THEN 1 END) AS today_bookings,
+                    COUNT(CASE WHEN DATE(a.booked_at) >= CURDATE() - INTERVAL 7 DAY AND a.status = 'Booked' THEN 1 END) AS week_bookings,
+                    COUNT(CASE WHEN DATE(a.booked_at) >= CURDATE() - INTERVAL 30 DAY AND a.status = 'Booked' THEN 1 END) AS month_bookings
+                FROM appointments a
+                """,
+                fetch=True,
+            )
+            
+            reg_data = reg_stats[0] if reg_stats else {}
+            booking_data = booking_stats[0] if booking_stats else {}
+            
+            stats['todayPatients'] = int(reg_data.get('today_registrations', 0))
+            stats['weeklyPatients'] = int(reg_data.get('week_registrations', 0))
+            stats['monthlyPatients'] = int(reg_data.get('month_registrations', 0))
+            
+            stats['roleSpecificMetrics'] = {
+                'todayBookings': int(booking_data.get('today_bookings', 0)),
+                'weekBookings': int(booking_data.get('week_bookings', 0)),
+                'monthBookings': int(booking_data.get('month_bookings', 0)),
+                'metricType': 'registrations'
+            }
+
+        elif user_role == 'nurse':
+            # Nurse: Track vital signs and nursing assessments
+            vitals_stats = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(CASE WHEN DATE(vs.recorded_at) = CURDATE() THEN 1 END) AS today_vitals,
+                    COUNT(CASE WHEN DATE(vs.recorded_at) >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS week_vitals,
+                    COUNT(CASE WHEN DATE(vs.recorded_at) >= CURDATE() - INTERVAL 30 DAY THEN 1 END) AS month_vitals
+                FROM vital_signs vs
+                WHERE vs.recorded_by = %s
+                """,
+                (user_id,),
+                fetch=True,
+            )
+            
+            assessment_stats = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) = CURDATE() THEN cn.visit_id END) AS today_assessments,
+                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 7 DAY THEN cn.visit_id END) AS week_assessments,
+                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 30 DAY THEN cn.visit_id END) AS month_assessments
+                FROM clinical_notes cn
+                WHERE cn.created_by = %s AND cn.note_type = 'Assessment'
+                """,
+                (user_id,),
+                fetch=True,
+            )
+            
+            vitals_data = vitals_stats[0] if vitals_stats else {}
+            assessment_data = assessment_stats[0] if assessment_stats else {}
+            
+            stats['todayPatients'] = int(vitals_data.get('today_vitals', 0))
+            stats['weeklyPatients'] = int(vitals_data.get('week_vitals', 0))
+            stats['monthlyPatients'] = int(vitals_data.get('month_vitals', 0))
+            
+            stats['roleSpecificMetrics'] = {
+                'todayAssessments': int(assessment_data.get('today_assessments', 0)),
+                'weekAssessments': int(assessment_data.get('week_assessments', 0)),
+                'monthAssessments': int(assessment_data.get('month_assessments', 0)),
+                'metricType': 'vitals'
+            }
+
+        elif user_role == 'doctor':
+            # Doctor: Track diagnoses and treatments
+            clinical_stats = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) = CURDATE() THEN cn.visit_id END) AS today_clinical,
+                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 7 DAY THEN cn.visit_id END) AS week_clinical,
+                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 30 DAY THEN cn.visit_id END) AS month_clinical
+                FROM clinical_notes cn
+                WHERE cn.created_by = %s AND cn.note_type IN ('Diagnosis', 'Treatment')
+                """,
+                (user_id,),
+                fetch=True,
+            )
+            
+            diagnosis_stats = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(CASE WHEN DATE(cn.created_at) = CURDATE() AND cn.note_type = 'Diagnosis' THEN 1 END) AS today_diagnosis,
+                    COUNT(CASE WHEN DATE(cn.created_at) = CURDATE() AND cn.note_type = 'Treatment' THEN 1 END) AS today_treatment
+                FROM clinical_notes cn
+                WHERE cn.created_by = %s
+                """,
+                (user_id,),
+                fetch=True,
+            )
+            
+            clinical_data = clinical_stats[0] if clinical_stats else {}
+            diagnosis_data = diagnosis_stats[0] if diagnosis_stats else {}
+            
+            stats['todayPatients'] = int(clinical_data.get('today_clinical', 0))
+            stats['weeklyPatients'] = int(clinical_data.get('week_clinical', 0))
+            stats['monthlyPatients'] = int(clinical_data.get('month_clinical', 0))
+            
+            stats['roleSpecificMetrics'] = {
+                'todayDiagnoses': int(diagnosis_data.get('today_diagnosis', 0)),
+                'todayTreatments': int(diagnosis_data.get('today_treatment', 0)),
+                'metricType': 'clinical'
+            }
+
+        elif user_role == 'social_worker':
+            # Social Worker: Track counseling sessions and referrals
+            counseling_stats = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) = CURDATE() THEN cn.visit_id END) AS today_counseling,
+                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 7 DAY THEN cn.visit_id END) AS week_counseling,
+                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 30 DAY THEN cn.visit_id END) AS month_counseling
+                FROM clinical_notes cn
+                WHERE cn.created_by = %s AND cn.note_type IN ('Counseling', 'Referral')
+                """,
+                (user_id,),
+                fetch=True,
+            )
+            
+            referral_stats = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(CASE WHEN DATE(r.created_at) = CURDATE() THEN 1 END) AS today_referrals,
+                    COUNT(CASE WHEN DATE(r.created_at) >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS week_referrals
+                FROM referrals r
+                WHERE r.created_by = %s
+                """,
+                (user_id,),
+                fetch=True,
+            )
+            
+            counseling_data = counseling_stats[0] if counseling_stats else {}
+            referral_data = referral_stats[0] if referral_stats else {}
+            
+            stats['todayPatients'] = int(counseling_data.get('today_counseling', 0))
+            stats['weeklyPatients'] = int(counseling_data.get('week_counseling', 0))
+            stats['monthlyPatients'] = int(counseling_data.get('month_counseling', 0))
+            
+            stats['roleSpecificMetrics'] = {
+                'todayReferrals': int(referral_data.get('today_referrals', 0)),
+                'weekReferrals': int(referral_data.get('week_referrals', 0)),
+                'metricType': 'counseling'
+            }
+
+        else:
+            # Administrator or unknown role: Overall system metrics
+            system_stats = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(CASE WHEN visit_date = CURDATE() THEN 1 END) AS visits_today,
+                    COUNT(CASE WHEN visit_date >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS visits_7d,
+                    COUNT(CASE WHEN visit_date >= CURDATE() - INTERVAL 30 DAY THEN 1 END) AS visits_30d
+                FROM patient_visits
+                """,
+                fetch=True,
+            )
+            
+            system_data = system_stats[0] if system_stats else {}
+            stats['todayPatients'] = int(system_data.get('visits_today', 0))
+            stats['weeklyPatients'] = int(system_data.get('visits_7d', 0))
+            stats['monthlyPatients'] = int(system_data.get('visits_30d', 0))
+            
+            stats['roleSpecificMetrics'] = {
+                'metricType': 'system_overview'
+            }
+
+        # Common metrics for all roles
+        
+        # Pending appointments for today
+        pending_appointments = DatabaseManager.execute_query(
+            """
+            SELECT COUNT(*) AS pending
+            FROM appointments a
+            JOIN route_locations rl ON a.route_location_id = rl.id
+            WHERE rl.visit_date = CURDATE() AND a.status = 'Booked'
+            """,
+            fetch=True,
+        )
+        stats['pendingAppointments'] = int((pending_appointments or [{}])[0].get('pending') or 0)
+
+        # Completed workflows (user-specific for non-admins)
+        if user_role != 'administrator':
+            completed_wf = DatabaseManager.execute_query(
+                """
+                SELECT COUNT(*) AS completed
+                FROM visit_workflow_progress vwp
+                WHERE vwp.assigned_user_id = %s
+                AND vwp.is_completed = TRUE
+                AND vwp.completed_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+                """,
+                (user_id,),
+                fetch=True,
+            )
+        else:
+            completed_wf = DatabaseManager.execute_query(
+                """
+                SELECT COUNT(*) AS completed
+                FROM visit_workflow_progress
+                WHERE is_completed = TRUE
+                AND completed_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+                """,
+                fetch=True,
+            )
+        stats['completedWorkflows'] = int((completed_wf or [{}])[0].get('completed') or 0)
+
+        # Active routes
+        active_routes = DatabaseManager.execute_query(
+            """
+            SELECT COUNT(*) AS active
+            FROM routes
+            WHERE is_active = TRUE AND CURDATE() BETWEEN start_date AND end_date
+            """,
+            fetch=True,
+        )
+        stats['activeRoutes'] = int((active_routes or [{}])[0].get('active') or 0)
+
+        # Inventory alerts (only for relevant roles)
+        if user_role in ['administrator', 'doctor', 'nurse']:
+            low_stock = DatabaseManager.execute_query(
+                """
+                SELECT COUNT(*) AS low_stock
+                FROM inventory_stock s
+                JOIN consumables c ON s.consumable_id = c.id
+                WHERE s.quantity_current <= c.reorder_level
+                """,
+                fetch=True,
+            )
+            stats['lowStockAlerts'] = int((low_stock or [{}])[0].get('low_stock') or 0)
+
+            maintenance = DatabaseManager.execute_query(
+                """
+                SELECT COUNT(*) AS maintenance_alerts
+                FROM assets
+                WHERE status = 'Maintenance Required'
+                   OR (next_maintenance_date IS NOT NULL AND next_maintenance_date <= CURDATE())
+                """,
+                fetch=True,
+            )
+            stats['maintenanceAlerts'] = int((maintenance or [{}])[0].get('maintenance_alerts') or 0)
+
+        # Recent activity (user-specific)
+        recent_activity = DatabaseManager.execute_query(
+            """
+            SELECT 
+                al.id,
+                al.action,
+                al.table_name,
+                al.created_at,
+                CASE 
+                    WHEN al.table_name = 'patients' THEN 'patient'
+                    WHEN al.table_name = 'appointments' THEN 'appointment'
+                    WHEN al.table_name = 'inventory_usage' THEN 'inventory'
+                    WHEN al.table_name = 'routes' THEN 'route'
+                    ELSE 'system'
+                END AS activity_type,
+                CASE 
+                    WHEN al.action = 'INSERT' THEN CONCAT('Created new ', al.table_name, ' record')
+                    WHEN al.action = 'UPDATE' THEN CONCAT('Updated ', al.table_name, ' record')
+                    ELSE CONCAT(al.action, ' ', al.table_name)
+                END AS description
+            FROM audit_log al
+            WHERE al.user_id = %s
+            AND al.created_at >= CURDATE() - INTERVAL 7 DAY
+            ORDER BY al.created_at DESC
+            LIMIT 10
+            """,
+            (user_id,),
+            fetch=True,
+        )
+
+        stats['recentActivity'] = [
+            {
+                'id': str(activity['id']),
+                'type': activity['activity_type'],
+                'description': activity['description'],
+                'timestamp': activity['created_at'].isoformat() if activity['created_at'] else '',
+                'status': 'completed'
+            }
+            for activity in (recent_activity or [])
+        ]
+
+        return jsonify({'success': True, 'stats': stats}), 200
+
+    except Exception as e:
+        logger.error(f"Dashboard stats error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 if __name__ == '__main__':
     # Disable the reloader to avoid SystemExit in debuggers (parent process exit).
     app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
