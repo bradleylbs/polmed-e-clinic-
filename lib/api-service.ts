@@ -214,11 +214,9 @@ class ApiService {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-    if (!this.token && typeof window !== "undefined") {
-      const storedToken = localStorage.getItem("token")
-      if (storedToken) {
-        this.token = storedToken
-      }
+    // ALWAYS refresh token from localStorage before each request
+    if (typeof window !== "undefined") {
+      this.token = localStorage.getItem("token")
     }
 
     const url = `${this.baseUrl}${endpoint}`
@@ -240,7 +238,7 @@ class ApiService {
       }
     }
 
-    if (this.token && !headers.Authorization) {
+    if (this.token) {
       headers.Authorization = `Bearer ${this.token}`
     }
 
