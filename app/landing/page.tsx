@@ -15,7 +15,7 @@ export default function LandingPage() {
       <header className="sticky top-0 z-40 bg-background/70 backdrop-blur border-b">
         <div className="container mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
           <Link href="/landing" className="flex items-center gap-2">
-            <Image src="/polmed_logo.png" alt="POLMED" width={140} height={40} className="w-36 h-auto" priority />
+            <Image src="/polmed_logo.png" alt="POLMED" width={120} height={36} className="w-28 h-auto" priority />
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm">
             <Link href="#features" className="hover:text-primary">
