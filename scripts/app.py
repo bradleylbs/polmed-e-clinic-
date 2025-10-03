@@ -1740,7 +1740,7 @@ def update_referral(referral_id: int):
 # ============================================================================
 # ROUTE PLANNING ENDPOINTS
 # ============================================================================
-@app.route("/routes", methods=["POST"])
+@app.route("/api/routes", methods=["POST"])
 def create_route():
     data = request.json
     name = data.get("name")
@@ -1776,7 +1776,7 @@ def create_route():
 
     return jsonify({"message": "Route created successfully", "route_id": route_id}), 201
 
-@app.route("/routes", methods=["GET"])
+@app.route("/api/routes", methods=["GET"])
 def get_routes():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -1838,7 +1838,7 @@ def get_routes():
     conn.close()
     return jsonify(list(routes.values()))
 
-@app.route("/routes/<int:route_id>", methods=["GET"])
+@app.route("/api/routes/<int:route_id>", methods=["GET"])
 def get_route(route_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -1901,7 +1901,7 @@ def get_route(route_id):
     conn.close()
     return jsonify(route)
 
-@app.route("/routes/<int:route_id>", methods=["PUT"])
+@app.route("/api/routes/<int:route_id>", methods=["PUT"])
 def update_route(route_id):
     data = request.json
     conn = get_db_connection()
