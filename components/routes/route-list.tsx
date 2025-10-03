@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -23,61 +23,21 @@ import {
   FileText,
   Loader2,
 } from "lucide-react"
-import { apiService, type Route as ApiRoute } from "@/lib/api-service"
-import { offlineManager } from "@/lib/offline-manager"
-import { useToast } from "@/hooks/use-toast"
+import { type Route as ApiRoute } from "@/lib/api-service"
 
 interface RouteListProps {
   userRole: string
+  routes: ApiRoute[]
+  loading: boolean
   onRouteSelect: (route: ApiRoute) => void
   onNewRoute: () => void
   onEditRoute?: (route: ApiRoute) => void
 }
 
-export function RouteList({ userRole, onRouteSelect, onNewRoute, onEditRoute }: RouteListProps) {
-  const [routes, setRoutes] = useState<ApiRoute[]>([])
-  const [loading, setLoading] = useState(true)
+export function RouteList({ userRole, routes, loading, onRouteSelect, onNewRoute, onEditRoute }: RouteListProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [provinceFilter, setProvinceFilter] = useState<string>("all")
-  const { toast } = useToast()
-
-  useEffect(() => {
-    fetchRoutes()
-  }, [])
-
-  const fetchRoutes = async () => {
-    try {
-      setLoading(true)
-      let routesData: any[] = []
-      if (!offlineManager.getConnectionStatus()) {
-        // Offline: get routes from IndexedDB
-  const offlineRoutes = await offlineManager.getData("routes")
-  routesData = Array.isArray(offlineRoutes) ? offlineRoutes : []
-      } else {
-        // Online: get routes from API
-        const response = await apiService.getRoutes()
-        if (response.success && response.data) {
-          routesData = response.data as any[]
-        } else {
-          toast({
-            title: "Error",
-            description: response.error || "Failed to fetch routes",
-            variant: "destructive",
-          })
-        }
-      }
-      setRoutes(routesData)
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to connect to server",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const getRouteName = (route: ApiRoute) => route.name ?? route.route_name ?? "Untitled Route"
   const getRouteProvince = (route: ApiRoute) => route.province ?? route.locations?.[0]?.province ?? ""
@@ -95,7 +55,6 @@ export function RouteList({ userRole, onRouteSelect, onNewRoute, onEditRoute }: 
     const matchesSearch = name.includes(searchTerm.toLowerCase()) || location.includes(searchTerm.toLowerCase())
 
     const matchesStatus = statusFilter === "all" || getRouteStatus(route) === statusFilter
-
     const matchesProvince = provinceFilter === "all" || getRouteProvince(route) === provinceFilter
 
     return matchesSearch && matchesStatus && matchesProvince
