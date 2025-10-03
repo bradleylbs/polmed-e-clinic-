@@ -1741,6 +1741,7 @@ def update_referral(referral_id: int):
 # ROUTE PLANNING ENDPOINTS
 # ============================================================================
 
+
 @app.route('/api/routes', methods=['GET'])
 @token_required
 @role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
