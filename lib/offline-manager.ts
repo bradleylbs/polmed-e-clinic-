@@ -5,6 +5,8 @@ interface SyncData {
   data: any
   timestamp: number
   synced: boolean
+  endpoint?: string
+  method?: string
 }
 
 // Resolve API base for Azure deployments: prefer build-time env, else fall back to same-origin /api
@@ -148,7 +150,14 @@ class OfflineManager {
   }
 
   // Public API to queue an operation when offline or for deferred sync
-  queueOperation(params: { type: SyncData["type"]; action: SyncData["action"]; data: any; id?: string }) {
+  queueOperation(params: {
+    type: SyncData["type"]
+    action: SyncData["action"]
+    data: any
+    id?: string
+    endpoint?: string
+    method?: string
+  }) {
     const opId = params.id || `${params.type}-${(params.data?.id ?? "local")}-${Date.now()}`
     this.addToSyncQueue({
       id: opId,
@@ -157,6 +166,8 @@ class OfflineManager {
       data: params.data,
       timestamp: Date.now(),
       synced: false,
+      endpoint: params.endpoint,
+      method: params.method,
     })
     return opId
   }

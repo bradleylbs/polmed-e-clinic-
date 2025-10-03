@@ -1742,24 +1742,40 @@ def update_referral(referral_id: int):
 # ROUTE PLANNING ENDPOINTS
 # ============================================================================
 
+from flask import jsonify, request
+from datetime import datetime, date
+import logging
+
+logger = logging.getLogger(__name__)
+
 @app.route('/api/routes', methods=['GET'])
 @token_required
 @role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
 def get_routes():
-    """Get routes list with filtering"""
+    """Get routes list with filtering - IMPROVED VERSION"""
     try:
         province = request.args.get('province', '')
         date_from = request.args.get('date_from', '')
         date_to = request.args.get('date_to', '')
         
-        # Return UI-friendly fields to match the frontend expectations
+        logger.info(f"Fetching routes with filters - province: {province}, date_from: {date_from}, date_to: {date_to}")
+        
+        # Enhanced query with better field mapping
         query = """
         SELECT 
             r.id,
-            r.route_name AS name,
+            r.route_name,
+            r.route_name AS name,  -- Alias for frontend compatibility
             r.description,
             r.province,
             r.route_type,
+            r.start_date,
+            r.start_date AS scheduled_date,  -- Alias for frontend
+            r.end_date,
+            r.max_appointments_per_day,
+            r.max_appointments_per_day AS max_appointments,  -- Alias for frontend
+            r.created_by,
+            r.is_active,
             -- Map to UI location_type values for icons
             CASE 
                 WHEN r.route_type = 'Police Stations' THEN 'police_station'
@@ -1767,12 +1783,19 @@ def get_routes():
                 WHEN r.route_type = 'Community Centers' THEN 'community_center'
                 ELSE 'mixed'
             END AS location_type,
-            -- Representative location and times from associated route locations (if any)
-            COALESCE(MIN(l.location_name), r.province) AS location,
-            r.start_date AS scheduled_date,
-            MIN(rl.start_time) AS start_time,
-            MAX(rl.end_time) AS end_time,
-            r.max_appointments_per_day AS max_appointments,
+            -- Representative location from associated route locations (if any)
+            COALESCE(
+                (SELECT l.location_name 
+                 FROM route_locations rl 
+                 JOIN locations l ON rl.location_id = l.id 
+                 WHERE rl.route_id = r.id 
+                 ORDER BY rl.id LIMIT 1),
+                r.province
+            ) AS location,
+            -- Get times from route locations
+            (SELECT MIN(rl.start_time) FROM route_locations rl WHERE rl.route_id = r.id) AS start_time,
+            (SELECT MAX(rl.end_time) FROM route_locations rl WHERE rl.route_id = r.id) AS end_time,
+            -- Status calculation
             CASE 
                 WHEN r.is_active = TRUE AND CURDATE() BETWEEN r.start_date AND r.end_date THEN 'active'
                 WHEN r.is_active = TRUE AND CURDATE() < r.start_date THEN 'published'
@@ -1780,13 +1803,16 @@ def get_routes():
                 WHEN r.is_active = FALSE THEN 'draft'
                 ELSE 'draft'
             END AS status,
+            -- User info
             u.first_name, u.last_name,
-            COUNT(a.id) as total_appointments,
-            COUNT(CASE WHEN a.status = 'Booked' THEN 1 END) as booked_appointments
+            -- Appointment counts
+            COUNT(DISTINCT a.id) as total_appointments,
+            COUNT(DISTINCT CASE WHEN a.status = 'Booked' THEN a.id END) as booked_appointments,
+            -- Location count
+            COUNT(DISTINCT rl.id) as location_count
         FROM routes r
         LEFT JOIN users u ON r.created_by = u.id
         LEFT JOIN route_locations rl ON r.id = rl.route_id
-        LEFT JOIN locations l ON rl.location_id = l.id
         LEFT JOIN appointments a ON rl.id = a.route_location_id
         WHERE r.is_active = TRUE
         """
@@ -1817,55 +1843,89 @@ def get_routes():
                         province_placeholders = ','.join(['%s'] * len(provinces))
                         query += f" AND r.province IN ({province_placeholders})"
                         params.extend(provinces)
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Error parsing geographic restrictions: {e}")
         
-        query += " GROUP BY r.id ORDER BY r.start_date DESC"
+        query += " GROUP BY r.id ORDER BY r.start_date DESC, r.id DESC"
         
+        logger.info(f"Executing query with params: {params}")
         routes = DatabaseManager.execute_query(query, tuple(params), fetch=True)
+        
+        # Transform the data for frontend compatibility
+        transformed_routes = []
+        for route in routes or []:
+            transformed_route = {
+                'id': route['id'],
+                'name': route['name'],  # Use the aliased name
+                'route_name': route['route_name'],
+                'description': route['description'],
+                'province': route['province'],
+                'route_type': route['route_type'],
+                'location_type': route['location_type'],
+                'location': route['location'],
+                'scheduled_date': route['scheduled_date'].isoformat() if route['scheduled_date'] else None,
+                'start_date': route['start_date'].isoformat() if route['start_date'] else None,
+                'end_date': route['end_date'].isoformat() if route['end_date'] else None,
+                'start_time': str(route['start_time']) if route['start_time'] else "08:00",
+                'end_time': str(route['end_time']) if route['end_time'] else "17:00",
+                'max_appointments': route['max_appointments'],
+                'max_appointments_per_day': route['max_appointments_per_day'],
+                'status': route['status'],
+                'created_by': route['created_by'],
+                'is_active': route['is_active'],
+                'location_count': route['location_count'],
+                'total_appointments': route['total_appointments'],
+                'booked_appointments': route['booked_appointments']
+            }
+            transformed_routes.append(transformed_route)
+        
+        logger.info(f"Returning {len(transformed_routes)} routes")
         
         return jsonify({
             'success': True,
-            'routes': routes or []
+            'routes': transformed_routes
         }), 200
         
     except Exception as e:
-        logger.error(f"Get routes error: {e}")
+        logger.error(f"Get routes error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 @app.route('/api/routes', methods=['POST'])
 @token_required
 @role_required(['administrator', 'doctor'])
 def create_route():
-    """Create a new route (minimal persist). Note: route_locations are not created here."""
+    """Create a new route - IMPROVED VERSION"""
     try:
         data = request.get_json() or {}
+        logger.info(f"Creating route with data: {data}")
 
-        route_name = str(data.get('route_name', '')).strip()
+        # Extract and validate required fields
+        route_name = str(data.get('route_name') or data.get('name') or '').strip()
         description = str(data.get('description', '')).strip() or None
-        start_date = data.get('start_date')
+        start_date = data.get('start_date') or data.get('scheduled_date')
         end_date = data.get('end_date')
         province = str(data.get('province', '')).strip()
-        max_per_day = int(data.get('max_appointments_per_day') or 100)
+        max_per_day = int(data.get('max_appointments_per_day') or data.get('max_appointments') or 100)
 
-        # Derive route_type or default
+        # Derive route_type
         route_type_input = (data.get('route_type') or '').strip()
+        location_type = (data.get('location_type') or '').strip().lower()
+        
         valid_types = ['Police Stations', 'Schools', 'Community Centers', 'Mixed']
         if route_type_input in valid_types:
             route_type = route_type_input
         else:
-            # Try to infer from a provided location_type
-            lt = (data.get('location_type') or '').strip().lower()
-            if lt == 'police_station':
+            # Infer from location_type
+            if location_type == 'police_station':
                 route_type = 'Police Stations'
-            elif lt == 'school':
+            elif location_type == 'school':
                 route_type = 'Schools'
-            elif lt == 'community_center':
+            elif location_type == 'community_center':
                 route_type = 'Community Centers'
             else:
                 route_type = 'Mixed'
 
-        # Basic validation
+        # Enhanced validation
         missing = []
         if not route_name: missing.append('route_name')
         if not start_date: missing.append('start_date')
@@ -1873,16 +1933,34 @@ def create_route():
         if not province: missing.append('province')
 
         if missing:
+            logger.warning(f"Missing required fields: {missing}")
             return jsonify({'success': False, 'error': f"Missing required fields: {', '.join(missing)}"}), 400
 
-        insert_sql = (
-            """
-            INSERT INTO routes (route_name, description, start_date, end_date, province, route_type,
-                                max_appointments_per_day, created_by, is_active)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
-            """
-        )
+        # Date validation
+        try:
+            start_date_obj = datetime.fromisoformat(start_date.replace('Z', '+00:00')).date()
+            end_date_obj = datetime.fromisoformat(end_date.replace('Z', '+00:00')).date()
+            
+            if start_date_obj > end_date_obj:
+                return jsonify({'success': False, 'error': 'Start date cannot be after end date'}), 400
+                
+            if start_date_obj < date.today():
+                return jsonify({'success': False, 'error': 'Start date cannot be in the past'}), 400
+                
+        except (ValueError, AttributeError) as e:
+            logger.warning(f"Invalid date format: {e}")
+            return jsonify({'success': False, 'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+
+        insert_sql = """
+            INSERT INTO routes (
+                route_name, description, start_date, end_date, province, 
+                route_type, max_appointments_per_day, created_by, is_active
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+        """
         user_id = request.current_user.get('id')
+        
+        logger.info(f"Inserting route: {route_name}, {province}, {route_type}, {start_date} to {end_date}")
+        
         result = DatabaseManager.execute_query(
             insert_sql,
             (route_name, description, start_date, end_date, province, route_type, max_per_day, user_id),
@@ -1894,41 +1972,47 @@ def create_route():
         if not result:
             return jsonify({'success': False, 'error': 'Failed to create route'}), 500
 
-        # Best-effort fetch of the inserted id (no reliance on LAST_INSERT_ID across connections)
-        sel = DatabaseManager.execute_query(
+        # Get the newly created route ID
+        new_route = DatabaseManager.execute_query(
             "SELECT id FROM routes WHERE route_name = %s AND created_by = %s ORDER BY id DESC LIMIT 1",
             (route_name, user_id),
             fetch=True,
         )
-        new_id = sel[0]['id'] if sel else None
+        
+        if not new_route:
+            return jsonify({'success': False, 'error': 'Failed to retrieve created route'}), 500
+            
+        new_id = new_route[0]['id']
 
-        # Return a UI-friendly record similar to GET /api/routes
-        route_row = DatabaseManager.execute_query(
+        # Return the complete route data
+        route_data = DatabaseManager.execute_query(
             """
             SELECT 
                 r.id,
                 r.route_name AS name,
+                r.route_name,
                 r.description,
                 r.province,
                 r.route_type,
-                CASE 
-                    WHEN r.route_type = 'Police Stations' THEN 'police_station'
-                    WHEN r.route_type = 'Schools' THEN 'school'
-                    WHEN r.route_type = 'Community Centers' THEN 'community_center'
-                    ELSE 'mixed'
-                END AS location_type,
-                COALESCE((SELECT MIN(l.location_name) FROM route_locations rl JOIN locations l ON rl.location_id = l.id WHERE rl.route_id = r.id), r.province) AS location,
                 r.start_date AS scheduled_date,
-                (SELECT MIN(rl.start_time) FROM route_locations rl WHERE rl.route_id = r.id) AS start_time,
-                (SELECT MAX(rl.end_time) FROM route_locations rl WHERE rl.route_id = r.id) AS end_time,
+                r.start_date,
+                r.end_date,
                 r.max_appointments_per_day AS max_appointments,
+                r.max_appointments_per_day,
                 CASE 
                     WHEN r.is_active = TRUE AND CURDATE() BETWEEN r.start_date AND r.end_date THEN 'active'
                     WHEN r.is_active = TRUE AND CURDATE() < r.start_date THEN 'published'
                     WHEN CURDATE() > r.end_date THEN 'completed'
                     WHEN r.is_active = FALSE THEN 'draft'
                     ELSE 'draft'
-                END AS status
+                END AS status,
+                CASE 
+                    WHEN r.route_type = 'Police Stations' THEN 'police_station'
+                    WHEN r.route_type = 'Schools' THEN 'school'
+                    WHEN r.route_type = 'Community Centers' THEN 'community_center'
+                    ELSE 'mixed'
+                END AS location_type,
+                r.province AS location
             FROM routes r
             WHERE r.id = %s
             """,
@@ -1936,8 +2020,23 @@ def create_route():
             fetch=True,
         )
 
-        logger.info(f"Route created successfully with id={new_id}, name={route_name}, province={province}, type={route_type}")
-        return jsonify({'success': True, 'data': route_row[0] if route_row else {'id': new_id}}), 201
+        created_route = route_data[0] if route_data else None
+        
+        if created_route:
+            # Convert dates to strings for JSON
+            if created_route.get('scheduled_date'):
+                created_route['scheduled_date'] = created_route['scheduled_date'].isoformat()
+            if created_route.get('start_date'):
+                created_route['start_date'] = created_route['start_date'].isoformat()
+            if created_route.get('end_date'):
+                created_route['end_date'] = created_route['end_date'].isoformat()
+
+        logger.info(f"Route created successfully with id={new_id}")
+        return jsonify({
+            'success': True, 
+            'data': created_route,
+            'message': 'Route created successfully'
+        }), 201
 
     except Exception as e:
         logger.error(f"Create route error: {e}", exc_info=True)
@@ -1947,43 +2046,52 @@ def create_route():
 @token_required
 @role_required(['administrator', 'doctor'])
 def update_route(route_id: int):
-    """Update an existing route's core fields"""
+    """Update an existing route's core fields - IMPROVED VERSION"""
     try:
         data = request.get_json() or {}
+        logger.info(f"Updating route {route_id} with data: {data}")
 
-        # Only allow updating specific fields
-        name = (data.get('name') or data.get('route_name') or '').strip()
-        description = (data.get('description') or '').strip() or None
-        scheduled_date = data.get('scheduled_date') or data.get('start_date')
-        end_date = data.get('end_date') or scheduled_date
-        province = (data.get('province') or '').strip()
-        route_type = (data.get('route_type') or '').strip() or None
-        max_appointments = data.get('max_appointments') or data.get('max_appointments_per_day')
-
-        # Build dynamic update
+        # Build dynamic update with proper field mapping
         sets = []
         params = []
-        if name:
+        
+        # Map frontend fields to database fields
+        if 'name' in data:
             sets.append('route_name = %s')
-            params.append(name)
-        if description is not None:
+            params.append(str(data['name']).strip())
+        elif 'route_name' in data:
+            sets.append('route_name = %s')
+            params.append(str(data['route_name']).strip())
+            
+        if 'description' in data:
             sets.append('description = %s')
-            params.append(description)
-        if scheduled_date:
+            params.append(str(data['description']).strip() or None)
+            
+        if 'start_date' in data:
             sets.append('start_date = %s')
-            params.append(scheduled_date)
-        if end_date:
+            params.append(data['start_date'])
+        elif 'scheduled_date' in data:
+            sets.append('start_date = %s')
+            params.append(data['scheduled_date'])
+            
+        if 'end_date' in data:
             sets.append('end_date = %s')
-            params.append(end_date)
-        if province:
+            params.append(data['end_date'])
+            
+        if 'province' in data:
             sets.append('province = %s')
-            params.append(province)
-        if route_type:
+            params.append(str(data['province']).strip())
+            
+        if 'route_type' in data:
             sets.append('route_type = %s')
-            params.append(route_type)
-        if max_appointments is not None:
+            params.append(str(data['route_type']).strip())
+            
+        if 'max_appointments' in data:
             sets.append('max_appointments_per_day = %s')
-            params.append(int(max_appointments))
+            params.append(int(data['max_appointments']))
+        elif 'max_appointments_per_day' in data:
+            sets.append('max_appointments_per_day = %s')
+            params.append(int(data['max_appointments_per_day']))
 
         if not sets:
             return jsonify({'success': False, 'error': 'No updatable fields provided'}), 400
@@ -1991,25 +2099,58 @@ def update_route(route_id: int):
         params.append(route_id)
 
         update_sql = f"UPDATE routes SET {', '.join(sets)} WHERE id = %s"
-        res = DatabaseManager.execute_query(update_sql, tuple(params))
-        if res is None:
+        logger.info(f"Executing update: {update_sql} with params: {params}")
+        
+        result = DatabaseManager.execute_query(update_sql, tuple(params), fetch=False)
+        if result is None:
             return jsonify({'success': False, 'error': 'Failed to update route'}), 500
 
-        # Return updated minimal payload
-        row = DatabaseManager.execute_query(
+        # Return updated route data
+        updated_route = DatabaseManager.execute_query(
             """
-            SELECT id, route_name AS name, description, province, start_date AS scheduled_date,
-                   route_type, max_appointments_per_day AS max_appointments
-            FROM routes WHERE id = %s
+            SELECT 
+                id, 
+                route_name AS name, 
+                route_name,
+                description, 
+                province, 
+                start_date AS scheduled_date,
+                start_date,
+                end_date,
+                route_type, 
+                max_appointments_per_day AS max_appointments,
+                max_appointments_per_day,
+                CASE 
+                    WHEN is_active = TRUE AND CURDATE() BETWEEN start_date AND end_date THEN 'active'
+                    WHEN is_active = TRUE AND CURDATE() < start_date THEN 'published'
+                    WHEN CURDATE() > end_date THEN 'completed'
+                    WHEN is_active = FALSE THEN 'draft'
+                    ELSE 'draft'
+                END AS status
+            FROM routes 
+            WHERE id = %s
             """,
             (route_id,),
             fetch=True,
         )
-        data = row[0] if row else { 'id': route_id }
-        return jsonify({'success': True, 'data': data}), 200
+        
+        route_data = updated_route[0] if updated_route else {'id': route_id}
+        
+        # Convert dates to strings
+        if route_data.get('scheduled_date'):
+            route_data['scheduled_date'] = route_data['scheduled_date'].isoformat()
+        if route_data.get('start_date'):
+            route_data['start_date'] = route_data['start_date'].isoformat()
+        if route_data.get('end_date'):
+            route_data['end_date'] = route_data['end_date'].isoformat()
+        
+        logger.info(f"Route {route_id} updated successfully")
+        return jsonify({'success': True, 'data': route_data, 'message': 'Route updated successfully'}), 200
+        
     except Exception as e:
-        logger.error(f"Update route error: {e}")
+        logger.error(f"Update route error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
+    
 # ============================================================================
 # APPOINTMENT BOOKING SYSTEM
 # ============================================================================

@@ -56,7 +56,8 @@ export type RouteLocationDTO = {
   capacity?: number
 }
 
-interface Route {
+// Updated Route interface to match backend
+export interface Route {
   id?: number | string
   name?: string
   route_name?: string
@@ -73,6 +74,12 @@ interface Route {
   max_appointments_per_day?: number
   status?: string
   locations?: RouteLocationDTO[]
+  created_by?: number
+  is_active?: boolean
+  route_type?: string
+  total_appointments?: number
+  booked_appointments?: number
+  location_count?: number
 }
 
 interface Asset {
@@ -213,10 +220,93 @@ export interface VitalSignsRequest {
   additional_measurements?: Record<string, any>
 }
 
+// Appointment interfaces
+export interface Appointment {
+  id?: number
+  route_location_id: number
+  patient_id?: number
+  booked_by_name: string
+  booked_by_phone: string
+  booked_by_email?: string
+  appointment_date: string
+  appointment_time: string
+  status: 'available' | 'booked' | 'completed' | 'cancelled'
+  special_requirements?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface BookAppointmentRequest {
+  patient_id?: number | null
+  booked_by_name: string
+  booked_by_phone: string
+  booked_by_email?: string
+  special_requirements?: string
+}
+
+// User interfaces
+export interface User {
+  id: number
+  email: string
+  first_name: string
+  last_name: string
+  role_name: string
+  is_active: boolean
+  created_at?: string
+  geographic_restrictions?: string
+}
+
+export interface CreateUserRequest {
+  email: string
+  password: string
+  first_name: string
+  last_name: string
+  role_name: string
+  geographic_restrictions?: string
+  is_active?: boolean
+}
+
+export type UpdateUserRequest = Partial<User> & {
+  approve?: boolean
+  status?: string
+  role?: string
+  role_name?: string
+  phone_number?: string
+  assigned_province?: string
+  mp_number?: string
+  username?: string
+  notes?: string
+  geographic_restrictions?: string
+  password?: string
+  [key: string]: unknown
+}
+
+// Clinical Notes interfaces
+export interface ClinicalNote {
+  id: number
+  visit_id: number
+  note_type: "Assessment" | "Diagnosis" | "Treatment" | "Referral" | "Counseling" | "Closure"
+  content: string
+  icd10_codes?: string[]
+  medications_prescribed?: string[]
+  follow_up_required: boolean
+  follow_up_date?: string
+  created_by: number
+  created_at: string
+}
+
+export interface CreateClinicalNoteRequest {
+  note_type: ClinicalNote["note_type"]
+  content: string
+  icd10_codes?: string[]
+  medications_prescribed?: string[]
+  follow_up_required?: boolean
+  follow_up_date?: string
+}
+
 const DEFAULT_REMOTE_API_BASE_URL = "https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net/api"
 
 class ApiService {
-  // Prefer explicit public env var; otherwise use published backend, falling back to same-origin proxy and localhost
   private baseUrl =
     process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
     process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
@@ -259,8 +349,9 @@ class ApiService {
       headers.Authorization = `Bearer ${this.token}`
     }
 
+    console.log(`🚀 API Request: ${options.method || 'GET'} ${url}`, options.body)
+
     try {
-      // Offline-first: if we're offline and this looks like a mutation, queue it and return an optimistic response
       const isBrowser = typeof window !== "undefined"
       const isOffline = isBrowser ? !navigator.onLine : false
       const method = (options.method || "GET").toUpperCase()
@@ -277,26 +368,25 @@ class ApiService {
             endpoint.startsWith("/inventory") ? "inventory" :
             endpoint.startsWith("/appointments") ? "appointment" : "inventory"
 
-          const opId = offlineManager.queueOperation({
+          const opId = await offlineManager.queueOperation({
             type: opType,
             action: (method === "POST" ? "create" : method === "DELETE" ? "delete" : "update") as any,
             data: body ?? {},
+            endpoint,
+            method
           })
 
-          // Return optimistic success; caller UI can reflect pending state if needed
           return {
             success: true,
-            // @ts-expect-error expose minimal shape for UIs that expect ids
-            data: { id: opId, optimistic: true },
+            data: { id: opId, optimistic: true } as any,
             message: "Queued offline; will sync when online.",
           }
         } catch (e) {
           console.warn("Failed to queue offline operation", e)
-          // fall through to network attempt in case we mis-detected
         }
       }
 
-      // Online or read operation: perform fetch with a tiny retry for transient failures
+      // Online request with retry logic
       const attemptFetch = async () =>
         fetch(url, {
           ...options,
@@ -304,50 +394,54 @@ class ApiService {
         })
 
       let response = await attemptFetch()
+      
+      // Retry once for server errors
       if (!response.ok && response.status >= 500) {
-        // one quick retry after 300ms for transient server hiccups
-        await new Promise((r) => setTimeout(r, 300))
+        console.log("🔄 Retrying request due to server error...")
+        await new Promise((r) => setTimeout(r, 500))
         response = await attemptFetch()
       }
 
-      // Handle non-JSON responses
       let data
       try {
         data = await response.json()
+        console.log(`📨 API Response: ${response.status}`, data)
       } catch (e) {
+        console.error("❌ Failed to parse JSON response:", e)
         data = { message: response.statusText }
       }
 
       if (!response.ok) {
+        const errorMessage = (data && (data.error || data.message)) || `HTTP ${response.status}: ${response.statusText}`
+        console.error(`❌ API Error: ${errorMessage}`)
         return {
           success: false,
-          error: (data && (data.error || data.message)) || `HTTP ${response.status}: ${response.statusText}`,
+          error: errorMessage,
         }
       }
 
-      // Unwrap common envelope keys so callers get the array/object directly
-      const body = data && data.data !== undefined ? data.data : data
-      let unwrapped = body
-      if (body && typeof body === "object" && !Array.isArray(body)) {
-        const preferredKeys = [
-          "patients",
-          "routes",
-          "assets",
-          "consumables",
-          "categories",
-          "appointments",
-          "users",
-          "stats",
-          "workflow",
-          "notes",
-          "referrals",
-          "suppliers", // Added for supplier endpoints
-          "sync_status", // for sync/status endpoint
-        ]
-        for (const key of preferredKeys) {
-          if (Object.prototype.hasOwnProperty.call(body, key)) {
-            unwrapped = body[key]
-            break
+      // Enhanced response unwrapping
+      let unwrapped = data
+      if (data && typeof data === 'object') {
+        // Prefer data field if it exists
+        if (data.data !== undefined) {
+          unwrapped = data.data
+        }
+        
+        // For arrays, look for common collection keys
+        if (unwrapped && typeof unwrapped === 'object' && !Array.isArray(unwrapped)) {
+          const collectionKeys = [
+            "routes", "patients", "assets", "consumables", "categories", 
+            "appointments", "users", "stats", "workflow", "notes", 
+            "referrals", "suppliers", "locations", "sync_status",
+            "batches", "alerts", "usage_history"
+          ]
+          
+          for (const key of collectionKeys) {
+            if (Object.prototype.hasOwnProperty.call(unwrapped, key) && Array.isArray(unwrapped[key])) {
+              unwrapped = unwrapped[key]
+              break
+            }
           }
         }
       }
@@ -358,7 +452,7 @@ class ApiService {
         message: data.message,
       }
     } catch (error) {
-      console.error("API Request Error:", error)
+      console.error("💥 API Request Error:", error)
       return {
         success: false,
         error: error instanceof Error ? error.message : "Network error occurred",
@@ -366,7 +460,7 @@ class ApiService {
     }
   }
 
-  // Authentication
+  // ==================== AUTHENTICATION ====================
   async login(credentials: LoginCredentials): Promise<ApiResponse<{ token: string; user: any }>> {
     const response = await this.request<{ token: string; user: any }>("/auth/login", {
       method: "POST",
@@ -392,7 +486,11 @@ class ApiService {
     }
   }
 
-  // Patient Management
+  async getCurrentUser(): Promise<ApiResponse<User>> {
+    return this.request<User>("/auth/me")
+  }
+
+  // ==================== PATIENT MANAGEMENT ====================
   async getPatients(params?: Record<string, string>): Promise<ApiResponse<Patient[]>> {
     const queryString = params ? `?${new URLSearchParams(params)}` : ""
     return this.request<Patient[]>(`/patients${queryString}`)
@@ -420,7 +518,7 @@ class ApiService {
     return this.request<any>(`/patients/search-member/${medicalAidNumber}`)
   }
 
-  // Visits and Vital Signs
+  // ==================== VISITS AND VITAL SIGNS ====================
   async createVisit(
     patientId: number,
     payload: {
@@ -469,10 +567,14 @@ class ApiService {
     return this.request<{ count: number; latest: any }>(`/visits/${visitId}/vital-signs`)
   }
 
-  // Route Management
+  // ==================== ROUTE MANAGEMENT ====================
   async getRoutes(params?: Record<string, string>): Promise<ApiResponse<Route[]>> {
     const queryString = params ? `?${new URLSearchParams(params)}` : ""
     return this.request<Route[]>(`/routes${queryString}`)
+  }
+
+  async getRoute(id: number): Promise<ApiResponse<Route>> {
+    return this.request<Route>(`/routes/${id}`)
   }
 
   async createRoute(payload: {
@@ -490,23 +592,59 @@ class ApiService {
     location?: string
     locations?: RouteLocationDTO[]
   }): Promise<ApiResponse<Route>> {
+    // Ensure required fields are present
+    const routePayload = {
+      route_name: payload.route_name || payload.name,
+      description: payload.description,
+      start_date: payload.start_date,
+      end_date: payload.end_date,
+      province: payload.province,
+      route_type: payload.route_type || 
+        (payload.location_type === 'police_station' ? 'Police Stations' :
+         payload.location_type === 'school' ? 'Schools' :
+         payload.location_type === 'community_center' ? 'Community Centers' : 'Mixed'),
+      max_appointments_per_day: payload.max_appointments_per_day || payload.max_appointments || 100,
+      ...(payload.status && { status: payload.status })
+    }
+
+    console.log("📤 Creating route with payload:", routePayload)
+
     return this.request<Route>("/routes", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(routePayload),
     })
   }
 
   async updateRoute(id: number, route: Partial<Route>): Promise<ApiResponse<Route>> {
+    // Clean the payload for backend
+    const updatePayload: any = {}
+    
+    if (route.name !== undefined) updatePayload.route_name = route.name
+    if (route.description !== undefined) updatePayload.description = route.description
+    if (route.start_date !== undefined) updatePayload.start_date = route.start_date
+    if (route.end_date !== undefined) updatePayload.end_date = route.end_date
+    if (route.province !== undefined) updatePayload.province = route.province
+    if (route.max_appointments !== undefined) updatePayload.max_appointments_per_day = route.max_appointments
+    if (route.route_type !== undefined) updatePayload.route_type = route.route_type
+
+    console.log("📤 Updating route with payload:", updatePayload)
+
     return this.request<Route>(`/routes/${id}`, {
       method: "PUT",
-      body: JSON.stringify(route),
+      body: JSON.stringify(updatePayload),
     })
   }
 
-  // Appointments (internal list by route or all)
-  async getAppointments(routeId?: number): Promise<ApiResponse<any[]>> {
+  async deleteRoute(id: number): Promise<ApiResponse<void>> {
+    return this.request<void>(`/routes/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  // ==================== APPOINTMENTS ====================
+  async getAppointments(routeId?: number): Promise<ApiResponse<Appointment[]>> {
     const endpoint = routeId ? `/appointments?route_id=${routeId}` : "/appointments"
-    return this.request<any[]>(endpoint)
+    return this.request<Appointment[]>(endpoint)
   }
 
   async bookAppointment(appointment: any): Promise<ApiResponse<any>> {
@@ -536,20 +674,27 @@ class ApiService {
     return this.request<any[]>(`/appointments/available${qs}`)
   }
 
-  async bookAppointmentPublic(appointmentId: number, payload: {
-    patient_id?: number | null
-    booked_by_name: string
-    booked_by_phone: string
-    booked_by_email?: string
-    special_requirements?: string
-  }): Promise<ApiResponse<{ booking_reference: string }>> {
+  async bookAppointmentPublic(appointmentId: number, payload: BookAppointmentRequest): Promise<ApiResponse<{ booking_reference: string }>> {
     return this.request<{ booking_reference: string }>(`/appointments/${appointmentId}/book`, {
       method: "POST",
       body: JSON.stringify(payload),
     })
   }
 
-  // Inventory Management - Enhanced methods
+  async updateAppointment(id: number, payload: Partial<Appointment>): Promise<ApiResponse<Appointment>> {
+    return this.request<Appointment>(`/appointments/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async cancelAppointment(id: number): Promise<ApiResponse<void>> {
+    return this.request<void>(`/appointments/${id}/cancel`, {
+      method: "POST",
+    })
+  }
+
+  // ==================== INVENTORY MANAGEMENT ====================
   async getAssets(params?: Record<string, string>): Promise<ApiResponse<any[]>> {
     const queryString = params ? `?${new URLSearchParams(params)}` : ""
     return this.request<any[]>(`/inventory/assets${queryString}`)
@@ -628,7 +773,7 @@ class ApiService {
     })
   }
 
-  // Supplier Management
+  // ==================== SUPPLIER MANAGEMENT ====================
   async getSuppliers(params?: Record<string, string>): Promise<ApiResponse<Supplier[]>> {
     const queryString = params ? `?${new URLSearchParams(params)}` : ""
     return this.request<Supplier[]>(`/inventory/suppliers${queryString}`)
@@ -656,7 +801,7 @@ class ApiService {
     })
   }
 
-  // Stock Management - NEW METHODS
+  // ==================== STOCK MANAGEMENT ====================
   async receiveInventoryStock(stockData: StockReceiptRequest): Promise<ApiResponse<any>> {
     return this.request<any>("/inventory/stock/receive", {
       method: "POST",
@@ -701,7 +846,7 @@ class ApiService {
     return this.request<any[]>(`/inventory/usage/history${queryString}`)
   }
 
-  // Inventory Alerts and Reports
+  // ==================== INVENTORY ALERTS AND REPORTS ====================
   async getExpiryAlerts(daysAhead = 90, alertLevel?: string): Promise<ApiResponse<any[]>> {
     const params = new URLSearchParams({ days_ahead: daysAhead.toString() })
     if (alertLevel) {
@@ -727,32 +872,38 @@ class ApiService {
     return this.request<any>(`/inventory/reports/turnover?${params}`)
   }
 
-  // Dashboard and Analytics - Updated for role-specific stats
+  // ==================== DASHBOARD AND ANALYTICS ====================
   async getDashboardStats(): Promise<ApiResponse<DashboardStats>> {
     return this.request<DashboardStats>("/dashboard/stats")
   }
 
-  // User Management
-  async getUsers(params?: Record<string, string>): Promise<ApiResponse<any[]>> {
+  // ==================== USER MANAGEMENT ====================
+  async getUsers(params?: Record<string, string>): Promise<ApiResponse<User[]>> {
     const queryString = params ? `?${new URLSearchParams(params)}` : ""
-    return this.request<any[]>(`/users${queryString}`)
+    return this.request<User[]>(`/users${queryString}`)
   }
 
-  async createUser(user: any): Promise<ApiResponse<any>> {
-    return this.request<any>("/users", {
+  async createUser(user: CreateUserRequest): Promise<ApiResponse<User>> {
+    return this.request<User>("/users", {
       method: "POST",
       body: JSON.stringify(user),
     })
   }
 
-  async updateUser(id: number, user: any): Promise<ApiResponse<any>> {
-    return this.request<any>(`/users/${id}`, {
+  async updateUser(id: number, user: UpdateUserRequest): Promise<ApiResponse<User>> {
+    return this.request<User>(`/users/${id}`, {
       method: "PUT",
       body: JSON.stringify(user),
     })
   }
 
-  // Offline Sync
+  async deleteUser(id: number): Promise<ApiResponse<void>> {
+    return this.request<void>(`/users/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  // ==================== OFFLINE SYNC ====================
   async uploadOfflineData(data: any): Promise<ApiResponse<any>> {
     return this.request<any>("/sync/upload", {
       method: "POST",
@@ -765,7 +916,11 @@ class ApiService {
     return this.request<any>(endpoint)
   }
 
-  // Referrals
+  async getSyncStatus(): Promise<ApiResponse<{ last_sync: string; pending_operations: number }>> {
+    return this.request<{ last_sync: string; pending_operations: number }>("/sync/status")
+  }
+
+  // ==================== REFERRALS ====================
   async listReferrals(patientId: number): Promise<ApiResponse<Referral[]>> {
     return this.request<Referral[]>(`/patients/${patientId}/referrals`, { method: "GET" })
   }
@@ -784,32 +939,150 @@ class ApiService {
     })
   }
 
-  // Clinical notes and workflow
+  async getReferral(referralId: number): Promise<ApiResponse<Referral>> {
+    return this.request<Referral>(`/referrals/${referralId}`)
+  }
+
+  // ==================== CLINICAL NOTES AND WORKFLOW ====================
   async getWorkflowStatus(visitId: number): Promise<ApiResponse<any>> {
     return this.request<any>(`/visits/${visitId}/workflow/status`)
   }
 
-  async getClinicalNotes(visitId: number): Promise<ApiResponse<any[]>> {
-    return this.request<any[]>(`/visits/${visitId}/clinical-notes`)
+  async getClinicalNotes(visitId: number): Promise<ApiResponse<ClinicalNote[]>> {
+    return this.request<ClinicalNote[]>(`/visits/${visitId}/clinical-notes`)
   }
 
   async createClinicalNote(
     visitId: number,
-    payload: {
-      note_type: "Assessment" | "Diagnosis" | "Treatment" | "Referral" | "Counseling" | "Closure"
-      content: string
-      icd10_codes?: string[]
-      medications_prescribed?: string[]
-      follow_up_required?: boolean
-      follow_up_date?: string
-    },
-  ): Promise<ApiResponse<any>> {
-    return this.request<any>(`/visits/${visitId}/clinical-notes`, {
+    payload: CreateClinicalNoteRequest,
+  ): Promise<ApiResponse<ClinicalNote>> {
+    return this.request<ClinicalNote>(`/visits/${visitId}/clinical-notes`, {
       method: "POST",
       body: JSON.stringify(payload),
     })
   }
+
+  async updateClinicalNote(
+    noteId: number,
+    payload: Partial<CreateClinicalNoteRequest>,
+  ): Promise<ApiResponse<ClinicalNote>> {
+    return this.request<ClinicalNote>(`/clinical-notes/${noteId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  // ==================== LOCATIONS MANAGEMENT ====================
+  async getLocations(params?: Record<string, string>): Promise<ApiResponse<any[]>> {
+    const queryString = params ? `?${new URLSearchParams(params)}` : ""
+    return this.request<any[]>(`/locations${queryString}`)
+  }
+
+  async createLocation(location: {
+    location_name: string
+    location_type: string
+    address: string
+    city: string
+    province: string
+    contact_person?: string
+    contact_phone?: string
+    capacity?: number
+    is_active?: boolean
+  }): Promise<ApiResponse<any>> {
+    return this.request<any>("/locations", {
+      method: "POST",
+      body: JSON.stringify(location),
+    })
+  }
+
+  async updateLocation(id: number, location: Partial<any>): Promise<ApiResponse<any>> {
+    return this.request<any>(`/locations/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(location),
+    })
+  }
+
+  // ==================== ROUTE LOCATIONS ====================
+  async getRouteLocations(routeId: number): Promise<ApiResponse<any[]>> {
+    return this.request<any[]>(`/routes/${routeId}/locations`)
+  }
+
+  async addRouteLocation(
+    routeId: number,
+    payload: {
+      location_id: number
+      visit_date: string
+      start_time: string
+      end_time: string
+      max_appointments?: number
+    }
+  ): Promise<ApiResponse<any>> {
+    return this.request<any>(`/routes/${routeId}/locations`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async updateRouteLocation(
+    routeLocationId: number,
+    payload: Partial<{
+      visit_date: string
+      start_time: string
+      end_time: string
+      max_appointments: number
+    }>
+  ): Promise<ApiResponse<any>> {
+    return this.request<any>(`/route-locations/${routeLocationId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async deleteRouteLocation(routeLocationId: number): Promise<ApiResponse<void>> {
+    return this.request<void>(`/route-locations/${routeLocationId}`, {
+      method: "DELETE",
+    })
+  }
+
+  // ==================== HEALTH CHECKS ====================
+  async healthCheck(): Promise<ApiResponse<{ status: string; timestamp: string }>> {
+    return this.request<{ status: string; timestamp: string }>("/health")
+  }
+
+  // ==================== UTILITY METHODS ====================
+  setToken(token: string): void {
+    this.token = token
+    if (typeof window !== "undefined") {
+      localStorage.setItem("token", token)
+    }
+  }
+
+  getToken(): string | null {
+    return this.token
+  }
+
+  clearToken(): void {
+    this.token = null
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("token")
+      localStorage.removeItem("user")
+    }
+  }
+
+  // Check if user is authenticated
+  isAuthenticated(): boolean {
+    return !!this.token
+  }
+
+  // Get stored user data
+  getStoredUser(): User | null {
+    if (typeof window !== "undefined") {
+      const userStr = localStorage.getItem("user")
+      return userStr ? JSON.parse(userStr) : null
+    }
+    return null
+  }
 }
 
 export const apiService = new ApiService()
-export type { Patient, Route, Asset, Consumable, DashboardStats }
+export type { Patient, Asset, Consumable, DashboardStats }
