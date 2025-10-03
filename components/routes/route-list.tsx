@@ -79,14 +79,24 @@ export function RouteList({ userRole, onRouteSelect, onNewRoute, onEditRoute }: 
     }
   }
 
+  const getRouteName = (route: ApiRoute) => route.name ?? route.route_name ?? "Untitled Route"
+  const getRouteProvince = (route: ApiRoute) => route.province ?? route.locations?.[0]?.province ?? ""
+  const getRouteLocation = (route: ApiRoute) => route.location ?? route.locations?.[0]?.name ?? "Location TBD"
+  const getRouteStatus = (route: ApiRoute) => route.status ?? "draft"
+  const getRouteLocationType = (route: ApiRoute) => route.location_type ?? route.locations?.[0]?.type
+  const getRouteDate = (route: ApiRoute) => route.scheduled_date ?? route.start_date ?? route.end_date ?? null
+  const getRouteCapacity = (route: ApiRoute) => route.max_appointments ?? route.max_appointments_per_day ?? 0
+  const getRouteStartTime = (route: ApiRoute) => route.start_time ?? "08:00"
+  const getRouteEndTime = (route: ApiRoute) => route.end_time ?? "17:00"
+
   const filteredRoutes = routes.filter((route) => {
-    const matchesSearch =
-      route.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      route.location.toLowerCase().includes(searchTerm.toLowerCase())
+    const name = getRouteName(route).toLowerCase()
+    const location = getRouteLocation(route).toLowerCase()
+    const matchesSearch = name.includes(searchTerm.toLowerCase()) || location.includes(searchTerm.toLowerCase())
 
-    const matchesStatus = statusFilter === "all" || route.status === statusFilter
+    const matchesStatus = statusFilter === "all" || getRouteStatus(route) === statusFilter
 
-    const matchesProvince = provinceFilter === "all" || route.province === provinceFilter
+    const matchesProvince = provinceFilter === "all" || getRouteProvince(route) === provinceFilter
 
     return matchesSearch && matchesStatus && matchesProvince
   })
@@ -126,7 +136,7 @@ export function RouteList({ userRole, onRouteSelect, onNewRoute, onEditRoute }: 
     }
   }
 
-  const getLocationTypeIcon = (type: string) => {
+  const getLocationTypeIcon = (type?: string) => {
     switch (type) {
       case "police_station":
         return <Shield className="w-4 h-4 text-blue-600" />
@@ -141,7 +151,12 @@ export function RouteList({ userRole, onRouteSelect, onNewRoute, onEditRoute }: 
 
   const getUniqueProvinces = () => {
     const provinces = new Set<string>()
-    routes.forEach((route) => provinces.add(route.province))
+    routes.forEach((route) => {
+      const province = getRouteProvince(route)
+      if (province) {
+        provinces.add(province)
+      }
+    })
     return Array.from(provinces).sort()
   }
 
@@ -229,30 +244,35 @@ export function RouteList({ userRole, onRouteSelect, onNewRoute, onEditRoute }: 
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <h3 className="font-semibold text-foreground text-lg">{route.name}</h3>
-                      {getStatusBadge(route.status)}
+                      <h3 className="font-semibold text-foreground text-lg">{getRouteName(route)}</h3>
+                      {getStatusBadge(getRouteStatus(route))}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-muted-foreground" />
-                        <span>{new Date(route.scheduled_date).toLocaleDateString()}</span>
+                        <span>
+                          {(() => {
+                            const dateValue = getRouteDate(route)
+                            return dateValue ? new Date(dateValue).toLocaleDateString() : "Date TBD"
+                          })()}
+                        </span>
                       </div>
 
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-muted-foreground" />
-                        <span>{route.location}</span>
+                        <span>{getRouteLocation(route)}</span>
                       </div>
 
                       <div className="flex items-center gap-2">
                         <Users className="w-4 h-4 text-muted-foreground" />
-                        <span>{route.max_appointments} capacity</span>
+                        <span>{getRouteCapacity(route)} capacity</span>
                       </div>
 
                       <div className="flex items-center gap-2">
                         <Clock className="w-4 h-4 text-muted-foreground" />
                         <span>
-                          {route.start_time} - {route.end_time}
+                          {getRouteStartTime(route)} - {getRouteEndTime(route)}
                         </span>
                       </div>
                     </div>
@@ -279,9 +299,9 @@ export function RouteList({ userRole, onRouteSelect, onNewRoute, onEditRoute }: 
                 {/* Location Details */}
                 <div className="border-t pt-4">
                   <div className="flex items-center gap-2">
-                    {getLocationTypeIcon(route.location_type)}
+                    {getLocationTypeIcon(getRouteLocationType(route))}
                     <Badge variant="outline" className="flex items-center gap-1">
-                      <span>{route.province}</span>
+                      <span>{getRouteProvince(route) || "Province TBD"}</span>
                     </Badge>
                   </div>
                 </div>

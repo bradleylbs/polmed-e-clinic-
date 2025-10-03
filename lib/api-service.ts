@@ -44,18 +44,35 @@ export interface CreatePatientRequest {
   current_medications?: string[] | string
 }
 
+export type RouteLocationDTO = {
+  id?: number | string
+  name?: string
+  type?: string
+  city?: string
+  address?: string
+  contact_person?: string
+  contact_phone?: string
+  province?: string
+  capacity?: number
+}
+
 interface Route {
-  id?: number
-  name: string
+  id?: number | string
+  name?: string
+  route_name?: string
   description?: string
-  location: string
-  location_type: string
-  province: string
-  scheduled_date: string
+  location?: string
+  location_type?: string
+  province?: string
+  scheduled_date?: string
+  start_date?: string
+  end_date?: string
   start_time?: string
   end_time?: string
-  max_appointments: number
-  status: string
+  max_appointments?: number
+  max_appointments_per_day?: number
+  status?: string
+  locations?: RouteLocationDTO[]
 }
 
 interface Asset {
@@ -467,6 +484,11 @@ class ApiService {
     route_type?: "Police Stations" | "Schools" | "Community Centers" | "Mixed"
     location_type?: "police_station" | "school" | "community_center"
     max_appointments_per_day?: number
+    max_appointments?: number
+    status?: string
+    name?: string
+    location?: string
+    locations?: RouteLocationDTO[]
   }): Promise<ApiResponse<Route>> {
     return this.request<Route>("/routes", {
       method: "POST",

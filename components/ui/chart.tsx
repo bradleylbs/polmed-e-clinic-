@@ -183,6 +183,9 @@ function ChartTooltipContent({
           const key = `${nameKey || item.name || item.dataKey || "value"}`
           const itemConfig = getPayloadConfigFromPayload(config, item, key)
           const indicatorColor = color || item.payload.fill || item.color
+          const resolvedColor =
+            indicatorColor ||
+            (itemConfig?.color ? String(itemConfig.color) : `var(--color-${key})`)
 
           return (
             <div
@@ -200,23 +203,10 @@ function ChartTooltipContent({
                     <itemConfig.icon />
                   ) : (
                     !hideIndicator && (
-                      <div
-                        className={cn(
-                          "shrink-0 rounded-[2px] border-(--color-border) bg-(--color-bg)",
-                          {
-                            "h-2.5 w-2.5": indicator === "dot",
-                            "w-1": indicator === "line",
-                            "w-0 border-[1.5px] border-dashed bg-transparent":
-                              indicator === "dashed",
-                            "my-0.5": nestLabel && indicator === "dashed",
-                          }
-                        )}
-                        style={
-                          {
-                            "--color-bg": indicatorColor,
-                            "--color-border": indicatorColor,
-                          } as React.CSSProperties
-                        }
+                      <TooltipIndicator
+                        indicator={indicator}
+                        color={resolvedColor}
+                        nestLabel={nestLabel}
                       />
                     )
                   )}
@@ -246,6 +236,63 @@ function ChartTooltipContent({
       </div>
     </div>
   )
+}
+
+function TooltipIndicator({
+  indicator,
+  color,
+  nestLabel,
+}: {
+  indicator: "line" | "dot" | "dashed"
+  color: string
+  nestLabel: boolean
+}) {
+  const baseClass = cn("shrink-0", nestLabel && indicator === "dashed" && "my-0.5")
+
+  switch (indicator) {
+    case "line":
+      return (
+        <svg
+          className={cn(baseClass, "h-2.5 w-1")}
+          viewBox="0 0 4 10"
+          role="presentation"
+          aria-hidden="true"
+        >
+          <rect x="0" y="0" width="4" height="10" rx="1" fill={color} />
+        </svg>
+      )
+    case "dashed":
+      return (
+        <svg
+          className={cn(baseClass, "h-2.5 w-2")}
+          viewBox="0 0 6 10"
+          role="presentation"
+          aria-hidden="true"
+        >
+          <line
+            x1="1"
+            y1="5"
+            x2="5"
+            y2="5"
+            stroke={color}
+            strokeWidth="1.5"
+            strokeDasharray="2 2"
+            strokeLinecap="round"
+          />
+        </svg>
+      )
+    default:
+      return (
+        <svg
+          className={cn(baseClass, "h-2.5 w-2.5")}
+          viewBox="0 0 10 10"
+          role="presentation"
+          aria-hidden="true"
+        >
+          <circle cx="5" cy="5" r="5" fill={color} />
+        </svg>
+      )
+  }
 }
 
 const ChartLegend = RechartsPrimitive.Legend
@@ -289,12 +336,14 @@ function ChartLegendContent({
             {itemConfig?.icon && !hideIcon ? (
               <itemConfig.icon />
             ) : (
-              <div
-                className="h-2 w-2 shrink-0 rounded-[2px]"
-                style={{
-                  backgroundColor: item.color,
-                }}
-              />
+              <svg
+                className="h-2 w-2 shrink-0"
+                viewBox="0 0 8 8"
+                role="presentation"
+                aria-hidden="true"
+              >
+                <rect width="8" height="8" rx="2" fill={item.color || "currentColor"} />
+              </svg>
             )}
             {itemConfig?.label}
           </div>
