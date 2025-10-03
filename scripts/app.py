@@ -1737,9 +1737,11 @@ def update_referral(referral_id: int):
         logger.error(f"Update referral error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
+
 # ============================================================================
 # ROUTE PLANNING ENDPOINTS
 # ============================================================================
+
 @app.route('/api/routes', methods=['GET'])
 @token_required
 @role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
@@ -1835,7 +1837,7 @@ def get_routes():
 @token_required
 @role_required(['administrator', 'doctor'])
 def create_route():
-    """Create a new route and return complete route details"""
+    """Create a new route (minimal persist). Note: route_locations are not created here."""
     try:
         data = request.get_json() or {}
 
@@ -1873,11 +1875,13 @@ def create_route():
         if missing:
             return jsonify({'success': False, 'error': f"Missing required fields: {', '.join(missing)}"}), 400
 
-        insert_sql = """
-        INSERT INTO routes (route_name, description, start_date, end_date, province, route_type,
-                            max_appointments_per_day, created_by, is_active)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
-        """
+        insert_sql = (
+            """
+            INSERT INTO routes (route_name, description, start_date, end_date, province, route_type,
+                                max_appointments_per_day, created_by, is_active)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+            """
+        )
         user_id = request.current_user.get('id')
         result = DatabaseManager.execute_query(
             insert_sql,
@@ -1890,7 +1894,7 @@ def create_route():
         if not result:
             return jsonify({'success': False, 'error': 'Failed to create route'}), 500
 
-        # Get the newly created route ID
+        # Best-effort fetch of the inserted id (no reliance on LAST_INSERT_ID across connections)
         sel = DatabaseManager.execute_query(
             "SELECT id FROM routes WHERE route_name = %s AND created_by = %s ORDER BY id DESC LIMIT 1",
             (route_name, user_id),
@@ -1898,10 +1902,7 @@ def create_route():
         )
         new_id = sel[0]['id'] if sel else None
 
-        if not new_id:
-            return jsonify({'success': False, 'error': 'Failed to retrieve created route ID'}), 500
-
-        # Return complete route details matching GET /api/routes format
+        # Return a UI-friendly record similar to GET /api/routes
         route_row = DatabaseManager.execute_query(
             """
             SELECT 
@@ -1916,16 +1917,8 @@ def create_route():
                     WHEN r.route_type = 'Community Centers' THEN 'community_center'
                     ELSE 'mixed'
                 END AS location_type,
-                COALESCE(
-                    (SELECT l.location_name 
-                     FROM route_locations rl 
-                     JOIN locations l ON rl.location_id = l.id 
-                     WHERE rl.route_id = r.id 
-                     LIMIT 1), 
-                    r.province
-                ) AS location,
+                COALESCE((SELECT MIN(l.location_name) FROM route_locations rl JOIN locations l ON rl.location_id = l.id WHERE rl.route_id = r.id), r.province) AS location,
                 r.start_date AS scheduled_date,
-                r.end_date,
                 (SELECT MIN(rl.start_time) FROM route_locations rl WHERE rl.route_id = r.id) AS start_time,
                 (SELECT MAX(rl.end_time) FROM route_locations rl WHERE rl.route_id = r.id) AS end_time,
                 r.max_appointments_per_day AS max_appointments,
@@ -1935,59 +1928,16 @@ def create_route():
                     WHEN CURDATE() > r.end_date THEN 'completed'
                     WHEN r.is_active = FALSE THEN 'draft'
                     ELSE 'draft'
-                END AS status,
-                u.first_name, u.last_name,
-                COUNT(DISTINCT a.id) as total_appointments,
-                COUNT(CASE WHEN a.status = 'Booked' THEN 1 END) as booked_appointments
+                END AS status
             FROM routes r
-            LEFT JOIN users u ON r.created_by = u.id
-            LEFT JOIN route_locations rl ON r.id = rl.route_id
-            LEFT JOIN locations l ON rl.location_id = l.id
-            LEFT JOIN appointments a ON rl.id = a.route_location_id
             WHERE r.id = %s
-            GROUP BY r.id, u.first_name, u.last_name
             """,
             (new_id,),
             fetch=True,
         )
-
-        if not route_row:
-            return jsonify({'success': False, 'error': 'Failed to retrieve created route details'}), 500
-
-        # Get locations for this route
-        location_data = DatabaseManager.execute_query(
-            """
-            SELECT 
-                l.id,
-                l.location_name as name,
-                lt.type_name as type,
-                l.city,
-                l.address,
-                l.contact_person,
-                l.contact_phone,
-                l.province,
-                l.capacity
-            FROM route_locations rl
-            JOIN locations l ON rl.location_id = l.id
-            LEFT JOIN location_types lt ON l.location_type_id = lt.id
-            WHERE rl.route_id = %s
-            """,
-            (new_id,),
-            fetch=True,
-        )
-
-        response_data = route_row[0]
-        if location_data:
-            response_data['locations'] = location_data
-        else:
-            response_data['locations'] = []
 
         logger.info(f"Route created successfully with id={new_id}, name={route_name}, province={province}, type={route_type}")
-        return jsonify({
-            'success': True, 
-            'data': response_data,
-            'message': 'Route created successfully'
-        }), 201
+        return jsonify({'success': True, 'data': route_row[0] if route_row else {'id': new_id}}), 201
 
     except Exception as e:
         logger.error(f"Create route error: {e}", exc_info=True)
@@ -2060,9 +2010,6 @@ def update_route(route_id: int):
     except Exception as e:
         logger.error(f"Update route error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-
-
 # ============================================================================
 # APPOINTMENT BOOKING SYSTEM
 # ============================================================================
