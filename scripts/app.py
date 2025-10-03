@@ -938,12 +938,10 @@ def add_vital_signs(visit_id: int):
     except Exception as e:
         logger.error(f"Add vital signs error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
 @app.route('/api/visits/<int:visit_id>/vital-signs', methods=['GET'])
 @token_required
 @role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
 def get_visit_vitals(visit_id: int):
-    """Return vitals summary for a visit"""
     try:
         summary = DatabaseManager.execute_query(
             "SELECT COUNT(*) AS count FROM vital_signs WHERE visit_id = %s",
@@ -962,7 +960,20 @@ def get_visit_vitals(visit_id: int):
             (visit_id,),
             fetch=True,
         )
-        # Provide last non-null values to help the UI display Pulse/Temp even when the latest entry omitted them
+
+        # Fetch last Assessment note (nurse assessment)
+        assessment = DatabaseManager.execute_query(
+            """
+            SELECT id, content, created_at, created_by
+            FROM clinical_notes
+            WHERE visit_id = %s AND note_type = 'Assessment'
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (visit_id,),
+            fetch=True,
+        )
+
         last_non_null = DatabaseManager.execute_query(
             """
             SELECT
@@ -972,16 +983,18 @@ def get_visit_vitals(visit_id: int):
             (visit_id, visit_id),
             fetch=True,
         )
-        last_non_null_payload = _to_jsonable(last_non_null[0]) if last_non_null else None
+
         payload = {
             'count': (summary[0]['count'] if summary else 0),
             'latest': (_to_jsonable(latest[0]) if latest else None),
-            'last_non_null': last_non_null_payload,
+            'last_non_null': _to_jsonable(last_non_null[0]) if last_non_null else None,
+            'nurse_assessment': _to_jsonable(assessment[0]) if assessment else None
         }
         return jsonify({'success': True, 'data': payload}), 200
     except Exception as e:
         logger.error(f"Get visit vitals error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 
 # ============================================================================
 # ENHANCED CLINICAL NOTES MANAGEMENT  

@@ -10,9 +10,9 @@ import { CalendarDays, Stethoscope, ShieldCheck, Truck, Activity, Users, ArrowRi
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="min-h-screen bg-background text-foreground pt-24">
       {/* Top Nav */}
-      <header className="sticky top-0 z-40 bg-background/70 backdrop-blur border-b">
+      <header className="fixed top-0 left-0 right-0 z-40 bg-background/80 backdrop-blur border-b">
         <div className="container mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
           <Link href="/landing" className="flex items-center gap-2">
             <Image src="/polmed_logo.png" alt="POLMED" width={120} height={36} className="w-28 h-auto" priority />
