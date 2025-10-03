@@ -46,38 +46,45 @@ export function RouteList({ userRole, onRouteSelect, onNewRoute, onEditRoute }: 
     fetchRoutes()
   }, [])
 
-  const fetchRoutes = async () => {
-    try {
-      setLoading(true)
-      let routesData: any[] = []
-      if (!offlineManager.getConnectionStatus()) {
-        // Offline: get routes from IndexedDB
-  const offlineRoutes = await offlineManager.getData("routes")
-  routesData = Array.isArray(offlineRoutes) ? offlineRoutes : []
+const fetchRoutes = async () => {
+  try {
+    setLoading(true)
+    let routesData: any[] = []
+    if (!offlineManager.getConnectionStatus()) {
+      // Offline: get routes from IndexedDB
+      const offlineRoutes = await offlineManager.getData("routes")
+      routesData = Array.isArray(offlineRoutes) ? offlineRoutes : []
+    } else {
+      // Online: get routes from API
+      const response = await apiService.getRoutes()
+      if (response.success && response.data) {
+        routesData = response.data as any[]
+        // Ensure routes have proper field mappings
+        routesData = routesData.map(route => ({
+          ...route,
+          name: route.name || route.route_name,
+          location: route.location || route.province,
+          status: route.status || 'draft',
+        }))
       } else {
-        // Online: get routes from API
-        const response = await apiService.getRoutes()
-        if (response.success && response.data) {
-          routesData = response.data as any[]
-        } else {
-          toast({
-            title: "Error",
-            description: response.error || "Failed to fetch routes",
-            variant: "destructive",
-          })
-        }
+        toast({
+          title: "Error",
+          description: response.error || "Failed to fetch routes",
+          variant: "destructive",
+        })
       }
-      setRoutes(routesData)
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to connect to server",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
     }
+    setRoutes(routesData)
+  } catch (error) {
+    toast({
+      title: "Error",
+      description: "Failed to connect to server",
+      variant: "destructive",
+    })
+  } finally {
+    setLoading(false)
   }
+}
 
   const getRouteName = (route: ApiRoute) => route.name ?? route.route_name ?? "Untitled Route"
   const getRouteProvince = (route: ApiRoute) => route.province ?? route.locations?.[0]?.province ?? ""

@@ -169,138 +169,72 @@ export function RoutePlanner({ userRole, onRouteCreated, routeToEdit, onRouteUpd
     setTimeSlots(timeSlots.filter((_, i) => i !== index))
   }
 
-  const createRoute = async () => {
-    const isEditing = !!routeToEdit?.id
-    const missingLocations = locations.length === 0
-    if (!routeName || !startDate || !endDate || (!isEditing && missingLocations) || !selectedProvince) {
-      toast({
-        title: "Missing information",
-        description: isEditing
-          ? "Please fill in route name, dates, and province."
-          : "Please fill in route name, dates, province, and at least one location.",
-        variant: "destructive",
-      })
-      return
+ const createRoute = async () => {
+  const isEditing = !!routeToEdit?.id
+  const missingLocations = locations.length === 0
+  if (!routeName || !startDate || !endDate || (!isEditing && missingLocations) || !selectedProvince) {
+    toast({
+      title: "Missing information",
+      description: isEditing
+        ? "Please fill in route name, dates, and province."
+        : "Please fill in route name, dates, province, and at least one location.",
+      variant: "destructive",
+    })
+    return
+  }
+
+  try {
+    setSubmitting(true)
+
+    // Determine route type based on locations selected
+    const typeSet = new Set(locations.map((l) => l.type))
+    const singleType = typeSet.size === 1 ? Array.from(typeSet)[0] : undefined
+    const routeType: 'Police Stations' | 'Schools' | 'Community Centers' | 'Mixed' =
+      singleType === 'police_station'
+        ? 'Police Stations'
+        : singleType === 'school'
+          ? 'Schools'
+          : singleType === 'community_center'
+            ? 'Community Centers'
+            : 'Mixed'
+
+    // Estimate capacity per day: sum of slot capacities times number of locations
+    const perLocationCapacity = timeSlots.reduce((sum, s) => sum + Number(s.maxAppointments || 0), 0)
+    const maxPerDay = Math.max(1, perLocationCapacity * locations.length)
+
+    const payload = {
+      route_name: routeName,
+      description: description || undefined,
+      start_date: format(startDate, 'yyyy-MM-dd'),
+      end_date: format(endDate, 'yyyy-MM-dd'),
+      province: selectedProvince,
+      route_type: routeType,
+      max_appointments_per_day: maxPerDay,
     }
 
-    try {
-      setSubmitting(true)
-
-      // Determine route type based on locations selected
-      const typeSet = new Set(locations.map((l) => l.type))
-      const singleType = typeSet.size === 1 ? Array.from(typeSet)[0] : undefined
-      const routeType: 'Police Stations' | 'Schools' | 'Community Centers' | 'Mixed' =
-        singleType === 'police_station'
-          ? 'Police Stations'
-          : singleType === 'school'
-            ? 'Schools'
-            : singleType === 'community_center'
-              ? 'Community Centers'
-              : 'Mixed'
-
-      // Estimate capacity per day: sum of slot capacities times number of locations
-      const perLocationCapacity = timeSlots.reduce((sum, s) => sum + Number(s.maxAppointments || 0), 0)
-      const maxPerDay = Math.max(1, perLocationCapacity * locations.length)
-
-      const payload = {
-        route_name: routeName,
-        description: description || undefined,
-        start_date: format(startDate, 'yyyy-MM-dd'),
-        end_date: format(endDate, 'yyyy-MM-dd'),
-        province: selectedProvince,
-        route_type: routeType,
-        max_appointments_per_day: maxPerDay,
-      }
-
-      if (!offlineManager.getConnectionStatus()) {
-        // Offline: save route to IndexedDB and queue for sync
-        const mapped: RouteSchedule = {
-          id: `route-${Date.now()}`,
-          routeName,
-          description: description || `${selectedProvince} route`,
-          locations,
-          startDate,
-          endDate,
-          timeSlots: timeSlots.flatMap((slot) =>
-            locations.map((location) => ({
-              ...slot,
-              id: `slot-${Date.now()}-${location.id}`,
-              locationId: location.id,
-            }))
-          ),
-          status: "draft",
-          createdBy: 'system',
-          createdAt: new Date(),
-        }
-        await offlineManager.saveData("routes", { ...mapped, timestamp: Date.now() })
-        toast({ title: 'Route saved offline', description: `${routeName} will sync when online` })
-        onRouteCreated(mapped)
-        // Reset form AFTER success
-        setRouteName("")
-        setDescription("")
-        setStartDate(undefined)
-        setEndDate(undefined)
-        setSelectedProvince("")
-        setLocations([])
-        setTimeSlots([
-          { startTime: "08:00", endTime: "08:30", maxAppointments: 10, bookedAppointments: 0 },
-          { startTime: "08:30", endTime: "09:00", maxAppointments: 10, bookedAppointments: 0 },
-          { startTime: "09:00", endTime: "09:30", maxAppointments: 10, bookedAppointments: 0 },
-          { startTime: "09:30", endTime: "10:00", maxAppointments: 10, bookedAppointments: 0 },
-        ])
-        setSubmitting(false)
-        return
-      }
-
-      // If editing, call update and return
-      if (isEditing) {
-        const updateResp = await apiService.updateRoute(Number(routeToEdit.id), {
-          name: routeName,
-          description: description || undefined,
-          province: selectedProvince,
-          scheduled_date: format(startDate, 'yyyy-MM-dd'),
-          // Note: backend may derive status/route_type; sending only supported fields
-          max_appointments: Math.max(1, timeSlots.reduce((sum, s) => sum + Number(s.maxAppointments || 0), 0) * Math.max(1, locations.length)),
-        } as any)
-        if (!updateResp.success || !updateResp.data) {
-          throw new Error(updateResp.error || 'Failed to update route')
-        }
-  onRouteUpdated?.({ id: String(routeToEdit.id), routeName, description, startDate, endDate })
-        toast({ title: 'Route updated', description: `${routeName} updated successfully` })
-        setSubmitting(false)
-        return
-      }
-
-      const resp = await apiService.createRoute(payload)
-      if (!resp.success || !resp.data) {
-        throw new Error(resp.error || 'Failed to create route')
-      }
-
-      const api: ApiRoute = resp.data
-
-      // Map API route into local RouteSchedule for downstream flows
+    if (!offlineManager.getConnectionStatus()) {
+      // Offline: save route to IndexedDB and queue for sync
       const mapped: RouteSchedule = {
-        id: String(api.id ?? `route-${Date.now()}`),
-        routeName: api.name,
-        description: api.description || `${api.location} - ${api.province}`,
+        id: `route-${Date.now()}`,
+        routeName,
+        description: description || `${selectedProvince} route`,
         locations,
-        startDate: new Date(api.scheduled_date),
-        endDate: new Date(api.scheduled_date),
+        startDate,
+        endDate,
         timeSlots: timeSlots.flatMap((slot) =>
           locations.map((location) => ({
             ...slot,
             id: `slot-${Date.now()}-${location.id}`,
             locationId: location.id,
-          })),
+          }))
         ),
-        status: (['draft','published','active','completed'] as const).includes(api.status as any) ? (api.status as any) : 'draft',
+        status: "draft",
         createdBy: 'system',
         createdAt: new Date(),
       }
-
-      toast({ title: 'Route created', description: `${api.name} created successfully` })
+      await offlineManager.saveData("routes", { ...mapped, timestamp: Date.now() })
+      toast({ title: 'Route saved offline', description: `${routeName} will sync when online` })
       onRouteCreated(mapped)
-
       // Reset form AFTER success
       setRouteName("")
       setDescription("")
@@ -314,16 +248,96 @@ export function RoutePlanner({ userRole, onRouteCreated, routeToEdit, onRouteUpd
         { startTime: "09:00", endTime: "09:30", maxAppointments: 10, bookedAppointments: 0 },
         { startTime: "09:30", endTime: "10:00", maxAppointments: 10, bookedAppointments: 0 },
       ])
-    } catch (err: any) {
-      toast({
-        title: 'Failed to create route',
-        description: err?.message || 'Please try again',
-        variant: 'destructive',
-      })
-    } finally {
       setSubmitting(false)
+      return
     }
+
+    // If editing, call update and return
+    if (isEditing) {
+      const updateResp = await apiService.updateRoute(Number(routeToEdit.id), {
+        name: routeName,
+        description: description || undefined,
+        province: selectedProvince,
+        scheduled_date: format(startDate, 'yyyy-MM-dd'),
+        max_appointments: Math.max(1, timeSlots.reduce((sum, s) => sum + Number(s.maxAppointments || 0), 0) * Math.max(1, locations.length)),
+      } as any)
+      if (!updateResp.success || !updateResp.data) {
+        throw new Error(updateResp.error || 'Failed to update route')
+      }
+      onRouteUpdated?.({ id: String(routeToEdit.id), routeName, description, startDate, endDate })
+      toast({ title: 'Route updated', description: `${routeName} updated successfully` })
+      setSubmitting(false)
+      return
+    }
+
+    // Create new route
+    const resp = await apiService.createRoute(payload)
+    if (!resp.success || !resp.data) {
+      throw new Error(resp.error || 'Failed to create route')
+    }
+
+    const apiRoute: ApiRoute = resp.data
+
+    // Convert API response to frontend RouteSchedule format
+    const mapped: RouteSchedule = {
+      id: String(apiRoute.id ?? `route-${Date.now()}`),
+      routeName: apiRoute.name || apiRoute.route_name || routeName,
+      description: apiRoute.description || `${selectedProvince} route`,
+      locations: (apiRoute.locations || []).map((loc: any) => ({
+        id: String(loc.id || `loc-${Date.now()}`),
+        name: loc.name || loc.location_name || 'Unknown Location',
+        type: (loc.type || loc.location_type || 'community_center') as RouteLocation["type"],
+        address: loc.address || loc.city || selectedProvince,
+        province: loc.province || selectedProvince,
+        capacity: loc.capacity || 50,
+        contactPerson: loc.contact_person,
+        contactPhone: loc.contact_phone,
+      })),
+      startDate: new Date(apiRoute.scheduled_date || apiRoute.start_date || startDate),
+      endDate: new Date(apiRoute.end_date || apiRoute.scheduled_date || endDate),
+      timeSlots: timeSlots.flatMap((slot) =>
+        locations.map((location) => ({
+          ...slot,
+          id: `slot-${Date.now()}-${location.id}`,
+          locationId: location.id,
+        })),
+      ),
+      status: (['draft','published','active','completed'] as const).includes(apiRoute.status as any) 
+        ? (apiRoute.status as any) 
+        : 'draft',
+      createdBy: 'system',
+      createdAt: new Date(),
+    }
+
+    toast({ 
+      title: 'Route created', 
+      description: `${apiRoute.name || routeName} created successfully` 
+    })
+    onRouteCreated(mapped)
+
+    // Reset form AFTER success
+    setRouteName("")
+    setDescription("")
+    setStartDate(undefined)
+    setEndDate(undefined)
+    setSelectedProvince("")
+    setLocations([])
+    setTimeSlots([
+      { startTime: "08:00", endTime: "08:30", maxAppointments: 10, bookedAppointments: 0 },
+      { startTime: "08:30", endTime: "09:00", maxAppointments: 10, bookedAppointments: 0 },
+      { startTime: "09:00", endTime: "09:30", maxAppointments: 10, bookedAppointments: 0 },
+      { startTime: "09:30", endTime: "10:00", maxAppointments: 10, bookedAppointments: 0 },
+    ])
+  } catch (err: any) {
+    toast({
+      title: 'Failed to create route',
+      description: err?.message || 'Please try again',
+      variant: 'destructive',
+    })
+  } finally {
+    setSubmitting(false)
   }
+}
 
   const getLocationTypeConfig = (type: RouteLocation["type"]) => {
     return locationTypes.find((lt) => lt.value === type) || locationTypes[0]
