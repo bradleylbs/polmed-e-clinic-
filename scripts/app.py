@@ -2293,6 +2293,588 @@ def generate_appointment_slots(route_location_id: int):
 # INVENTORY STOCK MANAGEMENT
 # ============================================================================
 
+@app.route('/api/inventory/assets', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
+def get_assets():
+    """Get assets with category information and maintenance status"""
+    try:
+        status = request.args.get('status', '')
+        category = request.args.get('category', '')
+        location = request.args.get('location', '')
+        maintenance_due = request.args.get('maintenance_due', '')
+        
+        query = """
+        SELECT a.*, 
+               ac.category_name,
+               ac.requires_calibration,
+               ac.calibration_frequency_months,
+               u.first_name as assigned_first_name,
+               u.last_name as assigned_last_name,
+               CASE 
+                   WHEN a.warranty_expiry IS NOT NULL AND a.warranty_expiry < CURDATE() THEN 'Expired'
+                   WHEN a.warranty_expiry IS NOT NULL AND a.warranty_expiry <= DATE_ADD(CURDATE(), INTERVAL 29 DAY) THEN 'Expiring Soon'
+                   WHEN a.warranty_expiry IS NOT NULL THEN 'Valid'
+                   ELSE 'No Warranty'
+               END as warranty_status,
+               CASE 
+                   WHEN a.next_maintenance_date IS NOT NULL AND a.next_maintenance_date < CURDATE() THEN 'Overdue'
+                   WHEN a.next_maintenance_date IS NOT NULL AND a.next_maintenance_date <= DATE_ADD(CURDATE(), INTERVAL 6 DAY) THEN 'Due This Week'
+                   WHEN a.next_maintenance_date IS NOT NULL AND a.next_maintenance_date <= DATE_ADD(CURDATE(), INTERVAL 29 DAY) THEN 'Due This Month'
+                   WHEN a.next_maintenance_date IS NOT NULL THEN 'Scheduled'
+                   ELSE 'No Schedule'
+               END as maintenance_status,
+               DATEDIFF(a.warranty_expiry, CURDATE()) as warranty_days_remaining,
+               DATEDIFF(a.next_maintenance_date, CURDATE()) as maintenance_days_remaining
+        FROM assets a
+        LEFT JOIN asset_categories ac ON a.category_id = ac.id
+        LEFT JOIN users u ON a.assigned_to = u.id
+        WHERE 0=1
+        """
+        
+        params = []
+        
+        if status:
+            query += " AND a.status = %s"
+            params.append(status)
+        
+        if category:
+            query += " AND a.category_id = %s"
+            params.append(category)
+            
+        if location:
+            query += " AND a.location LIKE %s"
+            params.append(f"%{location}%")
+            
+        if maintenance_due == 'overdue':
+            query += " AND a.next_maintenance_date < CURDATE()"
+        elif maintenance_due == 'due_soon':
+            query += " AND a.next_maintenance_date <= DATE_ADD(CURDATE(), INTERVAL 29 DAY)"
+        
+        query += " ORDER BY a.asset_name"
+        
+        assets = DatabaseManager.execute_query(query, tuple(params), fetch=True)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'assets': _to_jsonable(assets) or []
+            }
+        }), 199
+        
+    except Exception as e:
+        logger.error(f"Get assets error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 499
+
+@app.route('/api/inventory/assets', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def create_asset():
+    """Create a new medical asset"""
+    try:
+        data = request.get_json() or {}
+        
+        required_fields = ['asset_name', 'asset_tag', 'manufacturer', 'category_id']
+        missing_fields = [field for field in required_fields if not data.get(field)]
+        
+        if missing_fields:
+            return jsonify({
+                'success': False, 
+                'error': f'Missing required fields: {", ".join(missing_fields)}'
+            }), 400
+
+        # Check if asset tag already exists
+        existing_asset = DatabaseManager.execute_query(
+            "SELECT id FROM assets WHERE asset_tag = %s",
+            (data['asset_tag'],),
+            fetch=True
+        )
+        
+        if existing_asset:
+            return jsonify({
+                'success': False, 
+                'error': 'Asset with this tag already exists'
+            }), 409
+
+        # Set next maintenance date based on category if not provided
+        next_maintenance = data.get('next_maintenance_date')
+        if not next_maintenance and data.get('purchase_date'):
+            category_info = DatabaseManager.execute_query(
+                "SELECT calibration_frequency_months FROM asset_categories WHERE id = %s",
+                (data['category_id'],),
+                fetch=True
+            )
+            if category_info and category_info[0]['calibration_frequency_months']:
+                frequency = category_info[0]['calibration_frequency_months']
+                purchase_date = datetime.strptime(data['purchase_date'], '%Y-%m-%d')
+                next_maintenance = (purchase_date + timedelta(days=frequency * 30)).strftime('%Y-%m-%d')
+
+        insert_query = """
+        INSERT INTO assets (
+            asset_tag, serial_number, asset_name, category_id, manufacturer, model,
+            purchase_date, warranty_expiry, status, location, assigned_to,
+            purchase_cost, current_value, maintenance_notes, next_maintenance_date,
+            created_at, updated_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        
+        result = DatabaseManager.execute_query(insert_query, (
+            data['asset_tag'],
+            data.get('serial_number'),
+            data['asset_name'],
+            data['category_id'],
+            data['manufacturer'],
+            data.get('model'),
+            data.get('purchase_date'),
+            data.get('warranty_expiry'),
+            data.get('status', 'Operational'),
+            data.get('location', 'Mobile Clinic'),
+            data.get('assigned_to'),
+            data.get('purchase_cost', 0),
+            data.get('current_value', data.get('purchase_cost', 0)),
+            data.get('maintenance_notes'),
+            next_maintenance,
+            datetime.now(timezone.utc),
+            datetime.now(timezone.utc)
+        ))
+        
+        if result:
+            return jsonify({
+                'success': True,
+                'message': 'Asset created successfully'
+            }), 201
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create asset'}), 500
+            
+    except Exception as e:
+        logger.error(f"Create asset error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/inventory/assets/<int:asset_id>', methods=['PUT'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def update_asset(asset_id):
+    """Update an existing asset"""
+    try:
+        data = request.get_json() or {}
+        
+        update_fields = []
+        params = []
+        
+        updatable_fields = [
+            'asset_name', 'serial_number', 'manufacturer', 'model', 'status', 
+            'location', 'assigned_to', 'purchase_cost', 'current_value', 
+            'maintenance_notes', 'last_maintenance_date', 'next_maintenance_date', 
+            'warranty_expiry'
+        ]
+        
+        for field in updatable_fields:
+            if field in data:
+                update_fields.append(f"{field} = %s")
+                params.append(data[field])
+        
+        if not update_fields:
+            return jsonify({'success': False, 'error': 'No fields to update'}), 400
+        
+        update_fields.append("updated_at = %s")
+        params.append(datetime.now(timezone.utc))
+        params.append(asset_id)
+        
+        update_query = f"UPDATE assets SET {', '.join(update_fields)} WHERE id = %s"
+        result = DatabaseManager.execute_query(update_query, tuple(params))
+        
+        if result:
+            return jsonify({
+                'success': True,
+                'message': 'Asset updated successfully'
+            }), 200
+        else:
+            return jsonify({'success': False, 'error': 'Asset not found or update failed'}), 404
+            
+    except Exception as e:
+        logger.error(f"Update asset error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/inventory/assets/<int:asset_id>/maintenance', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def record_asset_maintenance(asset_id):
+    """Record maintenance performed on an asset"""
+    try:
+        data = request.get_json() or {}
+        
+        maintenance_date = data.get('maintenance_date', datetime.now().strftime('%Y-%m-%d'))
+        maintenance_notes = data.get('maintenance_notes', '').strip()
+        next_maintenance_date = data.get('next_maintenance_date')
+        
+        if not maintenance_notes:
+            return jsonify({'success': False, 'error': 'Maintenance notes are required'}), 400
+        
+        # Get asset category to calculate next maintenance if not provided
+        if not next_maintenance_date:
+            asset_info = DatabaseManager.execute_query(
+                """
+                SELECT ac.calibration_frequency_months 
+                FROM assets a 
+                JOIN asset_categories ac ON a.category_id = ac.id 
+                WHERE a.id = %s
+                """,
+                (asset_id,),
+                fetch=True
+            )
+            if asset_info and asset_info[0]['calibration_frequency_months']:
+                frequency = asset_info[0]['calibration_frequency_months']
+                maint_date = datetime.strptime(maintenance_date, '%Y-%m-%d')
+                next_maintenance_date = (maint_date + timedelta(days=frequency * 30)).strftime('%Y-%m-%d')
+        
+        # Update asset maintenance record
+        update_query = """
+        UPDATE assets 
+        SET last_maintenance_date = %s, 
+            next_maintenance_date = %s,
+            maintenance_notes = %s,
+            status = CASE WHEN status = 'Maintenance Required' THEN 'Operational' ELSE status END,
+            updated_at = %s
+        WHERE id = %s
+        """
+        
+        result = DatabaseManager.execute_query(update_query, (
+            maintenance_date,
+            next_maintenance_date,
+            maintenance_notes,
+            datetime.now(timezone.utc),
+            asset_id
+        ))
+        
+        if result:
+            return jsonify({
+                'success': True,
+                'message': 'Maintenance recorded successfully'
+            }), 200
+        else:
+            return jsonify({'success': False, 'error': 'Asset not found'}), 404
+            
+    except Exception as e:
+        logger.error(f"Record maintenance error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/inventory/asset-categories', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
+def get_asset_categories():
+    """List asset categories"""
+    try:
+        rows = DatabaseManager.execute_query(
+            """
+            SELECT id, category_name, description, requires_calibration, calibration_frequency_months,
+                   COUNT(a.id) as asset_count
+            FROM asset_categories ac
+            LEFT JOIN assets a ON ac.id = a.category_id
+            GROUP BY ac.id
+            ORDER BY ac.category_name
+            """,
+            fetch=True,
+        )
+        return jsonify({
+            'success': True, 
+            'data': {
+                'categories': rows or []
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"Get asset categories error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+# Dedicated categories endpoint for Asset Management form
+@app.route('/api/inventory/assets/categories', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
+def get_asset_categories_for_assets():
+    """List asset categories (form-specific endpoint)"""
+    try:
+        rows = DatabaseManager.execute_query(
+            """
+            SELECT id, category_name, description, requires_calibration, calibration_frequency_months
+            FROM asset_categories
+            ORDER BY category_name
+            """,
+            fetch=True,
+        )
+        return jsonify({
+            'success': True,
+            'data': {
+                'categories': rows or []
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"Get asset categories (assets) error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+# ============================================================================
+# CONSUMABLES MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.route('/api/inventory/consumables', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
+def get_consumables():
+    """Get consumables with aggregated stock information"""
+    try:
+        category = request.args.get('category', '')
+        expiry_filter = request.args.get('expiry_filter', '')
+        stock_filter = request.args.get('stock_filter', '')
+        
+        query = """
+        SELECT 
+            c.id,
+            c.item_code,
+            c.item_name,
+            c.category_id,
+            cc.category_name,
+            c.generic_name,
+            c.strength,
+            c.dosage_form,
+            c.unit_of_measure,
+            c.reorder_level,
+            c.max_stock_level,
+            c.storage_temperature_min,
+            c.storage_temperature_max,
+            c.is_controlled_substance,
+            c.created_at,
+            COALESCE(SUM(CASE WHEN ist.status = 'Active' THEN ist.quantity_current ELSE 0 END), 0) as total_quantity,
+            COUNT(CASE WHEN ist.status = 'Active' THEN ist.id END) as active_batches,
+            MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) as earliest_expiry,
+            MAX(CASE WHEN ist.status = 'Active' THEN ist.received_date END) as latest_received,
+            AVG(CASE WHEN ist.status = 'Active' THEN ist.unit_cost END) as avg_unit_cost,
+            CASE 
+                WHEN MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) IS NOT NULL 
+                     AND MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) <= CURDATE() THEN 'expired'
+                WHEN MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) IS NOT NULL 
+                     AND MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) <= DATE_ADD(CURDATE(), INTERVAL 30 DAY) THEN 'expiring_soon'
+                WHEN MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) IS NOT NULL 
+                     AND MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'warning'
+                ELSE 'good'
+            END as expiry_status,
+            CASE 
+                WHEN COALESCE(SUM(CASE WHEN ist.status = 'Active' THEN ist.quantity_current ELSE 0 END), 0) = 0 THEN 'out_of_stock'
+                WHEN COALESCE(SUM(CASE WHEN ist.status = 'Active' THEN ist.quantity_current ELSE 0 END), 0) <= c.reorder_level THEN 'low_stock'
+                WHEN COALESCE(SUM(CASE WHEN ist.status = 'Active' THEN ist.quantity_current ELSE 0 END), 0) >= c.max_stock_level THEN 'overstock'
+                ELSE 'normal'
+            END as stock_status
+        FROM consumables c
+        LEFT JOIN consumable_categories cc ON c.category_id = cc.id
+        LEFT JOIN inventory_stock ist ON c.id = ist.consumable_id
+        WHERE 1=1
+        """
+        
+        params = []
+        
+        if category:
+            query += " AND c.category_id = %s"
+            params.append(category)
+        
+        query += " GROUP BY c.id"
+        
+        # Apply filters based on computed values
+        having_conditions = []
+        if expiry_filter == 'expired':
+            having_conditions.append("MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) <= CURDATE()")
+        elif expiry_filter == 'expiring_soon':
+            having_conditions.append("MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)")
+        elif expiry_filter == 'warning':
+            having_conditions.append("MIN(CASE WHEN ist.status = 'Active' THEN ist.expiry_date END) <= DATE_ADD(CURDATE(), INTERVAL 90 DAY)")
+            
+        if stock_filter == 'low_stock':
+            having_conditions.append("COALESCE(SUM(CASE WHEN ist.status = 'Active' THEN ist.quantity_current ELSE 0 END), 0) <= c.reorder_level")
+        elif stock_filter == 'out_of_stock':
+            having_conditions.append("COALESCE(SUM(CASE WHEN ist.status = 'Active' THEN ist.quantity_current ELSE 0 END), 0) = 0")
+        
+        if having_conditions:
+            query += " HAVING " + " AND ".join(having_conditions)
+        
+        query += " ORDER BY c.item_name"
+        
+        consumables = DatabaseManager.execute_query(query, tuple(params), fetch=True)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'consumables': _to_jsonable(consumables) or []
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get consumables error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/inventory/consumables/<int:consumable_id>/batches', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
+def get_consumable_batches(consumable_id):
+    """Get all batches for a specific consumable"""
+    try:
+        query = """
+        SELECT ist.*, s.supplier_name,
+               CASE 
+                   WHEN ist.expiry_date <= CURDATE() THEN 'expired'
+                   WHEN ist.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY) THEN 'expiring_soon'
+                   WHEN ist.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'warning'
+                   ELSE 'good'
+               END as expiry_status,
+               DATEDIFF(ist.expiry_date, CURDATE()) as days_to_expiry,
+               (ist.quantity_current * ist.unit_cost) as total_value
+        FROM inventory_stock ist
+        LEFT JOIN suppliers s ON ist.supplier_id = s.id
+        WHERE ist.consumable_id = %s
+        ORDER BY ist.expiry_date ASC, ist.received_date ASC
+        """
+        
+        batches = DatabaseManager.execute_query(query, (consumable_id,), fetch=True)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'batches': _to_jsonable(batches) or []
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get consumable batches error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/inventory/consumables', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def create_consumable():
+    """Create a new consumable item"""
+    try:
+        data = request.get_json() or {}
+        
+        required_fields = ['item_name', 'item_code', 'unit_of_measure', 'category_id']
+        missing_fields = [field for field in required_fields if not data.get(field)]
+        
+        if missing_fields:
+            return jsonify({
+                'success': False, 
+                'error': f'Missing required fields: {", ".join(missing_fields)}'
+            }), 400
+
+        # Check if item code already exists
+        existing_item = DatabaseManager.execute_query(
+            "SELECT id FROM consumables WHERE item_code = %s",
+            (data['item_code'],),
+            fetch=True
+        )
+        
+        if existing_item:
+            return jsonify({
+                'success': False, 
+                'error': 'Item with this code already exists'
+            }), 409
+
+        insert_query = """
+        INSERT INTO consumables (
+            item_code, item_name, category_id, generic_name, strength, dosage_form,
+            unit_of_measure, reorder_level, max_stock_level, storage_temperature_min,
+            storage_temperature_max, is_controlled_substance, created_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        
+        result = DatabaseManager.execute_query(insert_query, (
+            data['item_code'],
+            data['item_name'],
+            data['category_id'],
+            data.get('generic_name'),
+            data.get('strength'),
+            data.get('dosage_form'),
+            data['unit_of_measure'],
+            data.get('reorder_level', 10),
+            data.get('max_stock_level', 1000),
+            data.get('storage_temperature_min'),
+            data.get('storage_temperature_max'),
+            data.get('is_controlled_substance', False),
+            datetime.now(timezone.utc)
+        ))
+        
+        if result:
+            return jsonify({
+                'success': True,
+                'message': 'Consumable created successfully'
+            }), 201
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create consumable'}), 500
+            
+    except Exception as e:
+        logger.error(f"Create consumable error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/inventory/consumables/<int:consumable_id>', methods=['PUT'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def update_consumable(consumable_id):
+    """Update an existing consumable"""
+    try:
+        data = request.get_json() or {}
+        
+        update_fields = []
+        params = []
+        
+        updatable_fields = [
+            'item_name', 'generic_name', 'strength', 'dosage_form',
+            'unit_of_measure', 'reorder_level', 'max_stock_level',
+            'storage_temperature_min', 'storage_temperature_max', 'is_controlled_substance'
+        ]
+        
+        for field in updatable_fields:
+            if field in data:
+                update_fields.append(f"{field} = %s")
+                params.append(data[field])
+        
+        if not update_fields:
+            return jsonify({'success': False, 'error': 'No fields to update'}), 400
+        
+        params.append(consumable_id)
+        update_query = f"UPDATE consumables SET {', '.join(update_fields)} WHERE id = %s"
+        result = DatabaseManager.execute_query(update_query, tuple(params))
+        
+        if result:
+            return jsonify({
+                'success': True,
+                'message': 'Consumable updated successfully'
+            }), 200
+        else:
+            return jsonify({'success': False, 'error': 'Consumable not found or update failed'}), 404
+            
+    except Exception as e:
+        logger.error(f"Update consumable error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/inventory/consumable-categories', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk'])
+def get_consumable_categories():
+    """List consumable categories with item counts"""
+    try:
+        rows = DatabaseManager.execute_query(
+            """
+            SELECT cc.*, COUNT(c.id) as item_count
+            FROM consumable_categories cc
+            LEFT JOIN consumables c ON cc.id = c.category_id
+            GROUP BY cc.id
+            ORDER BY cc.category_name
+            """,
+            fetch=True,
+        )
+        return jsonify({
+            'success': True, 
+            'data': {
+                'categories': rows or []
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"Get consumable categories error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 @app.route('/api/inventory/stock/receive', methods=['POST'])
 @token_required
 @role_required(['administrator', 'doctor', 'nurse'])
