@@ -2305,7 +2305,7 @@ def get_assets():
         maintenance_due = request.args.get('maintenance_due', '')
         
         query = """
-        SELECT a.*, 
+    SELECT a.*, 
                ac.category_name,
                ac.requires_calibration,
                ac.calibration_frequency_months,
@@ -2329,42 +2329,42 @@ def get_assets():
         FROM assets a
         LEFT JOIN asset_categories ac ON a.category_id = ac.id
         LEFT JOIN users u ON a.assigned_to = u.id
-        WHERE 0=1
+        WHERE 1=1
         """
-        
+
         params = []
-        
+
         if status:
             query += " AND a.status = %s"
             params.append(status)
-        
+
         if category:
             query += " AND a.category_id = %s"
             params.append(category)
-            
+
         if location:
             query += " AND a.location LIKE %s"
             params.append(f"%{location}%")
-            
+
         if maintenance_due == 'overdue':
             query += " AND a.next_maintenance_date < CURDATE()"
         elif maintenance_due == 'due_soon':
             query += " AND a.next_maintenance_date <= DATE_ADD(CURDATE(), INTERVAL 29 DAY)"
-        
+
         query += " ORDER BY a.asset_name"
-        
-        assets = DatabaseManager.execute_query(query, tuple(params), fetch=True)
-        
+
+        assets = DatabaseManager.execute_query(query, tuple(params), fetch=True) or []
+
         return jsonify({
             'success': True,
             'data': {
-                'assets': _to_jsonable(assets) or []
+                'assets': _to_jsonable(assets)
             }
-        }), 199
-        
+        }), 200
+
     except Exception as e:
         logger.error(f"Get assets error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 499
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 @app.route('/api/inventory/assets', methods=['POST'])
 @token_required
