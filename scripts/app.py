@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 import os
 import logging
-from typing import List
+from typing import Dict, List, Set
 import uuid
 import json 
 
@@ -73,6 +73,24 @@ DB_SSL_CA = os.environ.get('DB_SSL_CA')  # path to CA certificate in container
 DB_SSL_DISABLED = os.environ.get('DB_SSL_DISABLED', '0') in ('1', 'true', 'True')
 if DB_SSL_CA and not DB_SSL_DISABLED:
     DB_CONFIG['ssl_ca'] = DB_SSL_CA
+
+_table_columns_cache: Dict[str, Set[str]] = {}
+
+
+def _get_table_columns(table_name: str) -> Set[str]:
+    """Fetch and cache the column names for a given table."""
+    if not table_name or not re.match(r"^[a-zA-Z0-9_]+$", table_name):
+        return set()
+
+    cached = _table_columns_cache.get(table_name)
+    if cached is not None:
+        return cached
+
+    rows = DatabaseManager.execute_query(f"SHOW COLUMNS FROM {table_name}", fetch=True)
+    columns = {row.get('Field') for row in rows or [] if row.get('Field')}
+    _table_columns_cache[table_name] = columns
+    return columns
+
 
 class DatabaseManager:
     """Database connection and query management"""
@@ -926,10 +944,10 @@ def add_vital_signs(visit_id: int):
             DatabaseManager.execute_query(
                 """
                 INSERT INTO clinical_notes (
-                    visit_id, patient_id, note_type, content, created_by
-                ) VALUES (%s, (SELECT patient_id FROM patient_visits WHERE id = %s), 'Assessment', %s, %s)
+                    visit_id, note_type, content, created_by
+                ) VALUES (%s, 'Assessment', %s, %s)
                 """,
-                (visit_id, visit_id, nursing_notes, request.current_user['id']),
+                (visit_id, nursing_notes, request.current_user['id']),
                 fetch=False,
             )
 
@@ -1008,8 +1026,30 @@ def get_clinical_notes(visit_id: int):
     try:
         notes = DatabaseManager.execute_query(
             """
-            SELECT cn.*, u.first_name, u.last_name, ur.role_name
+            SELECT 
+                cn.id,
+                cn.visit_id,
+                pv.patient_id,
+                cn.note_type,
+                cn.content,
+                cn.icd10_codes,
+                cn.medications_prescribed,
+                cn.prescription_ids,
+                cn.investigation_order_ids,
+                cn.template_used,
+                cn.confidence_score,
+                cn.reviewed_by,
+                cn.reviewed_at,
+                cn.follow_up_required,
+                cn.follow_up_date,
+                cn.created_by,
+                cn.created_at,
+                cn.updated_at,
+                u.first_name,
+                u.last_name,
+                ur.role_name
             FROM clinical_notes cn
+            JOIN patient_visits pv ON cn.visit_id = pv.id
             JOIN users u ON cn.created_by = u.id
             LEFT JOIN user_roles ur ON u.role_id = ur.id
             WHERE cn.visit_id = %s
@@ -1050,6 +1090,37 @@ def create_clinical_note(visit_id: int):
         if note_type not in valid_note_types:
             return jsonify({'success': False, 'error': f'note_type must be one of: {valid_note_types}'}), 400
         
+        # Normalise optional payloads
+        if isinstance(icd10_codes, str):
+            stripped = icd10_codes.strip()
+            if stripped:
+                try:
+                    parsed_codes = json.loads(stripped)
+                    if isinstance(parsed_codes, list):
+                        icd10_codes = parsed_codes
+                    else:
+                        icd10_codes = [stripped]
+                except json.JSONDecodeError:
+                    icd10_codes = [code.strip() for code in stripped.split(',') if code.strip()]
+            else:
+                icd10_codes = []
+        icd10_codes = [str(code).strip() for code in icd10_codes if str(code).strip()] if isinstance(icd10_codes, list) else []
+
+        if isinstance(medications_prescribed, str):
+            stripped = medications_prescribed.strip()
+            if stripped:
+                try:
+                    parsed_meds = json.loads(stripped)
+                    if isinstance(parsed_meds, list):
+                        medications_prescribed = parsed_meds
+                    else:
+                        medications_prescribed = [stripped]
+                except json.JSONDecodeError:
+                    medications_prescribed = [med.strip() for med in stripped.split(',') if med.strip()]
+            else:
+                medications_prescribed = []
+        medications_prescribed = [str(med).strip() for med in medications_prescribed if str(med).strip()] if isinstance(medications_prescribed, list) else []
+
         # Get patient_id from visit
         visit_info = DatabaseManager.execute_query(
             "SELECT patient_id FROM patient_visits WHERE id = %s",
@@ -1061,31 +1132,61 @@ def create_clinical_note(visit_id: int):
             return jsonify({'success': False, 'error': 'Visit not found'}), 404
             
         patient_id = visit_info[0]['patient_id']
+
+        available_columns = _get_table_columns('clinical_notes')
+        required_columns = {'visit_id', 'note_type', 'content', 'created_by'}
+        if not required_columns.issubset(available_columns):
+            missing = required_columns.difference(available_columns)
+            logger.error(f"Clinical notes table missing required columns: {missing}")
+            return jsonify({'success': False, 'error': 'Clinical notes storage is not configured correctly'}), 500
+
+        insert_columns = ['visit_id', 'note_type', 'content', 'created_by']
+        placeholders = ['%s', '%s', '%s', '%s']
+        insert_values = [visit_id, note_type, content, request.current_user['id']]
+
+        if 'icd10_codes' in available_columns and icd10_codes:
+            insert_columns.append('icd10_codes')
+            placeholders.append('%s')
+            insert_values.append(json.dumps(icd10_codes))
+
+        if 'medications_prescribed' in available_columns and medications_prescribed:
+            insert_columns.append('medications_prescribed')
+            placeholders.append('%s')
+            insert_values.append(json.dumps(medications_prescribed))
+
+        bool_follow_up = bool(follow_up_required)
+        if 'follow_up_required' in available_columns:
+            insert_columns.append('follow_up_required')
+            placeholders.append('%s')
+            insert_values.append(1 if bool_follow_up else 0)
+
+        follow_up_date_value = None
+        if follow_up_date:
+            try:
+                follow_up_date_value = datetime.strptime(str(follow_up_date)[:10], '%Y-%m-%d').date()
+            except ValueError:
+                logger.warning(f"Invalid follow_up_date supplied: {follow_up_date}")
+                follow_up_date_value = None
+
+        if 'follow_up_date' in available_columns and follow_up_date_value:
+            insert_columns.append('follow_up_date')
+            placeholders.append('%s')
+            insert_values.append(follow_up_date_value)
         
+        column_sql = ', '.join(insert_columns)
+        placeholder_sql = ', '.join(placeholders)
         result = DatabaseManager.execute_query(
-            """
-            INSERT INTO clinical_notes (
-                visit_id, patient_id, note_type, content, icd10_codes, medications_prescribed,
-                follow_up_required, follow_up_date, created_by
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                visit_id,
-                patient_id,
-                note_type,
-                content,
-                json.dumps(icd10_codes) if icd10_codes else None,
-                json.dumps(medications_prescribed) if medications_prescribed else None,
-                follow_up_required,
-                follow_up_date,
-                request.current_user['id']
-            )
+            f"INSERT INTO clinical_notes ({column_sql}) VALUES ({placeholder_sql})",
+            tuple(insert_values)
         )
         
         if result:
             return jsonify({
                 'success': True,
-                'message': 'Clinical note created successfully'
+                'message': 'Clinical note created successfully',
+                'data': {
+                    'patient_id': patient_id
+                }
             }), 201
         else:
             return jsonify({'success': False, 'error': 'Failed to create clinical note'}), 500
