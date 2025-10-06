@@ -4266,8 +4266,9 @@ def get_dashboard_stats():
 
     except Exception as e:
         logger.error(f"Dashboard stats error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
+        return jsonify({'success': False, 'error': 'Internal server error'
+        ''}), 500
+    
 if __name__ == '__main__':
     # Disable the reloader to avoid SystemExit in debuggers (parent process exit).
     app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
