@@ -4262,12 +4262,108 @@ def get_dashboard_stats():
             for activity in (recent_activity or [])
         ]
 
-        return jsonify({'success': True, 'stats': stats}), 200
+        return jsonify({'success': True, 'data': stats}), 200
 
     except Exception as e:
         logger.error(f"Dashboard stats error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'
-        ''}), 500
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+# ============================================================================
+# ICD-10 CODE ENDPOINTS
+# ============================================================================
+
+@app.route('/api/icd10/search', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def search_icd10_codes():
+    """Search ICD-10 codes by code or description"""
+    try:
+        search_term = request.args.get('q', '').strip()
+        limit = int(request.args.get('limit', 50))
+        common_only = request.args.get('common_only', 'false').lower() == 'true'
+        
+        if not search_term:
+            # Return common codes if no search term
+            query = """
+                SELECT icd10_code as code, description, is_common
+                FROM icd10_codes
+                WHERE is_common = 1
+                ORDER BY icd10_code
+                LIMIT %s
+            """
+            results = DatabaseManager.execute_query(query, (limit,), fetch=True)
+        else:
+            # Search by code or description
+            base_query = """
+                SELECT icd10_code as code, description, is_common
+                FROM icd10_codes
+                WHERE (icd10_code LIKE %s OR description LIKE %s)
+            """
+            
+            if common_only:
+                base_query += " AND is_common = 1"
+            
+            base_query += " ORDER BY is_common DESC, icd10_code LIMIT %s"
+            
+            search_pattern = f"%{search_term}%"
+            results = DatabaseManager.execute_query(
+                base_query,
+                (search_pattern, search_pattern, limit),
+                fetch=True
+            )
+        
+        codes = [
+            {
+                'code': row['code'],
+                'description': row['description'],
+                'isCommon': bool(row.get('is_common', 0)),
+                'display': f"{row['code']} - {row['description']}"
+            }
+            for row in (results or [])
+        ]
+        
+        return jsonify({'success': True, 'data': codes}), 200
+        
+    except Exception as e:
+        logger.error(f"ICD-10 search error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to search ICD-10 codes'}), 500
+
+
+@app.route('/api/icd10/common', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def get_common_icd10_codes():
+    """Get frequently used ICD-10 codes"""
+    try:
+        limit = int(request.args.get('limit', 30))
+        
+        query = """
+            SELECT icd10_code as code, description, is_common
+            FROM icd10_codes
+            WHERE is_common = 1
+            ORDER BY icd10_code
+            LIMIT %s
+        """
+        
+        results = DatabaseManager.execute_query(query, (limit,), fetch=True)
+        
+        codes = [
+            {
+                'code': row['code'],
+                'description': row['description'],
+                'isCommon': True,
+                'display': f"{row['code']} - {row['description']}"
+            }
+            for row in (results or [])
+        ]
+        
+        return jsonify({'success': True, 'data': codes}), 200
+        
+    except Exception as e:
+        logger.error(f"Common ICD-10 fetch error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to fetch common ICD-10 codes'}), 500
+
     
 if __name__ == '__main__':
     # Disable the reloader to avoid SystemExit in debuggers (parent process exit).

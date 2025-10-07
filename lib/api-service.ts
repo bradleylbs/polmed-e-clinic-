@@ -199,6 +199,15 @@ export interface CreateReferralRequest {
   appointment_date?: string
 }
 
+// ICD-10 Codes
+export interface ICD10Code {
+  code: string
+  description: string
+  isCommon: boolean
+  display: string
+}
+
+
 export interface UpdateReferralRequest {
   status?: Referral["status"]
   appointment_date?: string
@@ -875,6 +884,21 @@ class ApiService {
   // ==================== DASHBOARD AND ANALYTICS ====================
   async getDashboardStats(): Promise<ApiResponse<DashboardStats>> {
     return this.request<DashboardStats>("/dashboard/stats")
+  }
+
+  // ==================== ICD-10 CODE MANAGEMENT ====================
+  async searchICD10Codes(searchTerm: string, limit: number = 50, commonOnly: boolean = false): Promise<ApiResponse<ICD10Code[]>> {
+    const params = new URLSearchParams({ 
+      q: searchTerm, 
+      limit: limit.toString(),
+      common_only: commonOnly.toString()
+    })
+    return this.request<ICD10Code[]>(`/icd10/search?${params}`)
+  }
+
+  async getCommonICD10Codes(limit: number = 30): Promise<ApiResponse<ICD10Code[]>> {
+    const params = new URLSearchParams({ limit: limit.toString() })
+    return this.request<ICD10Code[]>(`/icd10/common?${params}`)
   }
 
   // ==================== USER MANAGEMENT ====================

@@ -13,9 +13,11 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { UserCheck, Heart, Stethoscope, Users, CheckCircle, Clock, ArrowRight, Search, Plus, AlertTriangle, Activity, Thermometer, Brain, Eye } from "lucide-react"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { UserCheck, Heart, Stethoscope, Users, CheckCircle, Clock, ArrowRight, Search, Plus, AlertTriangle, Activity, Thermometer, Brain, Eye, ChevronsUpDown, Check } from "lucide-react"
 import { ReferralModal } from "./referral-modal"
-import { apiService } from "@/lib/api-service"
+import { apiService, type ICD10Code } from "@/lib/api-service"
 import { offlineManager } from "@/lib/offline-manager"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -127,6 +129,12 @@ export function ClinicalWorkflow({
   const [investigations, setInvestigations] = useState<string[]>([])
   const [smartSuggestions, setSmartSuggestions] = useState<SmartSuggestion[]>([])
   const [activeInput, setActiveInput] = useState<string>('')
+
+  // ICD-10 Code state
+  const [icd10Codes, setIcd10Codes] = useState<ICD10Code[]>([])
+  const [icd10SearchTerm, setIcd10SearchTerm] = useState("")
+  const [icd10PopoverOpen, setIcd10PopoverOpen] = useState(false)
+  const [loadingIcd10, setLoadingIcd10] = useState(false)
 
   // Summary data for File Closure
   const [clinicalSummary, setClinicalSummary] = useState<{ notes: any[]; referrals: any[] }>({ notes: [], referrals: [] })
@@ -296,6 +304,64 @@ export function ClinicalWorkflow({
     
     setSmartSuggestions(suggestions)
   }, [])
+
+  // Load ICD-10 codes based on search
+  const loadICD10Codes = useCallback(async (searchTerm: string) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      // Load common codes if no search term
+      try {
+        setLoadingIcd10(true)
+        const response = await apiService.getCommonICD10Codes(30)
+        if (response.success && response.data) {
+          setIcd10Codes(response.data)
+        }
+      } catch (error) {
+        console.error('Failed to load common ICD-10 codes:', error)
+      } finally {
+        setLoadingIcd10(false)
+      }
+      return
+    }
+
+    try {
+      setLoadingIcd10(true)
+      const response = await apiService.searchICD10Codes(searchTerm, 50, false)
+      if (response.success && response.data) {
+        setIcd10Codes(response.data)
+      }
+    } catch (error) {
+      console.error('Failed to search ICD-10 codes:', error)
+      toast({
+        title: "Search Failed",
+        description: "Could not search ICD-10 codes. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingIcd10(false)
+    }
+  }, [toast])
+
+  // Add selected ICD-10 code
+  const addICD10Code = (code: ICD10Code) => {
+    const existingCodes = clinicalNotes.icd10Codes.split(',').map(c => c.trim()).filter(Boolean)
+    if (!existingCodes.includes(code.code)) {
+      const newCodes = existingCodes.length > 0 
+        ? `${existingCodes.join(', ')}, ${code.code}` 
+        : code.code
+      updateClinicalNotes("icd10Codes", newCodes)
+      toast({
+        title: "ICD-10 Code Added",
+        description: `${code.code} - ${code.description}`,
+      })
+    }
+    setIcd10PopoverOpen(false)
+    setIcd10SearchTerm("")
+  }
+
+  // Load common ICD-10 codes on mount
+  useEffect(() => {
+    loadICD10Codes("")
+  }, [loadICD10Codes])
 
   const canAccessStep = (step: WorkflowStep) => {
     if (userRole === "administrator") return true
@@ -962,37 +1028,93 @@ export function ClinicalWorkflow({
                     <div>
                       <Label className="text-sm font-medium">ICD-10 Codes</Label>
                       <div className="flex flex-wrap gap-2 mt-1 mb-2">
-                        {clinicalNotes.icd10Codes.split(',').filter(c => c.trim()).map((code, index) => (
-                          <Badge key={index} variant="secondary" className="text-xs">
-                            {code.trim()}
-                            <button
-                              onClick={() => {
-                                const codes = clinicalNotes.icd10Codes.split(',').filter(c => c.trim())
-                                codes.splice(index, 1)
-                                updateClinicalNotes("icd10Codes", codes.join(', '))
-                              }}
-                              className="ml-1 hover:text-red-500"
-                            >
-                              Ã—
-                            </button>
-                          </Badge>
-                        ))}
+                        {clinicalNotes.icd10Codes.split(',').filter(c => c.trim()).map((code, index) => {
+                          const codeInfo = icd10Codes.find(ic => ic.code === code.trim())
+                          return (
+                            <Badge key={index} variant="secondary" className="text-xs py-1 px-2">
+                              <span className="font-mono font-semibold">{code.trim()}</span>
+                              {codeInfo && (
+                                <span className="ml-1 font-normal text-muted-foreground">
+                                  {codeInfo.description.substring(0, 30)}...
+                                </span>
+                              )}
+                              <button
+                                onClick={() => {
+                                  const codes = clinicalNotes.icd10Codes.split(',').filter(c => c.trim())
+                                  codes.splice(index, 1)
+                                  updateClinicalNotes("icd10Codes", codes.join(', '))
+                                }}
+                                className="ml-2 hover:text-red-500"
+                                aria-label="Remove code"
+                              >
+                                ×
+                              </button>
+                            </Badge>
+                          )
+                        })}
                       </div>
-                      <Input
-                        placeholder="Add ICD-10 code (e.g., I10, E11.9)"
-                        className="mt-2"
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
-                            const value = (e.target as HTMLInputElement).value.trim()
-                            if (value && !clinicalNotes.icd10Codes.includes(value)) {
-                              const existing = clinicalNotes.icd10Codes.trim()
-                              const newCodes = existing ? existing + ', ' + value : value
-                              updateClinicalNotes("icd10Codes", newCodes)
-                              ;(e.target as HTMLInputElement).value = ''
-                            }
-                          }
-                        }}
-                      />
+                      
+                      <Popover open={icd10PopoverOpen} onOpenChange={setIcd10PopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={icd10PopoverOpen}
+                            className="w-full justify-between"
+                          >
+                            <span className="text-muted-foreground">
+                              Search ICD-10 codes...
+                            </span>
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[500px] p-0" align="start">
+                          <Command shouldFilter={false}>
+                            <CommandInput 
+                              placeholder="Search by code or description..." 
+                              value={icd10SearchTerm}
+                              onValueChange={(value) => {
+                                setIcd10SearchTerm(value)
+                                loadICD10Codes(value)
+                              }}
+                            />
+                            <CommandList>
+                              <CommandEmpty>
+                                {loadingIcd10 ? "Searching..." : "No ICD-10 codes found."}
+                              </CommandEmpty>
+                              <CommandGroup heading={icd10SearchTerm ? "Search Results" : "Common Codes"}>
+                                {icd10Codes.map((code) => (
+                                  <CommandItem
+                                    key={code.code}
+                                    value={code.code}
+                                    onSelect={() => addICD10Code(code)}
+                                    className="cursor-pointer"
+                                  >
+                                    <Check
+                                      className={`mr-2 h-4 w-4 ${
+                                        clinicalNotes.icd10Codes.includes(code.code)
+                                          ? "opacity-100"
+                                          : "opacity-0"
+                                      }`}
+                                    />
+                                    <div className="flex flex-col">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-mono font-semibold">{code.code}</span>
+                                        {code.isCommon && (
+                                          <Badge variant="outline" className="text-xs">Common</Badge>
+                                        )}
+                                      </div>
+                                      <span className="text-sm text-muted-foreground">
+                                        {code.description}
+                                      </span>
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     </div>
 
                     {/* Smart Suggestions */}
