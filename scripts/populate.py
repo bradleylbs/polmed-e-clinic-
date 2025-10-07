@@ -50,10 +50,10 @@ class Config:
     @classmethod
     def from_env(cls):
         return cls(
-            host=os.environ.get('DB_HOST', 'localhost'),
+            host=os.environ.get('DB_HOST','db-polmed.mysql.database.azure.com'),
             database=os.environ.get('DB_NAME', 'palmed_clinic_erp'),
-            user=os.environ.get('DB_USER', 'root'),
-            password=os.environ.get('DB_PASSWORD', 'Transport@2025'),
+            user=os.environ.get('DB_USER', 'dbadmin'),
+            password=os.environ.get('DB_PASSWORD', 'Polm3d!DB@2025'),
             port=int(os.environ.get('DB_PORT', 3306)),
             batch_size=int(os.environ.get('BATCH_SIZE', 1000)),
             max_retries=int(os.environ.get('MAX_RETRIES', 3)),
