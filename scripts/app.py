@@ -4286,25 +4286,25 @@ def search_icd10_codes():
         if not search_term:
             # Return common codes if no search term
             query = """
-                SELECT icd10_code as code, description, is_common
+                SELECT code, description, is_common
                 FROM icd10_codes
                 WHERE is_common = 1
-                ORDER BY icd10_code
+                ORDER BY code
                 LIMIT %s
             """
             results = DatabaseManager.execute_query(query, (limit,), fetch=True)
         else:
             # Search by code or description
             base_query = """
-                SELECT icd10_code as code, description, is_common
+                SELECT code, description, is_common
                 FROM icd10_codes
-                WHERE (icd10_code LIKE %s OR description LIKE %s)
+                WHERE (code LIKE %s OR description LIKE %s)
             """
             
             if common_only:
                 base_query += " AND is_common = 1"
             
-            base_query += " ORDER BY is_common DESC, icd10_code LIMIT %s"
+            base_query += " ORDER BY is_common DESC, code LIMIT %s"
             
             search_pattern = f"%{search_term}%"
             results = DatabaseManager.execute_query(
@@ -4339,10 +4339,10 @@ def get_common_icd10_codes():
         limit = int(request.args.get('limit', 30))
         
         query = """
-            SELECT icd10_code as code, description, is_common
+            SELECT code, description, is_common
             FROM icd10_codes
             WHERE is_common = 1
-            ORDER BY icd10_code
+            ORDER BY code
             LIMIT %s
         """
         
