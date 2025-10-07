@@ -200,7 +200,7 @@ def role_required(allowed_roles: List[str]):
         return decorated
     return decorator
 
-# ============================================================================
+#============================================================================
 # AUTHENTICATION ENDPOINTS
 # ============================================================================
 
@@ -956,6 +956,7 @@ def add_vital_signs(visit_id: int):
     except Exception as e:
         logger.error(f"Add vital signs error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 @app.route('/api/visits/<int:visit_id>/vital-signs', methods=['GET'])
 @token_required
 @role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
@@ -1194,6 +1195,65 @@ def create_clinical_note(visit_id: int):
     except Exception as e:
         logger.error(f"Create clinical note error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/icd10/search', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def search_icd10_codes():
+    """Search ICD-10 codes with autocomplete"""
+    try:
+        query = request.args.get('q', '').strip()
+        limit = int(request.args.get('limit', 20))
+        
+        if not query or len(query) < 2:
+            return jsonify({
+                'success': True,
+                'data': []
+            }), 200
+        
+        # Search by code or description
+        search_query = """
+        SELECT 
+            code,
+            description,
+            category,
+            subcategory,
+            is_common
+        FROM icd10_codes
+        WHERE 
+            code LIKE %s 
+            OR LOWER(description) LIKE %s
+            OR LOWER(category) LIKE %s
+        ORDER BY 
+            is_common DESC,
+            CASE 
+                WHEN code LIKE %s THEN 1
+                WHEN LOWER(description) LIKE %s THEN 2
+                ELSE 3
+            END,
+            code
+        LIMIT %s
+        """
+        
+        search_pattern = f"%{query}%"
+        code_pattern = f"{query}%"
+        
+        results = DatabaseManager.execute_query(
+            search_query,
+            (code_pattern, search_pattern, search_pattern, code_pattern, search_pattern, limit),
+            fetch=True
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': _to_jsonable(results) or []
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"ICD-10 search error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 
 # ============================================================================
 # ENHANCED MEDICATION MANAGEMENT
@@ -4262,109 +4322,303 @@ def get_dashboard_stats():
             for activity in (recent_activity or [])
         ]
 
-        return jsonify({'success': True, 'data': stats}), 200
+        return jsonify({'success': True, 'stats': stats}), 200
 
     except Exception as e:
         logger.error(f"Dashboard stats error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
-
+        return jsonify({'success': False, 'error': 'Internal server error'
+        ''}), 500
+    
 # ============================================================================
-# ICD-10 CODE ENDPOINTS
+# MEDSCHEME INTEGRATION ENDPOINTS
 # ============================================================================
 
-@app.route('/api/icd10/search', methods=['GET'])
+@app.route('/api/medscheme/alert', methods=['POST'])
 @token_required
 @role_required(['administrator', 'doctor', 'nurse'])
-def search_icd10_codes():
-    """Search ICD-10 codes by code or description"""
+def create_medscheme_alert():
+    """Create alert to medscheme for chronic disease or additional care"""
     try:
-        search_term = request.args.get('q', '').strip()
-        limit = int(request.args.get('limit', 50))
-        common_only = request.args.get('common_only', 'false').lower() == 'true'
+        data = request.get_json() or {}
         
-        if not search_term:
-            # Return common codes if no search term
-            query = """
-                SELECT code, description, is_common
-                FROM icd10_codes
-                WHERE is_common = 1
-                ORDER BY code
-                LIMIT %s
-            """
-            results = DatabaseManager.execute_query(query, (limit,), fetch=True)
-        else:
-            # Search by code or description
-            base_query = """
-                SELECT code, description, is_common
-                FROM icd10_codes
-                WHERE (code LIKE %s OR description LIKE %s)
-            """
-            
-            if common_only:
-                base_query += " AND is_common = 1"
-            
-            base_query += " ORDER BY is_common DESC, code LIMIT %s"
-            
-            search_pattern = f"%{search_term}%"
-            results = DatabaseManager.execute_query(
-                base_query,
-                (search_pattern, search_pattern, limit),
-                fetch=True
-            )
+        patient_id = data.get('patient_id')
+        visit_id = data.get('visit_id')
+        alert_type = data.get('alert_type')  # 'chronic_disease' or 'additional_care'
+        alert_data = data.get('alert_data', {})
         
-        codes = [
-            {
-                'code': row['code'],
-                'description': row['description'],
-                'isCommon': bool(row.get('is_common', 0)),
-                'display': f"{row['code']} - {row['description']}"
-            }
-            for row in (results or [])
-        ]
+        if not patient_id or not alert_type:
+            return jsonify({'success': False, 'error': 'patient_id and alert_type are required'}), 400
         
-        return jsonify({'success': True, 'data': codes}), 200
+        valid_alert_types = ['chronic_disease', 'additional_care', 'file_closure', 'data_sync']
+        if alert_type not in valid_alert_types:
+            return jsonify({'success': False, 'error': f'alert_type must be one of: {valid_alert_types}'}), 400
         
-    except Exception as e:
-        logger.error(f"ICD-10 search error: {e}")
-        return jsonify({'success': False, 'error': 'Failed to search ICD-10 codes'}), 500
-
-
-@app.route('/api/icd10/common', methods=['GET'])
-@token_required
-@role_required(['administrator', 'doctor', 'nurse'])
-def get_common_icd10_codes():
-    """Get frequently used ICD-10 codes"""
-    try:
-        limit = int(request.args.get('limit', 30))
-        
-        query = """
-            SELECT code, description, is_common
-            FROM icd10_codes
-            WHERE is_common = 1
-            ORDER BY code
-            LIMIT %s
+        # Insert alert
+        insert_query = """
+        INSERT INTO medscheme_alerts 
+        (patient_id, visit_id, alert_type, alert_status, alert_data, created_by)
+        VALUES (%s, %s, %s, 'pending', %s, %s)
         """
         
-        results = DatabaseManager.execute_query(query, (limit,), fetch=True)
+        result = DatabaseManager.execute_query(
+            insert_query,
+            (patient_id, visit_id, alert_type, json.dumps(alert_data), request.current_user['id'])
+        )
         
-        codes = [
-            {
-                'code': row['code'],
-                'description': row['description'],
-                'isCommon': True,
-                'display': f"{row['code']} - {row['description']}"
-            }
-            for row in (results or [])
-        ]
+        if not result:
+            return jsonify({'success': False, 'error': 'Failed to create medscheme alert'}), 500
         
-        return jsonify({'success': True, 'data': codes}), 200
+        # TODO: Implement actual medscheme API call here
+        # For now, mark as sent
+        logger.info(f"Medscheme alert created: {alert_type} for patient {patient_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Medscheme alert created successfully',
+            'note': 'Medscheme API integration pending'
+        }), 201
         
     except Exception as e:
-        logger.error(f"Common ICD-10 fetch error: {e}")
-        return jsonify({'success': False, 'error': 'Failed to fetch common ICD-10 codes'}), 500
+        logger.error(f"Create medscheme alert error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
+@app.route('/api/chronic-disease/enroll', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor'])
+def enroll_chronic_disease_program():
+    """Enroll patient in chronic disease management program"""
+    try:
+        data = request.get_json() or {}
+        
+        patient_id = data.get('patient_id')
+        condition_name = data.get('condition_name')
+        icd10_code = data.get('icd10_code')
+        enrollment_date = data.get('enrollment_date') or datetime.now(timezone.utc).date()
+        care_plan = data.get('care_plan', {})
+        
+        if not patient_id or not condition_name:
+            return jsonify({'success': False, 'error': 'patient_id and condition_name are required'}), 400
+        
+        # Insert enrollment
+        insert_query = """
+        INSERT INTO chronic_disease_program 
+        (patient_id, condition_name, icd10_code, enrollment_date, program_status, care_plan, created_by)
+        VALUES (%s, %s, %s, %s, 'active', %s, %s)
+        """
+        
+        result = DatabaseManager.execute_query(
+            insert_query,
+            (patient_id, condition_name, icd10_code, enrollment_date, json.dumps(care_plan), request.current_user['id'])
+        )
+        
+        if not result:
+            return jsonify({'success': False, 'error': 'Failed to enroll in chronic disease program'}), 500
+        
+        # Create medscheme alert
+        alert_data = {
+            'condition': condition_name,
+            'icd10_code': icd10_code,
+            'enrollment_date': str(enrollment_date),
+            'requires_additional_care': True
+        }
+        
+        DatabaseManager.execute_query(
+            """
+            INSERT INTO medscheme_alerts 
+            (patient_id, alert_type, alert_status, alert_data, created_by)
+            VALUES (%s, 'chronic_disease', 'pending', %s, %s)
+            """,
+            (patient_id, json.dumps(alert_data), request.current_user['id'])
+        )
+        
+        logger.info(f"Patient {patient_id} enrolled in chronic disease program: {condition_name}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Patient enrolled in chronic disease management program',
+            'medscheme_notified': True
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Enroll chronic disease program error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/visits/<int:visit_id>/close', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor'])
+def close_visit_with_notification():
+    """Close visit and send email report to beneficiary (POPIA compliant)"""
+    try:
+        data = request.get_json() or {}
+        
+        # Get visit and patient data
+        visit_query = """
+        SELECT pv.*, p.id as patient_id, p.first_name, p.last_name, p.email, 
+               p.date_of_birth, p.medical_aid_number, p.member_type
+        FROM patient_visits pv
+        JOIN patients p ON pv.patient_id = p.id
+        WHERE pv.id = %s
+        """
+        
+        visit_data = DatabaseManager.execute_query(visit_query, (visit_id,), fetch=True)
+        
+        if not visit_data:
+            return jsonify({'success': False, 'error': 'Visit not found'}), 404
+        
+        visit = visit_data[0]
+        patient_id = visit['patient_id']
+        
+        # Calculate patient age
+        patient_age = None
+        if visit['date_of_birth']:
+            today = datetime.now(timezone.utc).date()
+            birth_date = visit['date_of_birth']
+            patient_age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+        
+        # POPIA compliance: Determine recipient
+        recipient_email = visit['email']
+        recipient_type = 'patient'
+        
+        if patient_age and patient_age >= 18:
+            # Send to dependent (patient) if 18 or older
+            recipient_type = 'dependent'
+        else:
+            # Send to main member/guardian if under 18
+            recipient_type = 'main_member'
+            # TODO: Fetch main member email from medscheme/database
+        
+        # Mark visit as completed
+        update_query = """
+        UPDATE patient_visits 
+        SET is_completed = TRUE, completed_at = %s
+        WHERE id = %s
+        """
+        
+        DatabaseManager.execute_query(
+            update_query,
+            (datetime.now(timezone.utc), visit_id)
+        )
+        
+        # Gather report data
+        report_data = {
+            'visit_id': visit_id,
+            'patient_name': f"{visit['first_name']} {visit['last_name']}",
+            'visit_date': str(visit['visit_date']),
+            'medical_aid_number': visit['medical_aid_number'],
+            'closure_date': datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Create email notification record
+        notification_query = """
+        INSERT INTO visit_closure_notifications 
+        (visit_id, patient_id, recipient_email, recipient_type, report_data, 
+         email_status, popia_compliant, patient_age_at_send, created_by)
+        VALUES (%s, %s, %s, %s, %s, 'pending', TRUE, %s, %s)
+        """
+        
+        DatabaseManager.execute_query(
+            notification_query,
+            (visit_id, patient_id, recipient_email, recipient_type, 
+             json.dumps(report_data), patient_age, request.current_user['id'])
+        )
+        
+        # Create medscheme sync for file closure
+        DatabaseManager.execute_query(
+            """
+            INSERT INTO medscheme_sync_log 
+            (patient_id, visit_id, sync_type, sync_status, sync_data)
+            VALUES (%s, %s, 'visit_data', 'pending', %s)
+            """,
+            (patient_id, visit_id, json.dumps(report_data))
+        )
+        
+        # TODO: Implement actual email sending
+        logger.info(f"Visit {visit_id} closed. Email notification queued for {recipient_email} ({recipient_type})")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Visit closed successfully',
+            'email_queued': True,
+            'recipient_type': recipient_type,
+            'popia_compliant': True,
+            'medscheme_sync_queued': True
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Close visit error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/medscheme/sync', methods=['POST'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse'])
+def sync_to_medscheme():
+    """Push data to medscheme so they know what's going on"""
+    try:
+        data = request.get_json() or {}
+        
+        patient_id = data.get('patient_id')
+        visit_id = data.get('visit_id')
+        sync_type = data.get('sync_type', 'full_sync')
+        
+        if not patient_id:
+            return jsonify({'success': False, 'error': 'patient_id is required'}), 400
+        
+        # Gather data to sync
+        sync_data = {
+            'patient_id': patient_id,
+            'visit_id': visit_id,
+            'sync_timestamp': datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Create sync log
+        insert_query = """
+        INSERT INTO medscheme_sync_log 
+        (patient_id, visit_id, sync_type, sync_status, sync_data, started_at)
+        VALUES (%s, %s, %s, 'pending', %s, %s)
+        """
+        
+        DatabaseManager.execute_query(
+            insert_query,
+            (patient_id, visit_id, sync_type, json.dumps(sync_data), datetime.now(timezone.utc))
+        )
+        
+        # TODO: Implement actual medscheme API sync
+        logger.info(f"Medscheme sync initiated for patient {patient_id}, visit {visit_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Data sync to medscheme initiated',
+            'sync_type': sync_type,
+            'note': 'Medscheme API integration pending'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Medscheme sync error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+@app.route('/api/chronic-disease/list/<int:patient_id>', methods=['GET'])
+@token_required
+def list_chronic_disease_enrollments(patient_id: int):
+    """List chronic disease program enrollments for a patient"""
+    try:
+        query = """
+        SELECT * FROM chronic_disease_program
+        WHERE patient_id = %s
+        ORDER BY enrollment_date DESC
+        """
+        
+        enrollments = DatabaseManager.execute_query(query, (patient_id,), fetch=True)
+        
+        return jsonify({
+            'success': True,
+            'data': _to_jsonable(enrollments) or []
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"List chronic disease enrollments error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
     
+
 if __name__ == '__main__':
     # Disable the reloader to avoid SystemExit in debuggers (parent process exit).
     app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)

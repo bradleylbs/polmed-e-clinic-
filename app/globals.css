@@ -1,79 +1,109 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Updated color tokens for healthcare-focused design */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.35 0.01 258.34);
-  --card: oklch(0.97 0.005 258.34);
-  --card-foreground: oklch(0.35 0.01 258.34);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.35 0.01 258.34);
-  --primary: oklch(0.45 0.15 162.4);
+  /* Updated to exact Polmed logo colors */
+  --background: oklch(0.99 0 0);
+  --foreground: oklch(0.25 0.02 220);
+
+  /* Primary: Polmed Teal #16697A */
+  --primary: oklch(0.45 0.08 210);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.55 0.12 162.4);
+
+  /* Secondary: Light Teal #489FB5 */
+  --secondary: oklch(0.62 0.08 210);
   --secondary-foreground: oklch(1 0 0);
-  --muted: oklch(0.97 0.005 258.34);
-  --muted-foreground: oklch(0.35 0.01 258.34);
-  --accent: oklch(0.55 0.12 162.4);
+
+  /* Accent: Coral Pink #D97B93 */
+  --accent: oklch(0.65 0.12 10);
   --accent-foreground: oklch(1 0 0);
+
+  /* Additional brand colors */
+  --yellow: oklch(0.82 0.15 85);
+  --orange: oklch(0.72 0.15 55);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.25 0.02 220);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.25 0.02 220);
+  --muted: oklch(0.96 0.005 220);
+  --muted-foreground: oklch(0.5 0.02 220);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.92 0.005 258.34);
+  --border: oklch(0.92 0.005 220);
   --input: oklch(1 0 0);
-  --ring: oklch(0.45 0.15 162.4);
-  --chart-1: oklch(0.45 0.15 162.4);
-  --chart-2: oklch(0.55 0.12 162.4);
-  --chart-3: oklch(0.35 0.01 258.34);
-  --chart-4: oklch(0.5 0.05 258.34);
-  --chart-5: oklch(0.97 0.005 258.34);
+  --ring: oklch(0.45 0.08 210);
+
+  /* Chart colors using Polmed palette */
+  --chart-1: oklch(0.45 0.08 210);
+  --chart-2: oklch(0.62 0.08 210);
+  --chart-3: oklch(0.82 0.15 85);
+  --chart-4: oklch(0.72 0.15 55);
+  --chart-5: oklch(0.65 0.12 10);
+
   --radius: 0.5rem;
-  --sidebar: oklch(0.97 0.005 258.34);
-  --sidebar-foreground: oklch(0.35 0.01 258.34);
-  --sidebar-primary: oklch(0.45 0.15 162.4);
+
+  /* Sidebar using Polmed colors */
+  --sidebar: oklch(0.98 0.005 220);
+  --sidebar-foreground: oklch(0.25 0.02 220);
+  --sidebar-primary: oklch(0.45 0.08 210);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.55 0.12 162.4);
+  --sidebar-accent: oklch(0.62 0.08 210);
   --sidebar-accent-foreground: oklch(1 0 0);
-  --sidebar-border: oklch(0.92 0.005 258.34);
-  --sidebar-ring: oklch(0.45 0.15 162.4);
+  --sidebar-border: oklch(0.92 0.005 220);
+  --sidebar-ring: oklch(0.45 0.08 210);
 }
 
 .dark {
-  /* Updated dark mode tokens for healthcare theme */
-  --background: oklch(0.08 0.005 258.34);
-  --foreground: oklch(0.95 0.005 258.34);
-  --card: oklch(0.12 0.005 258.34);
-  --card-foreground: oklch(0.95 0.005 258.34);
-  --popover: oklch(0.08 0.005 258.34);
-  --popover-foreground: oklch(0.95 0.005 258.34);
-  --primary: oklch(0.55 0.12 162.4);
-  --primary-foreground: oklch(0.08 0.005 258.34);
-  --secondary: oklch(0.2 0.01 258.34);
-  --secondary-foreground: oklch(0.95 0.005 258.34);
-  --muted: oklch(0.2 0.01 258.34);
-  --muted-foreground: oklch(0.7 0.01 258.34);
-  --accent: oklch(0.2 0.01 258.34);
-  --accent-foreground: oklch(0.95 0.005 258.34);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.2 0.01 258.34);
-  --input: oklch(0.2 0.01 258.34);
-  --ring: oklch(0.55 0.12 162.4);
-  --chart-1: oklch(0.55 0.12 162.4);
-  --chart-2: oklch(0.65 0.15 162.4);
-  --chart-3: oklch(0.7 0.01 258.34);
-  --chart-4: oklch(0.5 0.05 258.34);
-  --chart-5: oklch(0.2 0.01 258.34);
-  --sidebar: oklch(0.12 0.005 258.34);
-  --sidebar-foreground: oklch(0.95 0.005 258.34);
-  --sidebar-primary: oklch(0.55 0.12 162.4);
-  --sidebar-primary-foreground: oklch(0.08 0.005 258.34);
-  --sidebar-accent: oklch(0.2 0.01 258.34);
-  --sidebar-accent-foreground: oklch(0.95 0.005 258.34);
-  --sidebar-border: oklch(0.2 0.01 258.34);
-  --sidebar-ring: oklch(0.55 0.12 162.4);
+  /* Dark mode with Polmed brand colors */
+  --background: oklch(0.12 0.01 220);
+  --foreground: oklch(0.95 0.005 220);
+
+  /* Primary: Polmed Teal - brighter in dark mode */
+  --primary: oklch(0.62 0.08 210);
+  --primary-foreground: oklch(0.12 0.01 220);
+
+  /* Secondary: Light Teal */
+  --secondary: oklch(0.72 0.08 210);
+  --secondary-foreground: oklch(0.12 0.01 220);
+
+  /* Accent: Coral Pink */
+  --accent: oklch(0.7 0.12 10);
+  --accent-foreground: oklch(0.12 0.01 220);
+
+  /* Additional brand colors - adjusted for dark mode */
+  --yellow: oklch(0.78 0.15 85);
+  --orange: oklch(0.68 0.15 55);
+
+  --card: oklch(0.15 0.01 220);
+  --card-foreground: oklch(0.95 0.005 220);
+  --popover: oklch(0.12 0.01 220);
+  --popover-foreground: oklch(0.95 0.005 220);
+  --muted: oklch(0.2 0.01 220);
+  --muted-foreground: oklch(0.65 0.02 220);
+  --destructive: oklch(0.55 0.22 27);
+  --destructive-foreground: oklch(0.95 0.005 220);
+  --border: oklch(0.25 0.01 220);
+  --input: oklch(0.2 0.01 220);
+  --ring: oklch(0.62 0.08 210);
+
+  /* Chart colors for dark mode */
+  --chart-1: oklch(0.62 0.08 210);
+  --chart-2: oklch(0.72 0.08 210);
+  --chart-3: oklch(0.78 0.15 85);
+  --chart-4: oklch(0.68 0.15 55);
+  --chart-5: oklch(0.7 0.12 10);
+
+  /* Sidebar dark mode */
+  --sidebar: oklch(0.15 0.01 220);
+  --sidebar-foreground: oklch(0.95 0.005 220);
+  --sidebar-primary: oklch(0.62 0.08 210);
+  --sidebar-primary-foreground: oklch(0.12 0.01 220);
+  --sidebar-accent: oklch(0.72 0.08 210);
+  --sidebar-accent-foreground: oklch(0.12 0.01 220);
+  --sidebar-border: oklch(0.25 0.01 220);
+  --sidebar-ring: oklch(0.62 0.08 210);
 }
 
 @theme inline {
@@ -121,7 +151,353 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  html {
+    @apply scroll-smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  *:focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+
+  button {
+    @apply cursor-pointer;
+  }
+
+  button:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  ::selection {
+    @apply bg-primary/20 text-foreground;
+  }
+
+  ::-moz-selection {
+    @apply bg-primary/20 text-foreground;
+  }
+
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="search"],
+  input[type="number"],
+  input[type="date"],
+  input[type="time"],
+  textarea,
+  select {
+    @apply rounded-md border border-border bg-input px-3 py-2 text-sm transition-colors;
+    @apply focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20;
+  }
+
+  ::-webkit-scrollbar {
+    @apply w-3 h-3;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-muted/30 rounded-lg;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-lg transition-colors;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    @apply bg-muted-foreground/70;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.35 0.01 258.34 / 0.3) oklch(0.97 0.005 258.34 / 0.3);
+  }
+
+  .dark * {
+    scrollbar-color: oklch(0.7 0.01 258.34 / 0.3) oklch(0.2 0.01 258.34 / 0.3);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent;
+  }
+
+  .glass {
+    @apply bg-background/80 backdrop-blur-xl border border-border/50;
+  }
+
+  .glass-strong {
+    @apply bg-background/95 backdrop-blur-2xl border border-border/50;
+  }
+}
+
+@layer components {
+  .spinner {
+    @apply h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent;
+  }
+
+  .spinner-sm {
+    @apply h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent;
+  }
+
+  .spinner-lg {
+    @apply h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent;
+  }
+
+  .skeleton {
+    @apply animate-pulse rounded-md bg-muted;
+  }
+
+  .card-interactive {
+    @apply transition-all duration-300 hover:shadow-xl hover:-translate-y-1 cursor-pointer;
+  }
+
+  .card-glass {
+    @apply bg-background/80 backdrop-blur-xl border border-border/50;
+  }
+
+  .btn-glow {
+    @apply transition-all duration-300;
+  }
+
+  .btn-glow:hover {
+    box-shadow: 0 0 20px oklch(0.45 0.15 162.4 / 0.4);
+  }
+
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background;
+  }
+
+  .divider {
+    @apply h-px w-full bg-gradient-to-r from-transparent via-border to-transparent;
+  }
+
+  .divider-vertical {
+    @apply w-px h-full bg-gradient-to-b from-transparent via-border to-transparent;
+  }
+
+  /* Enhanced POLMED Logo Styles */
+  .polmed-logo {
+    @apply transition-all duration-300 ease-out;
+    filter: drop-shadow(0 2px 8px rgba(22, 105, 122, 0.1));
+  }
+
+  .polmed-logo:hover {
+    @apply scale-105;
+    filter: drop-shadow(0 4px 16px rgba(22, 105, 122, 0.2));
+  }
+
+  .polmed-logo-header {
+    @apply max-w-[140px] h-auto;
+    @apply sm:max-w-[160px];
+    @apply md:max-w-[180px];
+    @apply lg:max-w-[200px];
+  }
+
+  .polmed-logo-hero {
+    @apply max-w-[200px] h-auto;
+    @apply sm:max-w-[240px];
+    @apply md:max-w-[280px];
+    @apply lg:max-w-[320px];
+  }
+
+  .polmed-logo-large {
+    @apply max-w-[280px] h-auto;
+    @apply sm:max-w-[320px];
+    @apply md:max-w-[360px];
+    @apply lg:max-w-[400px];
+  }
+
+  .polmed-brand-gradient {
+    background: linear-gradient(135deg, 
+      oklch(0.45 0.08 210) 0%, 
+      oklch(0.62 0.08 210) 50%, 
+      oklch(0.65 0.12 10) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .polmed-hero-section {
+    background: radial-gradient(ellipse at top,
+      oklch(0.45 0.08 210 / 0.1) 0%,
+      oklch(0.62 0.08 210 / 0.05) 25%,
+      transparent 50%);
+  }
+
+  .polmed-card-glow {
+    @apply transition-all duration-300;
+    box-shadow: 0 4px 24px -4px rgba(22, 105, 122, 0.1);
+  }
+
+  .polmed-card-glow:hover {
+    box-shadow: 0 8px 32px -8px rgba(22, 105, 122, 0.2);
+    transform: translateY(-2px);
+  }
+
+  .animate-delay-1s {
+    animation-delay: 1s;
+  }
+
+  .animate-delay-1-5s {
+    animation-delay: 1.5s;
+  }
+
+  .animate-delay-2s {
+    animation-delay: 2s;
+  }
+}
+
+/* Removed tw-animate-css import and simplified custom animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 20px oklch(0.45 0.15 162.4 / 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px oklch(0.45 0.15 162.4 / 0.6);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.8s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.5s ease-out forwards;
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+  background: linear-gradient(to right, transparent 0%, oklch(0.45 0.15 162.4 / 0.1) 50%, transparent 100%);
+  background-size: 1000px 100%;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Simplified accessibility styles */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.skip-to-main {
+  @apply fixed left-4 top-4 z-50 rounded-md bg-primary px-4 py-2 text-primary-foreground transition-transform;
+  transform: translateY(-100px);
+}
+
+.skip-to-main:focus {
+  transform: translateY(0);
+}
+
+@media print {
+  *,
+  *::before,
+  *::after {
+    background: transparent !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  button,
+  a,
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"] {
+    min-height: 44px;
+    min-width: 44px;
   }
 }

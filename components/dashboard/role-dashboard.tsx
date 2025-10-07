@@ -122,7 +122,7 @@ const roleConfig = {
 
 const getRoleSpecificLabels = (role: UserRole, metricType: string) => {
   switch (role) {
-    case 'clerk':
+    case "clerk":
       return {
         today: "Registrations Today",
         weekly: "Registrations This Week",
@@ -132,27 +132,27 @@ const getRoleSpecificLabels = (role: UserRole, metricType: string) => {
         weekIcon: TrendingUp,
         completedIcon: Calendar,
       }
-    case 'nurse':
+    case "nurse":
       return {
         today: "Vitals Recorded Today",
-        weekly: "Vitals This Week", 
+        weekly: "Vitals This Week",
         monthly: "Vitals This Month",
         completed: "Assessments Done",
         todayIcon: Heart,
         weekIcon: Activity,
         completedIcon: ClipboardCheck,
       }
-    case 'doctor':
+    case "doctor":
       return {
         today: "Patients Treated Today",
         weekly: "Patients This Week",
-        monthly: "Patients This Month", 
+        monthly: "Patients This Month",
         completed: "Clinical Notes",
         todayIcon: Stethoscope,
         weekIcon: TrendingUp,
         completedIcon: FileText,
       }
-    case 'social_worker':
+    case "social_worker":
       return {
         today: "Counseling Sessions Today",
         weekly: "Sessions This Week",
@@ -165,7 +165,7 @@ const getRoleSpecificLabels = (role: UserRole, metricType: string) => {
     default:
       return {
         today: "System Visits Today",
-        weekly: "Visits This Week", 
+        weekly: "Visits This Week",
         monthly: "Visits This Month",
         completed: "Total Workflows",
         todayIcon: Users,
@@ -181,11 +181,8 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
   const { toast } = useToast()
   const roleInfo = roleConfig[user.role] || roleConfig["clerk"]
   const RoleIcon = roleInfo?.icon
-  
-  const labels = getRoleSpecificLabels(
-    user.role, 
-    dashboardData?.roleSpecificMetrics?.metricType || ''
-  )
+
+  const labels = getRoleSpecificLabels(user.role, dashboardData?.roleSpecificMetrics?.metricType || "")
   const TodayIcon = labels.todayIcon
   const WeekIcon = labels.weekIcon
   const CompletedIcon = labels.completedIcon
@@ -202,21 +199,21 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
         const raw: any = response.data
         const normalizedUpcoming: TaskItem[] = (raw.upcomingTasks ?? []).map((t: any) => ({
           id: String(t.id),
-          title: String(t.title ?? ''),
-          description: String(t.description ?? ''),
+          title: String(t.title ?? ""),
+          description: String(t.description ?? ""),
           // Convert string to Date for typing
           dueDate: t.dueDate ? new Date(t.dueDate) : new Date(),
-          priority: (t.priority as TaskItem['priority']) ?? 'low',
-          type: (t.type as TaskItem['type']) ?? 'review',
+          priority: (t.priority as TaskItem["priority"]) ?? "low",
+          type: (t.type as TaskItem["type"]) ?? "review",
         }))
 
         const normalizedActivity: ActivityItem[] = (raw.recentActivity ?? []).map((a: any) => ({
           id: String(a.id),
-          type: (a.type as ActivityItem['type']) ?? 'patient',
-          description: String(a.description ?? ''),
+          type: (a.type as ActivityItem["type"]) ?? "patient",
+          description: String(a.description ?? ""),
           timestamp: String(a.timestamp ?? new Date().toISOString()),
           location: a.location ? String(a.location) : undefined,
-          status: (a.status as ActivityItem['status']) ?? 'pending',
+          status: (a.status as ActivityItem["status"]) ?? "pending",
         }))
 
         setDashboardData({
@@ -230,7 +227,7 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
           maintenanceAlerts: Number(raw.maintenanceAlerts ?? 0),
           recentActivity: normalizedActivity,
           upcomingTasks: normalizedUpcoming,
-          roleSpecificMetrics: raw.roleSpecificMetrics ?? { metricType: '' },
+          roleSpecificMetrics: raw.roleSpecificMetrics ?? { metricType: "" },
         })
       } else {
         toast({
@@ -345,52 +342,57 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
 
   return (
     <div className="space-y-6">
-      {/* Welcome Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between p-6 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent rounded-2xl border border-primary/20">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Welcome back, {user.username}</h1>
+          <h1 className="text-3xl font-bold text-foreground mb-2">Welcome back, {user.username}</h1>
           <div className="flex items-center gap-2 mt-1">
-            <Badge className={roleInfo.color}>
+            <Badge className={`${roleInfo.color} shadow-sm`}>
               <RoleIcon className="w-3 h-3 mr-1" />
               {roleInfo.label}
             </Badge>
             {user.assignedLocation && (
-              <Badge variant="outline">
+              <Badge variant="outline" className="shadow-sm">
                 <MapPin className="w-3 h-3 mr-1" />
                 {user.assignedLocation}
               </Badge>
             )}
-            {user.mpNumber && <Badge variant="outline">MP: {user.mpNumber}</Badge>}
+            {user.mpNumber && (
+              <Badge variant="outline" className="shadow-sm">
+                MP: {user.mpNumber}
+              </Badge>
+            )}
           </div>
-          <p className="text-sm text-muted-foreground mt-1">{roleInfo.description}</p>
+          <p className="text-sm text-muted-foreground mt-2">{roleInfo.description}</p>
         </div>
       </div>
 
-      {/* Key Metrics - Role Specific */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
+        <Card className="hover:shadow-lg transition-all duration-300 border-primary/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{labels.today}</CardTitle>
-            <TodayIcon className="h-4 w-4 text-muted-foreground" />
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <TodayIcon className="h-5 w-5 text-primary" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{dashboardData.todayPatients ?? 0}</div>
-            {user.role === 'clerk' && dashboardData.roleSpecificMetrics.todayBookings !== undefined && (
+            <div className="text-3xl font-bold text-primary">{dashboardData.todayPatients ?? 0}</div>
+            {user.role === "clerk" && dashboardData.roleSpecificMetrics.todayBookings !== undefined && (
               <p className="text-xs text-muted-foreground">
                 +{dashboardData.roleSpecificMetrics.todayBookings} bookings
               </p>
             )}
-            {user.role === 'doctor' && dashboardData.roleSpecificMetrics.todayDiagnoses !== undefined && (
+            {user.role === "doctor" && dashboardData.roleSpecificMetrics.todayDiagnoses !== undefined && (
               <p className="text-xs text-muted-foreground">
-                {dashboardData.roleSpecificMetrics.todayDiagnoses} diagnoses, {dashboardData.roleSpecificMetrics.todayTreatments || 0} treatments
+                {dashboardData.roleSpecificMetrics.todayDiagnoses} diagnoses,{" "}
+                {dashboardData.roleSpecificMetrics.todayTreatments || 0} treatments
               </p>
             )}
-            {user.role === 'nurse' && dashboardData.roleSpecificMetrics.todayAssessments !== undefined && (
+            {user.role === "nurse" && dashboardData.roleSpecificMetrics.todayAssessments !== undefined && (
               <p className="text-xs text-muted-foreground">
                 {dashboardData.roleSpecificMetrics.todayAssessments} assessments
               </p>
             )}
-            {user.role === 'social_worker' && dashboardData.roleSpecificMetrics.todayReferrals !== undefined && (
+            {user.role === "social_worker" && dashboardData.roleSpecificMetrics.todayReferrals !== undefined && (
               <p className="text-xs text-muted-foreground">
                 {dashboardData.roleSpecificMetrics.todayReferrals} referrals made
               </p>
@@ -398,36 +400,42 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:shadow-lg transition-all duration-300 border-secondary/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{labels.weekly}</CardTitle>
-            <WeekIcon className="h-4 w-4 text-muted-foreground" />
+            <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center">
+              <WeekIcon className="h-5 w-5 text-secondary" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{dashboardData.weeklyPatients ?? 0}</div>
-            <p className="text-xs text-muted-foreground">Last 7 days</p>
+            <div className="text-3xl font-bold text-secondary">{dashboardData.weeklyPatients ?? 0}</div>
+            <p className="text-xs text-muted-foreground mt-1">Last 7 days</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:shadow-lg transition-all duration-300 border-accent/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pending Tasks</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
+              <Clock className="h-5 w-5 text-accent" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{dashboardData.pendingAppointments ?? 0}</div>
-            <p className="text-xs text-muted-foreground">{dashboardData.upcomingTasks?.length ?? 0} due today</p>
+            <div className="text-3xl font-bold text-accent">{dashboardData.pendingAppointments ?? 0}</div>
+            <p className="text-xs text-muted-foreground mt-1">{dashboardData.upcomingTasks?.length ?? 0} due today</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:shadow-lg transition-all duration-300 border-green-500/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{labels.completed}</CardTitle>
-            <CompletedIcon className="h-4 w-4 text-muted-foreground" />
+            <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
+              <CompletedIcon className="h-5 w-5 text-green-600" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{dashboardData.completedWorkflows ?? 0}</div>
-            <p className="text-xs text-muted-foreground">This month</p>
+            <div className="text-3xl font-bold text-green-600">{dashboardData.completedWorkflows ?? 0}</div>
+            <p className="text-xs text-muted-foreground mt-1">This month</p>
           </CardContent>
         </Card>
       </div>
@@ -435,10 +443,10 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
       {/* Role-specific Alerts */}
       {(user.role === "administrator" || user.role === "doctor" || user.role === "nurse") &&
         (dashboardData.lowStockAlerts > 0 || dashboardData.maintenanceAlerts > 0) && (
-          <Card>
+          <Card className="border-orange-500/30 shadow-lg">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-orange-600" />
+              <CardTitle className="flex items-center gap-2 text-orange-700">
+                <AlertTriangle className="w-5 h-5" />
                 System Alerts
               </CardTitle>
               <CardDescription>Items requiring immediate attention</CardDescription>
@@ -446,22 +454,28 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
             <CardContent>
               <div className="space-y-3">
                 {dashboardData.lowStockAlerts > 0 && (
-                  <div className="flex items-center justify-between p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Package className="w-4 h-4 text-orange-600" />
+                  <div className="flex items-center justify-between p-4 bg-gradient-to-r from-orange-50 to-orange-100/50 border border-orange-200 rounded-xl hover:shadow-md transition-shadow">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
+                        <Package className="w-5 h-5 text-orange-600" />
+                      </div>
                       <span className="text-sm font-medium">Low Stock Items</span>
                     </div>
-                    <Badge className="bg-orange-100 text-orange-800">{dashboardData.lowStockAlerts} items</Badge>
+                    <Badge className="bg-orange-500 text-white shadow-sm">{dashboardData.lowStockAlerts} items</Badge>
                   </div>
                 )}
 
                 {dashboardData.maintenanceAlerts > 0 && (
-                  <div className="flex items-center justify-between p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Activity className="w-4 h-4 text-yellow-600" />
+                  <div className="flex items-center justify-between p-4 bg-gradient-to-r from-yellow-50 to-yellow-100/50 border border-yellow-200 rounded-xl hover:shadow-md transition-shadow">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                        <Activity className="w-5 h-5 text-yellow-600" />
+                      </div>
                       <span className="text-sm font-medium">Maintenance Due</span>
                     </div>
-                    <Badge className="bg-yellow-100 text-yellow-800">{dashboardData.maintenanceAlerts} items</Badge>
+                    <Badge className="bg-yellow-500 text-white shadow-sm">
+                      {dashboardData.maintenanceAlerts} items
+                    </Badge>
                   </div>
                 )}
               </div>
@@ -470,8 +484,7 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
         )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Activity */}
-        <Card>
+        <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
             <CardTitle>Recent Activity</CardTitle>
             <CardDescription>Your latest actions and updates</CardDescription>
@@ -480,7 +493,10 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
             <div className="space-y-3">
               {dashboardData.recentActivity.length > 0 ? (
                 dashboardData.recentActivity.map((activity) => (
-                  <div key={activity.id} className="flex items-start gap-3 p-3 border rounded-lg">
+                  <div
+                    key={activity.id}
+                    className="flex items-start gap-3 p-4 border rounded-xl hover:shadow-md hover:border-primary/30 transition-all"
+                  >
                     <div className={`p-2 rounded-full bg-muted ${getActivityStatusColor(activity.status)}`}>
                       {getActivityIcon(activity.type)}
                     </div>
@@ -501,16 +517,13 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  No recent activity to display
-                </p>
+                <p className="text-sm text-muted-foreground text-center py-4">No recent activity to display</p>
               )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Upcoming Tasks */}
-        <Card>
+        <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
             <CardTitle>Upcoming Tasks</CardTitle>
             <CardDescription>Tasks and deadlines requiring your attention</CardDescription>
@@ -519,7 +532,10 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
             <div className="space-y-3">
               {dashboardData.upcomingTasks && dashboardData.upcomingTasks.length > 0 ? (
                 dashboardData.upcomingTasks.map((task) => (
-                  <div key={task.id} className="flex items-start gap-3 p-3 border rounded-lg">
+                  <div
+                    key={task.id}
+                    className="flex items-start gap-3 p-4 border rounded-xl hover:shadow-md hover:border-primary/30 transition-all"
+                  >
                     <div className="p-2 rounded-full bg-muted">{getTaskIcon(task.type)}</div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
@@ -538,9 +554,7 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  No upcoming tasks
-                </p>
+                <p className="text-sm text-muted-foreground text-center py-4">No upcoming tasks</p>
               )}
             </div>
           </CardContent>

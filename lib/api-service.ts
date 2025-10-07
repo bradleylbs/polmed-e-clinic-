@@ -199,15 +199,6 @@ export interface CreateReferralRequest {
   appointment_date?: string
 }
 
-// ICD-10 Codes
-export interface ICD10Code {
-  code: string
-  description: string
-  isCommon: boolean
-  display: string
-}
-
-
 export interface UpdateReferralRequest {
   status?: Referral["status"]
   appointment_date?: string
@@ -239,7 +230,7 @@ export interface Appointment {
   booked_by_email?: string
   appointment_date: string
   appointment_time: string
-  status: 'available' | 'booked' | 'completed' | 'cancelled'
+  status: "available" | "booked" | "completed" | "cancelled"
   special_requirements?: string
   created_at?: string
   updated_at?: string
@@ -313,7 +304,8 @@ export interface CreateClinicalNoteRequest {
   follow_up_date?: string
 }
 
-const DEFAULT_REMOTE_API_BASE_URL = "https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net/api"
+const DEFAULT_REMOTE_API_BASE_URL =
+  "https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net/api"
 
 class ApiService {
   private baseUrl =
@@ -358,7 +350,7 @@ class ApiService {
       headers.Authorization = `Bearer ${this.token}`
     }
 
-    console.log(`🚀 API Request: ${options.method || 'GET'} ${url}`, options.body)
+    console.log(`🚀 API Request: ${options.method || "GET"} ${url}`, options.body)
 
     try {
       const isBrowser = typeof window !== "undefined"
@@ -371,18 +363,22 @@ class ApiService {
           const { offlineManager } = await import("./offline-manager")
           const body = options.body && typeof options.body === "string" ? JSON.parse(options.body) : options.body
 
-          const opType: any =
-            endpoint.startsWith("/patients") ? "patient" :
-            endpoint.startsWith("/routes") ? "route" :
-            endpoint.startsWith("/inventory") ? "inventory" :
-            endpoint.startsWith("/appointments") ? "appointment" : "inventory"
+          const opType: any = endpoint.startsWith("/patients")
+            ? "patient"
+            : endpoint.startsWith("/routes")
+              ? "route"
+              : endpoint.startsWith("/inventory")
+                ? "inventory"
+                : endpoint.startsWith("/appointments")
+                  ? "appointment"
+                  : "inventory"
 
           const opId = await offlineManager.queueOperation({
             type: opType,
             action: (method === "POST" ? "create" : method === "DELETE" ? "delete" : "update") as any,
             data: body ?? {},
             endpoint,
-            method
+            method,
           })
 
           return {
@@ -403,7 +399,7 @@ class ApiService {
         })
 
       let response = await attemptFetch()
-      
+
       // Retry once for server errors
       if (!response.ok && response.status >= 500) {
         console.log("🔄 Retrying request due to server error...")
@@ -431,21 +427,34 @@ class ApiService {
 
       // Enhanced response unwrapping
       let unwrapped = data
-      if (data && typeof data === 'object') {
+      if (data && typeof data === "object") {
         // Prefer data field if it exists
         if (data.data !== undefined) {
           unwrapped = data.data
         }
-        
+
         // For arrays, look for common collection keys
-        if (unwrapped && typeof unwrapped === 'object' && !Array.isArray(unwrapped)) {
+        if (unwrapped && typeof unwrapped === "object" && !Array.isArray(unwrapped)) {
           const collectionKeys = [
-            "routes", "patients", "assets", "consumables", "categories", 
-            "appointments", "users", "stats", "workflow", "notes", 
-            "referrals", "suppliers", "locations", "sync_status",
-            "batches", "alerts", "usage_history"
+            "routes",
+            "patients",
+            "assets",
+            "consumables",
+            "categories",
+            "appointments",
+            "users",
+            "stats",
+            "workflow",
+            "notes",
+            "referrals",
+            "suppliers",
+            "locations",
+            "sync_status",
+            "batches",
+            "alerts",
+            "usage_history",
           ]
-          
+
           for (const key of collectionKeys) {
             if (Object.prototype.hasOwnProperty.call(unwrapped, key) && Array.isArray(unwrapped[key])) {
               unwrapped = unwrapped[key]
@@ -544,21 +553,18 @@ class ApiService {
     })
   }
 
-  async addVitalSigns(
-    visitId: number,
-    payload: VitalSignsRequest
-  ): Promise<ApiResponse<any>> {
+  async addVitalSigns(visitId: number, payload: VitalSignsRequest): Promise<ApiResponse<any>> {
     // Clean the payload - convert empty strings to undefined and ensure numbers
-    const cleanPayload: Record<string, any> = {};
-    
+    const cleanPayload: Record<string, any> = {}
+
     for (const [key, value] of Object.entries(payload)) {
-      if (value === '' || value === null) {
-        cleanPayload[key] = undefined;
-      } else if (typeof value === 'string' && !isNaN(Number(value)) && key !== 'nursing_notes') {
+      if (value === "" || value === null) {
+        cleanPayload[key] = undefined
+      } else if (typeof value === "string" && !isNaN(Number(value)) && key !== "nursing_notes") {
         // Convert numeric strings to numbers, except for nursing_notes
-        cleanPayload[key] = Number(value);
+        cleanPayload[key] = Number(value)
       } else {
-        cleanPayload[key] = value;
+        cleanPayload[key] = value
       }
     }
 
@@ -608,12 +614,17 @@ class ApiService {
       start_date: payload.start_date,
       end_date: payload.end_date,
       province: payload.province,
-      route_type: payload.route_type || 
-        (payload.location_type === 'police_station' ? 'Police Stations' :
-         payload.location_type === 'school' ? 'Schools' :
-         payload.location_type === 'community_center' ? 'Community Centers' : 'Mixed'),
+      route_type:
+        payload.route_type ||
+        (payload.location_type === "police_station"
+          ? "Police Stations"
+          : payload.location_type === "school"
+            ? "Schools"
+            : payload.location_type === "community_center"
+              ? "Community Centers"
+              : "Mixed"),
       max_appointments_per_day: payload.max_appointments_per_day || payload.max_appointments || 100,
-      ...(payload.status && { status: payload.status })
+      ...(payload.status && { status: payload.status }),
     }
 
     console.log("📤 Creating route with payload:", routePayload)
@@ -627,7 +638,7 @@ class ApiService {
   async updateRoute(id: number, route: Partial<Route>): Promise<ApiResponse<Route>> {
     // Clean the payload for backend
     const updatePayload: any = {}
-    
+
     if (route.name !== undefined) updatePayload.route_name = route.name
     if (route.description !== undefined) updatePayload.description = route.description
     if (route.start_date !== undefined) updatePayload.start_date = route.start_date
@@ -683,7 +694,10 @@ class ApiService {
     return this.request<any[]>(`/appointments/available${qs}`)
   }
 
-  async bookAppointmentPublic(appointmentId: number, payload: BookAppointmentRequest): Promise<ApiResponse<{ booking_reference: string }>> {
+  async bookAppointmentPublic(
+    appointmentId: number,
+    payload: BookAppointmentRequest,
+  ): Promise<ApiResponse<{ booking_reference: string }>> {
     return this.request<{ booking_reference: string }>(`/appointments/${appointmentId}/book`, {
       method: "POST",
       body: JSON.stringify(payload),
@@ -828,7 +842,7 @@ class ApiService {
       adjustment_type: "increase" | "decrease" | "set"
       quantity: number
       reason: string
-    }
+    },
   ): Promise<ApiResponse<any>> {
     return this.request<any>(`/inventory/stock/${stockId}/adjust`, {
       method: "POST",
@@ -859,7 +873,7 @@ class ApiService {
   async getExpiryAlerts(daysAhead = 90, alertLevel?: string): Promise<ApiResponse<any[]>> {
     const params = new URLSearchParams({ days_ahead: daysAhead.toString() })
     if (alertLevel) {
-      params.append('alert_level', alertLevel)
+      params.append("alert_level", alertLevel)
     }
     return this.request<any[]>(`/inventory/alerts/expiry?${params}`)
   }
@@ -876,7 +890,7 @@ class ApiService {
   async getInventoryTurnover(periodMonths = 12, categoryId?: number): Promise<ApiResponse<any>> {
     const params = new URLSearchParams({ period_months: periodMonths.toString() })
     if (categoryId) {
-      params.append('category_id', categoryId.toString())
+      params.append("category_id", categoryId.toString())
     }
     return this.request<any>(`/inventory/reports/turnover?${params}`)
   }
@@ -884,21 +898,6 @@ class ApiService {
   // ==================== DASHBOARD AND ANALYTICS ====================
   async getDashboardStats(): Promise<ApiResponse<DashboardStats>> {
     return this.request<DashboardStats>("/dashboard/stats")
-  }
-
-  // ==================== ICD-10 CODE MANAGEMENT ====================
-  async searchICD10Codes(searchTerm: string, limit: number = 50, commonOnly: boolean = false): Promise<ApiResponse<ICD10Code[]>> {
-    const params = new URLSearchParams({ 
-      q: searchTerm, 
-      limit: limit.toString(),
-      common_only: commonOnly.toString()
-    })
-    return this.request<ICD10Code[]>(`/icd10/search?${params}`)
-  }
-
-  async getCommonICD10Codes(limit: number = 30): Promise<ApiResponse<ICD10Code[]>> {
-    const params = new URLSearchParams({ limit: limit.toString() })
-    return this.request<ICD10Code[]>(`/icd10/common?${params}`)
   }
 
   // ==================== USER MANAGEMENT ====================
@@ -976,10 +975,7 @@ class ApiService {
     return this.request<ClinicalNote[]>(`/visits/${visitId}/clinical-notes`)
   }
 
-  async createClinicalNote(
-    visitId: number,
-    payload: CreateClinicalNoteRequest,
-  ): Promise<ApiResponse<ClinicalNote>> {
+  async createClinicalNote(visitId: number, payload: CreateClinicalNoteRequest): Promise<ApiResponse<ClinicalNote>> {
     return this.request<ClinicalNote>(`/visits/${visitId}/clinical-notes`, {
       method: "POST",
       body: JSON.stringify(payload),
@@ -1039,7 +1035,7 @@ class ApiService {
       start_time: string
       end_time: string
       max_appointments?: number
-    }
+    },
   ): Promise<ApiResponse<any>> {
     return this.request<any>(`/routes/${routeId}/locations`, {
       method: "POST",
@@ -1054,7 +1050,7 @@ class ApiService {
       start_time: string
       end_time: string
       max_appointments: number
-    }>
+    }>,
   ): Promise<ApiResponse<any>> {
     return this.request<any>(`/route-locations/${routeLocationId}`, {
       method: "PUT",
@@ -1105,6 +1101,12 @@ class ApiService {
       return userStr ? JSON.parse(userStr) : null
     }
     return null
+  }
+
+  // ==================== ICD-10 SEARCH ====================
+  async searchICD10(query: string, limit = 20): Promise<ApiResponse<any[]>> {
+    const params = new URLSearchParams({ q: query, limit: limit.toString() })
+    return this.request<any[]>(`/icd10/search?${params}`)
   }
 }
 

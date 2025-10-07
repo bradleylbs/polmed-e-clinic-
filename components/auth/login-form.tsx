@@ -88,7 +88,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
 
     try {
       console.log("Attempting login for:", email)
-      
+
       const response = await apiService.login({
         email: email.trim().toLowerCase(),
         password: password,
@@ -119,7 +119,6 @@ export function LoginForm({ onLogin }: LoginFormProps) {
           role: userRole,
           ...(userRole === "doctor" && mpNumber && { mpNumber }),
         })
-
       } else {
         console.error("Login failed:", response.error)
         setError(response.error || "Login failed. Please check your credentials.")
@@ -136,7 +135,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
 
   const handleInitialSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!email.trim() || !password.trim()) {
       setError("Please fill in all required fields")
       return
@@ -171,32 +170,48 @@ export function LoginForm({ onLogin }: LoginFormProps) {
   const RoleIcon = roleConfig[role]?.icon || UserCheck
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center space-y-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background via-background to-muted/20 p-4">
+      {/* Animated background elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse" />
+        <div
+          className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse"
+          style={{ animationDelay: "1s" }}
+        />
+      </div>
+
+      <Card className="w-full max-w-md relative shadow-2xl border-2 border-border/50 bg-card/80 backdrop-blur-sm animate-fade-in">
+        <CardHeader className="text-center space-y-6 pb-8">
           <div className="flex justify-center">
             <Image
               src="/polmed_logo.png"
               alt="POLMED"
               width={200}
               height={64}
-              className="h-16 w-auto"
+              className="h-16 w-auto transition-all hover:scale-105 duration-300"
               priority
             />
           </div>
-          <CardDescription className="text-pretty">Electronic Patient Management System</CardDescription>
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
+              Staff Portal
+            </h1>
+            <CardDescription className="text-base">Electronic Patient Management System</CardDescription>
+          </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={showRoleSelection ? handleSubmit : handleInitialSubmit} className="space-y-4">
+          <form onSubmit={showRoleSelection ? handleSubmit : handleInitialSubmit} className="space-y-5">
             {error && (
-              <Alert variant="destructive">
+              <Alert variant="destructive" className="animate-fade-in">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email Address</Label>
+              <Label htmlFor="email" className="text-sm font-medium">
+                Email Address
+              </Label>
               <Input
                 id="email"
                 type="email"
@@ -206,11 +221,14 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                 placeholder="Enter your email"
                 autoComplete="email"
                 disabled={isLoading}
+                className="h-11 transition-all duration-300 focus:ring-2 focus:ring-primary/20"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password" className="text-sm font-medium">
+                Password
+              </Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -221,6 +239,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                   placeholder="Enter your password"
                   autoComplete="current-password"
                   disabled={isLoading}
+                  className="h-11 pr-10 transition-all duration-300 focus:ring-2 focus:ring-primary/20"
                 />
                 <Button
                   type="button"
@@ -231,13 +250,11 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                   disabled={isLoading}
                 >
                   {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
                   ) : (
-                    <Eye className="h-4 w-4" />
+                    <Eye className="h-4 w-4 text-muted-foreground" />
                   )}
-                  <span className="sr-only">
-                    {showPassword ? "Hide password" : "Show password"}
-                  </span>
+                  <span className="sr-only">{showPassword ? "Hide password" : "Show password"}</span>
                 </Button>
               </div>
             </div>
@@ -245,9 +262,11 @@ export function LoginForm({ onLogin }: LoginFormProps) {
             {showRoleSelection && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="role">User Role</Label>
+                  <Label htmlFor="role" className="text-sm font-medium">
+                    User Role
+                  </Label>
                   <Select value={role} onValueChange={(value: UserRole) => setRole(value)} disabled={isLoading}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -265,7 +284,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                     </SelectContent>
                   </Select>
                   {roleConfig[role] && (
-                    <Badge className={roleConfig[role].color}>
+                    <Badge className={`${roleConfig[role].color} transition-all duration-300 hover:scale-105`}>
                       <RoleIcon className="w-3 h-3 mr-1" />
                       {roleConfig[role].description}
                     </Badge>
@@ -274,7 +293,9 @@ export function LoginForm({ onLogin }: LoginFormProps) {
 
                 {role === "doctor" && (
                   <div className="space-y-2">
-                    <Label htmlFor="mpNumber">MP Number (Optional)</Label>
+                    <Label htmlFor="mpNumber" className="text-sm font-medium">
+                      MP Number (Optional)
+                    </Label>
                     <Input
                       id="mpNumber"
                       type="text"
@@ -282,20 +303,28 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                       onChange={(e) => setMpNumber(e.target.value)}
                       placeholder="Medical Practice number"
                       disabled={isLoading}
+                      className="h-11 transition-all duration-300 focus:ring-2 focus:ring-primary/20"
                     />
                   </div>
                 )}
               </>
             )}
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button
+              type="submit"
+              className="w-full h-11 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-300 hover:scale-105 group"
+              disabled={isLoading}
+            >
               {isLoading ? (
                 <div className="flex items-center justify-center">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
                   Signing in...
                 </div>
               ) : (
-                "Sign In"
+                <>
+                  Sign In
+                  <Shield className="w-4 h-4 ml-2 group-hover:rotate-12 transition-transform" />
+                </>
               )}
             </Button>
 
@@ -303,7 +332,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
               <Button
                 type="button"
                 variant="outline"
-                className="w-full"
+                className="w-full h-11 border-2 hover:bg-primary/5 hover:border-primary/50 transition-all duration-300 bg-transparent"
                 onClick={() => {
                   setShowRoleSelection(false)
                   setError(null)

@@ -35,12 +35,9 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
       setLoading(true)
       let patientsData: any[] = []
       if (!offlineManager.getConnectionStatus()) {
-        // Offline: get patients from IndexedDB
         const data = await offlineManager.getData("patients")
-        // Ensure we always have an array
         patientsData = Array.isArray(data) ? data : data ? [data] : []
       } else {
-        // Online: get patients from API
         const response = await apiService.getPatients()
         if (response.success && response.data) {
           patientsData = response.data as any[]
@@ -52,7 +49,6 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
           })
         }
       }
-      // Normalize shape
       const normalized = patientsData.map((p) => ({
         id: p.id,
         full_name: [p.first_name, p.last_name].filter(Boolean).join(" ") || p.full_name || "Unknown",
@@ -98,21 +94,21 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
     switch (status) {
       case "registered":
         return (
-          <Badge variant="outline">
+          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
             <Clock className="w-3 h-3 mr-1" />
             Registered
           </Badge>
         )
       case "in-progress":
         return (
-          <Badge variant="secondary">
+          <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">
             <Activity className="w-3 h-3 mr-1" />
             In Progress
           </Badge>
         )
       case "completed":
         return (
-          <Badge variant="default">
+          <Badge variant="default" className="bg-green-50 text-green-700 border-green-200">
             <CheckCircle className="w-3 h-3 mr-1" />
             Completed
           </Badge>
@@ -124,10 +120,10 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
 
   const getMembershipBadge = (medicalAidNumber: string) => {
     if ((medicalAidNumber || "").startsWith("PAL")) {
-  return <Badge className="bg-green-100 text-green-800">POLMED Member</Badge>
+      return <Badge className="bg-teal-50 text-teal-700 border-teal-200">POLMED Member</Badge>
     }
     return (
-      <Badge variant="outline" className="bg-orange-100 text-orange-800">
+      <Badge variant="outline" className="bg-coral-50 text-coral-700 border-coral-200">
         Non-member
       </Badge>
     )
@@ -143,20 +139,21 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between p-6 rounded-2xl bg-gradient-to-br from-primary/5 via-primary/3 to-transparent border border-primary/10">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Patient Management</h2>
+          <h2 className="text-3xl font-bold text-foreground mb-2">Patient Management</h2>
           <p className="text-muted-foreground">Manage patient records and clinical workflows</p>
         </div>
-        <Button onClick={onNewPatient} className="flex items-center gap-2">
+        <Button
+          onClick={onNewPatient}
+          className="flex items-center gap-2 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
+        >
           <UserPlus className="w-4 h-4" />
           New Patient
         </Button>
       </div>
 
-      {/* Filters */}
-      <Card>
+      <Card className="border-primary/10 shadow-lg hover:shadow-xl transition-shadow">
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
@@ -166,13 +163,13 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
                   placeholder="Search by name, medical aid number, or phone..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 border-primary/20 focus:border-primary/40"
                 />
               </div>
             </div>
 
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-48">
+              <SelectTrigger className="w-full sm:w-48 border-primary/20">
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
@@ -184,7 +181,7 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
             </Select>
 
             <Select value={memberFilter} onValueChange={setMemberFilter}>
-              <SelectTrigger className="w-full sm:w-48">
+              <SelectTrigger className="w-full sm:w-48 border-primary/20">
                 <SelectValue placeholder="Filter by membership" />
               </SelectTrigger>
               <SelectContent>
@@ -197,36 +194,38 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
         </CardContent>
       </Card>
 
-      {/* Patient List */}
       <div className="grid gap-4">
         {loading ? (
-          <Card>
+          <Card className="border-primary/10 shadow-lg">
             <CardContent className="pt-6 text-center">
-              <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+              <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-primary" />
               <p className="text-muted-foreground">Loading patients...</p>
             </CardContent>
           </Card>
         ) : filteredPatients.length === 0 ? (
-          <Card>
+          <Card className="border-primary/10 shadow-lg">
             <CardContent className="pt-6 text-center">
               <p className="text-muted-foreground">No patients found matching your criteria.</p>
             </CardContent>
           </Card>
         ) : (
           filteredPatients.map((patient) => (
-            <Card key={patient.id} className="hover:shadow-md transition-shadow">
+            <Card
+              key={patient.id}
+              className="border-primary/10 shadow-lg hover:shadow-2xl hover:border-primary/30 transition-all duration-300 group"
+            >
               <CardContent className="pt-6">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-4 flex-1">
-                    <Avatar className="w-12 h-12">
-                      <AvatarFallback className="bg-primary text-primary-foreground">
+                    <Avatar className="w-14 h-14 border-2 border-primary/20 shadow-md">
+                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-lg font-semibold">
                         {getInitials(patient.full_name)}
                       </AvatarFallback>
                     </Avatar>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-semibold text-foreground truncate">{patient.full_name}</h3>
+                        <h3 className="font-semibold text-foreground truncate text-lg">{patient.full_name}</h3>
                       </div>
 
                       <div className="flex flex-wrap gap-2 mb-3">
@@ -236,7 +235,7 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-muted-foreground">
                         <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="outline" className="text-xs bg-primary/5 border-primary/20">
                             {patient.medical_aid_number}
                           </Badge>
                         </div>
@@ -264,11 +263,20 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
                   </div>
 
                   <div className="flex gap-2 ml-4">
-                    <Button variant="outline" size="sm" onClick={() => onPatientSelect(patient)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onPatientSelect(patient)}
+                      className="hover:bg-primary/10 hover:border-primary/30 transition-colors"
+                    >
                       <Eye className="w-4 h-4" />
                     </Button>
                     {(userRole === "administrator" || userRole === "clerk") && (
-                      <Button variant="outline" size="sm">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="hover:bg-primary/10 hover:border-primary/30 transition-colors bg-transparent"
+                      >
                         <Edit className="w-4 h-4" />
                       </Button>
                     )}

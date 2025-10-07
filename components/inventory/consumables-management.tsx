@@ -9,7 +9,18 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Search, Plus, Package, Pill, Syringe, Badge as Bandage, TrendingDown, Clock, Loader2, Truck } from "lucide-react"
+import {
+  Search,
+  Plus,
+  Package,
+  Pill,
+  Syringe,
+  Badge as Bandage,
+  TrendingDown,
+  Clock,
+  Loader2,
+  Truck,
+} from "lucide-react"
 import { apiService, type Supplier, type StockReceiptRequest } from "@/lib/api-service"
 import { useToast } from "@/hooks/use-toast"
 
@@ -43,8 +54,8 @@ interface Consumable {
   active_batches?: number
   earliest_expiry?: string
   avg_unit_cost?: number
-  stock_status?: 'out_of_stock' | 'low_stock' | 'normal' | 'overstock'
-  expiry_status?: 'expired' | 'expiring_soon' | 'warning' | 'good'
+  stock_status?: "out_of_stock" | "low_stock" | "normal" | "overstock"
+  expiry_status?: "expired" | "expiring_soon" | "warning" | "good"
 }
 
 interface ConsumableCategory {
@@ -106,22 +117,22 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
   })
 
   const [stockReceiptForm, setStockReceiptForm] = useState({
-    batch_number: '',
-    supplier_id: '',
+    batch_number: "",
+    supplier_id: "",
     quantity_received: 0,
     unit_cost: 0,
-    manufacture_date: '',
-    expiry_date: '',
-    location: 'Mobile Clinic'
+    manufacture_date: "",
+    expiry_date: "",
+    location: "Mobile Clinic",
   })
 
   const [showAddSupplier, setShowAddSupplier] = useState(false)
   const [newSupplier, setNewSupplier] = useState({
-    supplier_name: '',
-    contact_person: '',
-    phone: '',
-    email: '',
-    address: '',
+    supplier_name: "",
+    contact_person: "",
+    phone: "",
+    email: "",
+    address: "",
   })
 
   useEffect(() => {
@@ -209,7 +220,7 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
 
   const fetchSuppliers = async () => {
     try {
-      const response = await apiService.getSuppliers({ is_active: 'true' })
+      const response = await apiService.getSuppliers({ is_active: "true" })
       if (response.success && response.data) {
         setSuppliers(response.data)
       }
@@ -224,7 +235,7 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
 
   const createSupplier = async () => {
     if (!newSupplier.supplier_name.trim()) {
-      toast({ title: 'Validation Error', description: 'Supplier name is required', variant: 'destructive' })
+      toast({ title: "Validation Error", description: "Supplier name is required", variant: "destructive" })
       return
     }
     const createdName = newSupplier.supplier_name.trim()
@@ -238,9 +249,9 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
         is_active: true,
       })
       if (res.success) {
-        toast({ title: 'Supplier created' })
+        toast({ title: "Supplier created" })
         setShowAddSupplier(false)
-        setNewSupplier({ supplier_name: '', contact_person: '', phone: '', email: '', address: '' })
+        setNewSupplier({ supplier_name: "", contact_person: "", phone: "", email: "", address: "" })
         await fetchSuppliers()
         // Try preselect newly created supplier by name
         setStockReceiptForm((prev) => {
@@ -248,16 +259,22 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
           return { ...prev, supplier_id: found ? found.id.toString() : prev.supplier_id }
         })
       } else {
-        toast({ title: 'Error', description: res.error || 'Failed to create supplier', variant: 'destructive' })
+        toast({ title: "Error", description: res.error || "Failed to create supplier", variant: "destructive" })
       }
     } catch (e) {
-      toast({ title: 'Error', description: 'Failed to create supplier', variant: 'destructive' })
+      toast({ title: "Error", description: "Failed to create supplier", variant: "destructive" })
     }
   }
 
   const receiveStock = async () => {
-    if (!selectedConsumableForStock || !stockReceiptForm.batch_number || !stockReceiptForm.supplier_id || 
-        stockReceiptForm.quantity_received <= 0 || !stockReceiptForm.expiry_date || stockReceiptForm.unit_cost <= 0) {
+    if (
+      !selectedConsumableForStock ||
+      !stockReceiptForm.batch_number ||
+      !stockReceiptForm.supplier_id ||
+      stockReceiptForm.quantity_received <= 0 ||
+      !stockReceiptForm.expiry_date ||
+      stockReceiptForm.unit_cost <= 0
+    ) {
       toast({
         title: "Validation Error",
         description: "Please fill in all required fields with valid values.",
@@ -272,12 +289,12 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
       const stockPayload: StockReceiptRequest = {
         consumable_id: selectedConsumableForStock.id,
         batch_number: stockReceiptForm.batch_number,
-        supplier_id: parseInt(stockReceiptForm.supplier_id),
+        supplier_id: Number.parseInt(stockReceiptForm.supplier_id),
         quantity_received: stockReceiptForm.quantity_received,
         unit_cost: stockReceiptForm.unit_cost,
         manufacture_date: stockReceiptForm.manufacture_date || undefined,
         expiry_date: stockReceiptForm.expiry_date,
-        location: stockReceiptForm.location
+        location: stockReceiptForm.location,
       }
 
       const response = await apiService.receiveInventoryStock(stockPayload)
@@ -290,13 +307,13 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
 
         // Reset form
         setStockReceiptForm({
-          batch_number: '',
-          supplier_id: '',
+          batch_number: "",
+          supplier_id: "",
           quantity_received: 0,
           unit_cost: 0,
-          manufacture_date: '',
-          expiry_date: '',
-          location: 'Mobile Clinic'
+          manufacture_date: "",
+          expiry_date: "",
+          location: "Mobile Clinic",
         })
         setShowReceiveStockForm(false)
         setSelectedConsumableForStock(null)
@@ -525,11 +542,16 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
       {/* Header */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Consumables Management</h2>
-          <p className="text-muted-foreground">Track pharmaceuticals, medical supplies, and consumables</p>
+          <h2 className="text-3xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
+            Consumables Management
+          </h2>
+          <p className="text-muted-foreground mt-1">Track pharmaceuticals, medical supplies, and consumables</p>
         </div>
         {(userRole === "administrator" || userRole === "doctor" || userRole === "nurse") && (
-          <Button onClick={() => setShowAddForm(true)} className="flex items-center gap-2">
+          <Button
+            onClick={() => setShowAddForm(true)}
+            className="flex items-center gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/30"
+          >
             <Plus className="w-4 h-4" />
             Add Consumable
           </Button>
@@ -537,7 +559,7 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
       </div>
 
       {/* Filters */}
-      <Card>
+      <Card className="border-primary/10 shadow-lg shadow-primary/5">
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
@@ -728,7 +750,7 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
                     onValueChange={(value) => setStockReceiptForm({ ...stockReceiptForm, supplier_id: value })}
                   >
                     <SelectTrigger className="flex-1">
-                      <SelectValue placeholder={suppliers.length ? 'Select supplier' : 'No suppliers available'} />
+                      <SelectValue placeholder={suppliers.length ? "Select supplier" : "No suppliers available"} />
                     </SelectTrigger>
                     <SelectContent>
                       {suppliers.map((supplier) => (
@@ -740,7 +762,9 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
                   </Select>
                   <Dialog open={showAddSupplier} onOpenChange={setShowAddSupplier}>
                     <DialogTrigger asChild>
-                      <Button type="button" variant="outline">New</Button>
+                      <Button type="button" variant="outline">
+                        New
+                      </Button>
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
@@ -749,31 +773,48 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
                       <div className="grid gap-3 py-2">
                         <div>
                           <Label>Name *</Label>
-                          <Input value={newSupplier.supplier_name} onChange={(e) => setNewSupplier({ ...newSupplier, supplier_name: e.target.value })} />
+                          <Input
+                            value={newSupplier.supplier_name}
+                            onChange={(e) => setNewSupplier({ ...newSupplier, supplier_name: e.target.value })}
+                          />
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div>
                             <Label>Contact</Label>
-                            <Input value={newSupplier.contact_person} onChange={(e) => setNewSupplier({ ...newSupplier, contact_person: e.target.value })} />
+                            <Input
+                              value={newSupplier.contact_person}
+                              onChange={(e) => setNewSupplier({ ...newSupplier, contact_person: e.target.value })}
+                            />
                           </div>
                           <div>
                             <Label>Phone</Label>
-                            <Input value={newSupplier.phone} onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })} />
+                            <Input
+                              value={newSupplier.phone}
+                              onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })}
+                            />
                           </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div>
                             <Label>Email</Label>
-                            <Input value={newSupplier.email} onChange={(e) => setNewSupplier({ ...newSupplier, email: e.target.value })} />
+                            <Input
+                              value={newSupplier.email}
+                              onChange={(e) => setNewSupplier({ ...newSupplier, email: e.target.value })}
+                            />
                           </div>
                           <div>
                             <Label>Address</Label>
-                            <Input value={newSupplier.address} onChange={(e) => setNewSupplier({ ...newSupplier, address: e.target.value })} />
+                            <Input
+                              value={newSupplier.address}
+                              onChange={(e) => setNewSupplier({ ...newSupplier, address: e.target.value })}
+                            />
                           </div>
                         </div>
                       </div>
                       <DialogFooter>
-                        <Button type="button" onClick={createSupplier}>Save Supplier</Button>
+                        <Button type="button" onClick={createSupplier}>
+                          Save Supplier
+                        </Button>
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
@@ -786,12 +827,15 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
                   type="number"
                   min="1"
                   value={stockReceiptForm.quantity_received}
-                  onChange={(e) => setStockReceiptForm({ ...stockReceiptForm, quantity_received: parseInt(e.target.value) || 0 })}
+                  onChange={(e) =>
+                    setStockReceiptForm({
+                      ...stockReceiptForm,
+                      quantity_received: Number.parseInt(e.target.value) || 0,
+                    })
+                  }
                   placeholder="0"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Unit: {selectedConsumableForStock.unit_of_measure}
-                </p>
+                <p className="text-xs text-muted-foreground">Unit: {selectedConsumableForStock.unit_of_measure}</p>
               </div>
 
               <div className="space-y-2">
@@ -801,7 +845,9 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
                   step="0.01"
                   min="0.01"
                   value={stockReceiptForm.unit_cost}
-                  onChange={(e) => setStockReceiptForm({ ...stockReceiptForm, unit_cost: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) =>
+                    setStockReceiptForm({ ...stockReceiptForm, unit_cost: Number.parseFloat(e.target.value) || 0 })
+                  }
                   placeholder="0.00"
                 />
               </div>
@@ -821,7 +867,7 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
                   type="date"
                   value={stockReceiptForm.expiry_date}
                   onChange={(e) => setStockReceiptForm({ ...stockReceiptForm, expiry_date: e.target.value })}
-                  min={new Date().toISOString().split('T')[0]} // Prevent past dates
+                  min={new Date().toISOString().split("T")[0]} // Prevent past dates
                 />
               </div>
 
@@ -867,7 +913,8 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
                   max={selectedConsumable.quantity_current || selectedConsumable.total_quantity || 0}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Available: {selectedConsumable.quantity_current || selectedConsumable.total_quantity || 0} {selectedConsumable.unit_of_measure}
+                  Available: {selectedConsumable.quantity_current || selectedConsumable.total_quantity || 0}{" "}
+                  {selectedConsumable.unit_of_measure}
                 </p>
               </div>
 
@@ -906,7 +953,7 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
       {/* Consumables List */}
       <div className="grid gap-4">
         {filteredConsumables.length === 0 ? (
-          <Card>
+          <Card className="border-primary/10">
             <CardContent className="pt-6 text-center">
               <p className="text-muted-foreground">No consumables found matching your criteria.</p>
             </CardContent>
@@ -914,17 +961,23 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
         ) : (
           filteredConsumables.map((consumable) => {
             const categoryConfig = getCategoryConfig(consumable.category_id)
-            const expiryStatus = consumable.expiry_date || consumable.earliest_expiry ? getExpiryStatus(consumable.expiry_date || consumable.earliest_expiry || '') : null
+            const expiryStatus =
+              consumable.expiry_date || consumable.earliest_expiry
+                ? getExpiryStatus(consumable.expiry_date || consumable.earliest_expiry || "")
+                : null
             const stockStatus = getStockStatus(consumable)
             const CategoryIcon = categoryConfig.icon
 
             return (
-              <Card key={consumable.id} className="hover:shadow-md transition-shadow">
+              <Card
+                key={consumable.id}
+                className="hover:shadow-xl hover:shadow-primary/10 transition-all duration-300 border-primary/10 hover:border-primary/30 group"
+              >
                 <CardContent className="pt-6">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-start gap-4 flex-1">
-                      <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                        <CategoryIcon className="w-6 h-6 text-primary" />
+                      <div className="w-14 h-14 bg-gradient-to-br from-primary/20 to-primary/5 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-primary/10">
+                        <CategoryIcon className="w-7 h-7 text-primary" />
                       </div>
 
                       <div className="flex-1 min-w-0">
@@ -955,8 +1008,8 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
                             <div className="flex items-center justify-between text-sm">
                               <span>Stock Level</span>
                               <span>
-                                {consumable.total_quantity || consumable.quantity_current || 0} / {consumable.max_stock_level}{" "}
-                                {consumable.unit_of_measure}
+                                {consumable.total_quantity || consumable.quantity_current || 0} /{" "}
+                                {consumable.max_stock_level} {consumable.unit_of_measure}
                               </span>
                             </div>
                             <Progress value={stockStatus.percentage} className="h-2" />
@@ -981,14 +1034,18 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
                           )}
                           {(consumable.expiry_date || consumable.earliest_expiry) && (
                             <div>
-                              <strong>Expires:</strong> {new Date(consumable.expiry_date || consumable.earliest_expiry || '').toLocaleDateString()}
+                              <strong>Expires:</strong>{" "}
+                              {new Date(
+                                consumable.expiry_date || consumable.earliest_expiry || "",
+                              ).toLocaleDateString()}
                             </div>
                           )}
                           {(consumable.unit_cost !== undefined && consumable.unit_cost !== null) ||
                           (consumable.avg_unit_cost !== undefined && consumable.avg_unit_cost !== null) ? (
                             <div>
-                              <strong>Cost/Unit:</strong> R{Number(
-                                (consumable.unit_cost ?? consumable.avg_unit_cost ?? 0) as unknown as string | number
+                              <strong>Cost/Unit:</strong> R
+                              {Number(
+                                (consumable.unit_cost ?? consumable.avg_unit_cost ?? 0) as unknown as string | number,
                               ).toFixed(2)}
                             </div>
                           ) : null}
@@ -1004,14 +1061,14 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          setSelectedConsumableForStock(consumable);
-                          setShowReceiveStockForm(true);
+                          setSelectedConsumableForStock(consumable)
+                          setShowReceiveStockForm(true)
                         }}
                       >
                         <Truck className="w-4 h-4 mr-1" />
                         Receive Stock
                       </Button>
-                      
+
                       <Button
                         variant="outline"
                         size="sm"

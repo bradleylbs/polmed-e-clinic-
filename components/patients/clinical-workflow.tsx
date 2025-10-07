@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -13,13 +13,34 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { UserCheck, Heart, Stethoscope, Users, CheckCircle, Clock, ArrowRight, Search, Plus, AlertTriangle, Activity, Thermometer, Brain, Eye, ChevronsUpDown, Check } from "lucide-react"
+import {
+  UserCheck,
+  Heart,
+  Stethoscope,
+  Users,
+  CheckCircle,
+  Clock,
+  ArrowRight,
+  Search,
+  Plus,
+  AlertTriangle,
+  Activity,
+  Brain,
+  Eye,
+  Pill,
+  Sparkles,
+  X,
+  ChevronRight,
+  Zap,
+  Target,
+  Clipboard,
+} from "lucide-react"
 import { ReferralModal } from "./referral-modal"
-import { apiService, type ICD10Code } from "@/lib/api-service"
+import { apiService } from "@/lib/api-service"
 import { offlineManager } from "@/lib/offline-manager"
 import { useToast } from "@/components/ui/use-toast"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 interface VitalSigns {
   bloodPressureSystolic: string
@@ -67,12 +88,12 @@ interface ClinicalWorkflowProps {
 interface VitalAlert {
   parameter: string
   value: string
-  severity: 'normal' | 'caution' | 'critical'
+  severity: "normal" | "caution" | "critical"
   reference: string
 }
 
 interface SmartSuggestion {
-  type: 'icd10' | 'medication' | 'investigation'
+  type: "icd10" | "medication" | "investigation"
   text: string
   code?: string
   confidence: number
@@ -123,21 +144,25 @@ export function ClinicalWorkflow({
   })
 
   const [showReferral, setShowReferral] = useState(false)
-  
+
   // Enhanced doctor consultation state
   const [medications, setMedications] = useState<Medication[]>([])
   const [investigations, setInvestigations] = useState<string[]>([])
   const [smartSuggestions, setSmartSuggestions] = useState<SmartSuggestion[]>([])
-  const [activeInput, setActiveInput] = useState<string>('')
-
-  // ICD-10 Code state
-  const [icd10Codes, setIcd10Codes] = useState<ICD10Code[]>([])
-  const [icd10SearchTerm, setIcd10SearchTerm] = useState("")
-  const [icd10PopoverOpen, setIcd10PopoverOpen] = useState(false)
-  const [loadingIcd10, setLoadingIcd10] = useState(false)
+  const [activeInput, setActiveInput] = useState<string>("")
 
   // Summary data for File Closure
-  const [clinicalSummary, setClinicalSummary] = useState<{ notes: any[]; referrals: any[] }>({ notes: [], referrals: [] })
+  const [clinicalSummary, setClinicalSummary] = useState<{ notes: any[]; referrals: any[] }>({
+    notes: [],
+    referrals: [],
+  })
+
+  const [icd10SearchOpen, setIcd10SearchOpen] = useState(false)
+  const [icd10SearchQuery, setIcd10SearchQuery] = useState("")
+  const [icd10SearchResults, setIcd10SearchResults] = useState<any[]>([])
+  const [icd10SearchLoading, setIcd10SearchLoading] = useState(false)
+  const [selectedICD10Codes, setSelectedICD10Codes] = useState<Array<{ code: string; description: string }>>([])
+  const searchTimeoutRef = useRef<NodeJS.Timeout>()
 
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([
     {
@@ -182,54 +207,54 @@ export function ClinicalWorkflow({
   // Generate vital alerts for enhanced doctor interface
   const generateVitalAlerts = (): VitalAlert[] => {
     const alerts: VitalAlert[] = []
-    
+
     // Blood Pressure Alert
     const systolic = Number(vitalSigns.bloodPressureSystolic)
     const diastolic = Number(vitalSigns.bloodPressureDiastolic)
     if (systolic && diastolic) {
-      const severity = systolic >= 140 || diastolic >= 90 ? 'critical' : 
-                     systolic >= 130 || diastolic >= 80 ? 'caution' : 'normal'
+      const severity =
+        systolic >= 140 || diastolic >= 90 ? "critical" : systolic >= 130 || diastolic >= 80 ? "caution" : "normal"
       alerts.push({
-        parameter: 'Blood Pressure',
+        parameter: "Blood Pressure",
         value: `${systolic}/${diastolic} mmHg`,
         severity,
-        reference: '<130/80 mmHg'
+        reference: "<130/80 mmHg",
       })
     }
 
     // Temperature Alert
     const temp = Number(vitalSigns.temperature)
     if (temp) {
-      const severity = temp >= 38.5 ? 'critical' : temp >= 37.5 ? 'caution' : 'normal'
+      const severity = temp >= 38.5 ? "critical" : temp >= 37.5 ? "caution" : "normal"
       alerts.push({
-        parameter: 'Temperature',
+        parameter: "Temperature",
         value: `${temp}Â°C`,
         severity,
-        reference: '36.1-37.2Â°C'
+        reference: "36.1-37.2Â°C",
       })
     }
 
     // Heart Rate Alert
     const hr = Number(vitalSigns.pulse)
     if (hr) {
-      const severity = hr > 100 || hr < 60 ? 'caution' : 'normal'
+      const severity = hr > 100 || hr < 60 ? "caution" : "normal"
       alerts.push({
-        parameter: 'Heart Rate',
+        parameter: "Heart Rate",
         value: `${hr} bpm`,
         severity,
-        reference: '60-100 bpm'
+        reference: "60-100 bpm",
       })
     }
 
     // Oxygen Saturation Alert
     const spo2 = Number(vitalSigns.oxygenSaturation)
     if (spo2) {
-      const severity = spo2 < 95 ? 'critical' : spo2 < 98 ? 'caution' : 'normal'
+      const severity = spo2 < 95 ? "critical" : spo2 < 98 ? "caution" : "normal"
       alerts.push({
-        parameter: 'SpO2',
+        parameter: "SpO2",
         value: `${spo2}%`,
         severity,
-        reference: 'â‰¥95%'
+        reference: "â‰¥95%",
       })
     }
 
@@ -240,134 +265,131 @@ export function ClinicalWorkflow({
   const analyzeText = useCallback((text: string, context: string) => {
     const suggestions: SmartSuggestion[] = []
     const textLower = text.toLowerCase()
-    
-    if (context === 'diagnosis') {
+
+    if (context === "diagnosis") {
       // Common diagnosis suggestions
-      if (textLower.includes('hypertension') || textLower.includes('high blood pressure')) {
+      if (textLower.includes("hypertension") || textLower.includes("high blood pressure")) {
         suggestions.push({
-          type: 'icd10',
-          text: 'Essential hypertension',
-          code: 'I10',
-          confidence: 0.95
+          type: "icd10",
+          text: "Essential hypertension",
+          code: "I10",
+          confidence: 0.95,
         })
       }
-      if (textLower.includes('diabetes') || textLower.includes('sugar')) {
+      if (textLower.includes("diabetes") || textLower.includes("sugar")) {
         suggestions.push({
-          type: 'icd10',
-          text: 'Type 2 diabetes mellitus',
-          code: 'E11.9',
-          confidence: 0.90
+          type: "icd10",
+          text: "Type 2 diabetes mellitus",
+          code: "E11.9",
+          confidence: 0.9,
         })
       }
-      if (textLower.includes('headache') || textLower.includes('cephalgia')) {
+      if (textLower.includes("headache") || textLower.includes("cephalgia")) {
         suggestions.push({
-          type: 'icd10',
-          text: 'Headache',
-          code: 'R51',
-          confidence: 0.85
+          type: "icd10",
+          text: "Headache",
+          code: "R51",
+          confidence: 0.85,
         })
       }
-      if (textLower.includes('chest pain') || textLower.includes('angina')) {
+      if (textLower.includes("chest pain") || textLower.includes("angina")) {
         suggestions.push({
-          type: 'icd10',
-          text: 'Chest pain, unspecified',
-          code: 'R07.9',
-          confidence: 0.80
+          type: "icd10",
+          text: "Chest pain, unspecified",
+          code: "R07.9",
+          confidence: 0.8,
         })
       }
     }
-    
-    if (context === 'treatment') {
+
+    if (context === "treatment") {
       // Medication suggestions
-      if (textLower.includes('pain') || textLower.includes('analgesic')) {
+      if (textLower.includes("pain") || textLower.includes("analgesic")) {
         suggestions.push({
-          type: 'medication',
-          text: 'Paracetamol 500mg TDS',
-          confidence: 0.8
+          type: "medication",
+          text: "Paracetamol 500mg TDS",
+          confidence: 0.8,
         })
       }
-      if (textLower.includes('infection') || textLower.includes('antibiotic')) {
+      if (textLower.includes("infection") || textLower.includes("antibiotic")) {
         suggestions.push({
-          type: 'medication',
-          text: 'Amoxicillin 500mg TDS',
-          confidence: 0.75
+          type: "medication",
+          text: "Amoxicillin 500mg TDS",
+          confidence: 0.75,
         })
       }
-      if (textLower.includes('hypertension') || textLower.includes('blood pressure')) {
+      if (textLower.includes("hypertension") || textLower.includes("blood pressure")) {
         suggestions.push({
-          type: 'medication',
-          text: 'Amlodipine 5mg OD',
-          confidence: 0.85
+          type: "medication",
+          text: "Amlodipine 5mg OD",
+          confidence: 0.85,
         })
       }
     }
-    
+
     setSmartSuggestions(suggestions)
   }, [])
 
-  // Load ICD-10 codes based on search
-  const loadICD10Codes = useCallback(async (searchTerm: string) => {
-    if (!searchTerm || searchTerm.length < 2) {
-      // Load common codes if no search term
-      try {
-        setLoadingIcd10(true)
-        const response = await apiService.getCommonICD10Codes(30)
-        if (response.success && response.data) {
-          setIcd10Codes(response.data)
-        }
-      } catch (error) {
-        console.error('Failed to load common ICD-10 codes:', error)
-      } finally {
-        setLoadingIcd10(false)
-      }
+  const searchICD10 = useCallback(async (query: string) => {
+    if (query.length < 2) {
+      setIcd10SearchResults([])
       return
     }
 
+    setIcd10SearchLoading(true)
     try {
-      setLoadingIcd10(true)
-      const response = await apiService.searchICD10Codes(searchTerm, 50, false)
+      const response = await apiService.searchICD10(query, 15)
       if (response.success && response.data) {
-        setIcd10Codes(response.data)
+        setIcd10SearchResults(response.data)
       }
     } catch (error) {
-      console.error('Failed to search ICD-10 codes:', error)
-      toast({
-        title: "Search Failed",
-        description: "Could not search ICD-10 codes. Please try again.",
-        variant: "destructive",
-      })
+      console.error("ICD-10 search error:", error)
     } finally {
-      setLoadingIcd10(false)
+      setIcd10SearchLoading(false)
     }
-  }, [toast])
+  }, [])
 
-  // Add selected ICD-10 code
-  const addICD10Code = (code: ICD10Code) => {
-    const existingCodes = clinicalNotes.icd10Codes.split(',').map(c => c.trim()).filter(Boolean)
-    if (!existingCodes.includes(code.code)) {
-      const newCodes = existingCodes.length > 0 
-        ? `${existingCodes.join(', ')}, ${code.code}` 
-        : code.code
-      updateClinicalNotes("icd10Codes", newCodes)
-      toast({
-        title: "ICD-10 Code Added",
-        description: `${code.code} - ${code.description}`,
-      })
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
     }
-    setIcd10PopoverOpen(false)
-    setIcd10SearchTerm("")
+
+    if (icd10SearchQuery.length >= 2) {
+      searchTimeoutRef.current = setTimeout(() => {
+        searchICD10(icd10SearchQuery)
+      }, 300)
+    } else {
+      setIcd10SearchResults([])
+    }
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current)
+      }
+    }
+  }, [icd10SearchQuery, searchICD10])
+
+  const addICD10Code = (code: string, description: string) => {
+    if (!selectedICD10Codes.find((c) => c.code === code)) {
+      const newCodes = [...selectedICD10Codes, { code, description }]
+      setSelectedICD10Codes(newCodes)
+      updateClinicalNotes("icd10Codes", newCodes.map((c) => c.code).join(", "))
+    }
+    setIcd10SearchOpen(false)
+    setIcd10SearchQuery("")
   }
 
-  // Load common ICD-10 codes on mount
-  useEffect(() => {
-    loadICD10Codes("")
-  }, [loadICD10Codes])
+  const removeICD10Code = (code: string) => {
+    const newCodes = selectedICD10Codes.filter((c) => c.code !== code)
+    setSelectedICD10Codes(newCodes)
+    updateClinicalNotes("icd10Codes", newCodes.map((c) => c.code).join(", "))
+  }
 
   const canAccessStep = (step: WorkflowStep) => {
     if (userRole === "administrator") return true
     if (step.status === "completed") return true
-    if (step.id === 'closure') {
-      const counselingDone = workflowSteps.find((s) => s.id === 'counseling')?.status === 'completed'
+    if (step.id === "closure") {
+      const counselingDone = workflowSteps.find((s) => s.id === "counseling")?.status === "completed"
       return step.role === userRole && counselingDone
     }
     return step.role === userRole
@@ -401,75 +423,99 @@ export function ClinicalWorkflow({
       // Persist step result as a clinical note when applicable
       try {
         let saved = true
-        if (currentStepData.id === 'doctor') {
-          const parseList = (s?: string) => (s || '')
-            .split(',')
-            .map((x) => x.trim())
-            .filter((x) => x.length > 0)
+        if (currentStepData.id === "doctor") {
+          const parseList = (s?: string) =>
+            (s || "")
+              .split(",")
+              .map((x) => x.trim())
+              .filter((x) => x.length > 0)
 
           const diagContent = [
             clinicalNotes.icd10Codes && `ICD-10: ${clinicalNotes.icd10Codes}`,
             clinicalNotes.doctorDiagnosis && `Diagnosis: ${clinicalNotes.doctorDiagnosis}`,
-          ].filter(Boolean).join('\n')
+          ]
+            .filter(Boolean)
+            .join("\n")
 
           const treatContent = [
             clinicalNotes.treatmentPlan && `Treatment: ${clinicalNotes.treatmentPlan}`,
-            medications.length > 0 && `Medications: ${medications.map(m => `${m.name} ${m.dosage} ${m.frequency} for ${m.duration}`).join(', ')}`,
-            investigations.length > 0 && `Investigations: ${investigations.join(', ')}`,
+            medications.length > 0 &&
+              `Medications: ${medications.map((m) => `${m.name} ${m.dosage} ${m.frequency} for ${m.duration}`).join(", ")}`,
+            investigations.length > 0 && `Investigations: ${investigations.join(", ")}`,
             clinicalNotes.referrals && `Referrals: ${clinicalNotes.referrals}`,
-          ].filter(Boolean).join('\n')
+          ]
+            .filter(Boolean)
+            .join("\n")
 
           if (!diagContent && !treatContent) {
-            toast({ title: 'Nothing to save', description: 'Add a Diagnosis and/or Treatment before saving.', variant: 'destructive' })
+            toast({
+              title: "Nothing to save",
+              description: "Add a Diagnosis and/or Treatment before saving.",
+              variant: "destructive",
+            })
             return
           }
 
           // Save Diagnosis note if provided
           if (diagContent) {
             const resDiag = await apiService.createClinicalNote(vId!, {
-              note_type: 'Diagnosis',
+              note_type: "Diagnosis",
               content: diagContent,
               icd10_codes: parseList(clinicalNotes.icd10Codes),
               follow_up_required: !!clinicalNotes.followUpRequired,
-              follow_up_date: clinicalNotes.followUpRequired && clinicalNotes.followUpDate ? clinicalNotes.followUpDate : undefined,
+              follow_up_date:
+                clinicalNotes.followUpRequired && clinicalNotes.followUpDate ? clinicalNotes.followUpDate : undefined,
             })
-            if (!resDiag.success) { saved = false }
+            if (!resDiag.success) {
+              saved = false
+            }
           }
 
           // Save Treatment note if provided
           if (treatContent) {
             const resTreat = await apiService.createClinicalNote(vId!, {
-              note_type: 'Treatment',
+              note_type: "Treatment",
               content: treatContent,
-              medications_prescribed: medications.map(m => `${m.name} ${m.dosage} ${m.frequency}`),
+              medications_prescribed: medications.map((m) => `${m.name} ${m.dosage} ${m.frequency}`),
               follow_up_required: !!clinicalNotes.followUpRequired,
-              follow_up_date: clinicalNotes.followUpRequired && clinicalNotes.followUpDate ? clinicalNotes.followUpDate : undefined,
+              follow_up_date:
+                clinicalNotes.followUpRequired && clinicalNotes.followUpDate ? clinicalNotes.followUpDate : undefined,
             })
-            if (!resTreat.success) { saved = false }
+            if (!resTreat.success) {
+              saved = false
+            }
           }
-        } else if (currentStepData.id === 'counseling') {
-          const content = [
-            clinicalNotes.mentalHealthScreening && `Screening: ${clinicalNotes.mentalHealthScreening}`,
-            clinicalNotes.counselingNotes && `Notes: ${clinicalNotes.counselingNotes}`,
-          ].filter(Boolean).join('\n') || 'Counseling session completed.'
+        } else if (currentStepData.id === "counseling") {
+          const content =
+            [
+              clinicalNotes.mentalHealthScreening && `Screening: ${clinicalNotes.mentalHealthScreening}`,
+              clinicalNotes.counselingNotes && `Notes: ${clinicalNotes.counselingNotes}`,
+            ]
+              .filter(Boolean)
+              .join("\n") || "Counseling session completed."
           const res = await apiService.createClinicalNote(vId!, {
-            note_type: 'Counseling',
+            note_type: "Counseling",
             content,
             follow_up_required: !!clinicalNotes.followUpRequired,
-            follow_up_date: clinicalNotes.followUpRequired && clinicalNotes.followUpDate ? clinicalNotes.followUpDate : undefined,
+            follow_up_date:
+              clinicalNotes.followUpRequired && clinicalNotes.followUpDate ? clinicalNotes.followUpDate : undefined,
           })
           saved = !!res.success
-        } else if (currentStepData.id === 'closure') {
-          const content = clinicalNotes.finalNotes?.trim() || 'File closed.'
-          const res = await apiService.createClinicalNote(vId!, { note_type: 'Closure', content })
+        } else if (currentStepData.id === "closure") {
+          const content = clinicalNotes.finalNotes?.trim() || "File closed."
+          const res = await apiService.createClinicalNote(vId!, { note_type: "Closure", content })
           saved = !!res.success
         }
         if (!saved) {
-          toast({ title: 'Save failed', description: 'Could not save note. Please try again.', variant: 'destructive' })
+          toast({ title: "Save failed", description: "Could not save note. Please try again.", variant: "destructive" })
           return
         }
       } catch (e) {
-        toast({ title: 'Network error', description: 'Failed to reach server. Please try again.', variant: 'destructive' })
+        toast({
+          title: "Network error",
+          description: "Failed to reach server. Please try again.",
+          variant: "destructive",
+        })
         return
       }
 
@@ -483,19 +529,19 @@ export function ClinicalWorkflow({
       if (currentStep < updatedSteps.length - 1) {
         const nextIdx = currentStep + 1
         const nextStep = updatedSteps[nextIdx]
-        const counselingDone = updatedSteps.find((s) => s.id === 'counseling')?.status === 'completed'
-        const canUnlockNext = nextStep.id !== 'closure' || counselingDone
+        const counselingDone = updatedSteps.find((s) => s.id === "counseling")?.status === "completed"
+        const canUnlockNext = nextStep.id !== "closure" || counselingDone
 
-        if (canUnlockNext && nextStep.status !== 'completed') {
-          updatedSteps[nextIdx] = { ...nextStep, status: 'in-progress' }
+        if (canUnlockNext && nextStep.status !== "completed") {
+          updatedSteps[nextIdx] = { ...nextStep, status: "in-progress" }
         }
 
         if (canUnlockNext) {
-          const canViewNext = userRole === 'administrator' || nextStep.role === userRole
+          const canViewNext = userRole === "administrator" || nextStep.role === userRole
           if (canViewNext) {
             setCurrentStep(nextIdx)
           } else {
-            const nextRoleLabel = nextStep.role.replace(/_/g, ' ')
+            const nextRoleLabel = nextStep.role.replace(/_/g, " ")
             toast({
               title: `${currentStepData.title} completed`,
               description: `${nextStep.title} is now waiting for the ${nextRoleLabel}.`,
@@ -511,12 +557,12 @@ export function ClinicalWorkflow({
     doComplete()
       .catch((error) => {
         const description = error instanceof Error ? error.message : String(error)
-        toast({ title: 'Unexpected error', description, variant: 'destructive' })
+        toast({ title: "Unexpected error", description, variant: "destructive" })
       })
       .finally(() => {
         setCompletingStep(false)
       })
-    }
+  }
 
   const updateVitalSigns = (field: keyof VitalSigns, value: string) => {
     setVitalSigns((prev) => ({ ...prev, [field]: value }))
@@ -529,50 +575,50 @@ export function ClinicalWorkflow({
   // Enhanced doctor consultation functions
   const addQuickMedication = (preset: string) => {
     const presets: Record<string, Medication> = {
-      'paracetamol': { name: 'Paracetamol', dosage: '500mg', frequency: 'TDS', duration: '5 days' },
-      'ibuprofen': { name: 'Ibuprofen', dosage: '400mg', frequency: 'TDS', duration: '3 days' },
-      'amoxicillin': { name: 'Amoxicillin', dosage: '500mg', frequency: 'TDS', duration: '7 days' },
-      'amlodipine': { name: 'Amlodipine', dosage: '5mg', frequency: 'OD', duration: 'Ongoing' },
-      'metformin': { name: 'Metformin', dosage: '500mg', frequency: 'BD', duration: 'Ongoing' },
-      'enalapril': { name: 'Enalapril', dosage: '10mg', frequency: 'BD', duration: 'Ongoing' }
+      paracetamol: { name: "Paracetamol", dosage: "500mg", frequency: "TDS", duration: "5 days" },
+      ibuprofen: { name: "Ibuprofen", dosage: "400mg", frequency: "TDS", duration: "3 days" },
+      amoxicillin: { name: "Amoxicillin", dosage: "500mg", frequency: "TDS", duration: "7 days" },
+      amlodipine: { name: "Amlodipine", dosage: "5mg", frequency: "OD", duration: "Ongoing" },
+      metformin: { name: "Metformin", dosage: "500mg", frequency: "BD", duration: "Ongoing" },
+      enalapril: { name: "Enalapril", dosage: "10mg", frequency: "BD", duration: "Ongoing" },
     }
-    
+
     const medication = presets[preset]
-    if (medication && !medications.find(m => m.name === medication.name)) {
-      setMedications(prev => [...prev, medication])
+    if (medication && !medications.find((m) => m.name === medication.name)) {
+      setMedications((prev) => [...prev, medication])
     }
   }
 
   const addCustomMedication = (medication: Medication) => {
-    if (medication.name && !medications.find(m => m.name === medication.name)) {
-      setMedications(prev => [...prev, medication])
+    if (medication.name && !medications.find((m) => m.name === medication.name)) {
+      setMedications((prev) => [...prev, medication])
     }
   }
 
   const removeMedication = (index: number) => {
-    setMedications(prev => prev.filter((_, i) => i !== index))
+    setMedications((prev) => prev.filter((_, i) => i !== index))
   }
 
   const addInvestigation = (investigation: string) => {
     if (investigation && !investigations.includes(investigation)) {
-      setInvestigations(prev => [...prev, investigation])
+      setInvestigations((prev) => [...prev, investigation])
     }
   }
 
   const removeInvestigation = (index: number) => {
-    setInvestigations(prev => prev.filter((_, i) => i !== index))
+    setInvestigations((prev) => prev.filter((_, i) => i !== index))
   }
 
   const applySuggestion = (suggestion: SmartSuggestion) => {
     switch (suggestion.type) {
-      case 'icd10':
+      case "icd10":
         if (suggestion.code && !clinicalNotes.icd10Codes.includes(suggestion.code)) {
-          const existingCodes = clinicalNotes.icd10Codes ? clinicalNotes.icd10Codes + ', ' : ''
-          updateClinicalNotes('icd10Codes', existingCodes + suggestion.code)
+          const existingCodes = clinicalNotes.icd10Codes ? clinicalNotes.icd10Codes + ", " : ""
+          updateClinicalNotes("icd10Codes", existingCodes + suggestion.code)
         }
         break
-      case 'medication':
-        const [name, ...rest] = suggestion.text.split(' ')
+      case "medication":
+        const [name, ...rest] = suggestion.text.split(" ")
         addQuickMedication(name.toLowerCase())
         break
     }
@@ -596,10 +642,20 @@ export function ClinicalWorkflow({
             setVitalSigns({
               bloodPressureSystolic: latestV.systolic_bp != null ? String(latestV.systolic_bp) : "",
               bloodPressureDiastolic: latestV.diastolic_bp != null ? String(latestV.diastolic_bp) : "",
-              temperature: latestV.temperature != null ? String(latestV.temperature) : (lastNonNull?.temperature != null ? String(lastNonNull.temperature) : ""),
+              temperature:
+                latestV.temperature != null
+                  ? String(latestV.temperature)
+                  : lastNonNull?.temperature != null
+                    ? String(lastNonNull.temperature)
+                    : "",
               weight: latestV.weight != null ? String(latestV.weight) : "",
               height: latestV.height != null ? String(latestV.height) : "",
-              pulse: latestV.heart_rate != null ? String(latestV.heart_rate) : (lastNonNull?.heart_rate != null ? String(lastNonNull.heart_rate) : ""),
+              pulse:
+                latestV.heart_rate != null
+                  ? String(latestV.heart_rate)
+                  : lastNonNull?.heart_rate != null
+                    ? String(lastNonNull.heart_rate)
+                    : "",
               respiratoryRate: "",
               oxygenSaturation: latestV.oxygen_saturation != null ? String(latestV.oxygen_saturation) : "",
             })
@@ -609,12 +665,12 @@ export function ClinicalWorkflow({
         // Sync workflow from backend
         const wf = await apiService.getWorkflowStatus(vId)
         if (wf.success && Array.isArray(wf.data)) {
-          const stageToId: Record<string, WorkflowStep['id']> = {
-            'Registration': 'registration',
-            'Nursing Assessment': 'nursing',
-            'Doctor Consultation': 'doctor',
-            'Counseling Session': 'counseling',
-            'File Closure': 'closure',
+          const stageToId: Record<string, WorkflowStep["id"]> = {
+            Registration: "registration",
+            "Nursing Assessment": "nursing",
+            "Doctor Consultation": "doctor",
+            "Counseling Session": "counseling",
+            "File Closure": "closure",
           }
 
           const completionById: Record<string, { completed: boolean; completedAt?: string | null }> = {}
@@ -628,20 +684,27 @@ export function ClinicalWorkflow({
           const nextSteps: WorkflowStep[] = workflowSteps.map((s) => {
             const info = completionById[s.id]
             if (info?.completed) {
-              return { ...s, status: 'completed', completedAt: info.completedAt || s.completedAt }
+              return { ...s, status: "completed", completedAt: info.completedAt || s.completedAt }
             }
-            return { ...s, status: 'pending' }
+            return { ...s, status: "pending" }
           })
 
-          const counselingDone = nextSteps.find((s) => s.id === 'counseling')?.status === 'completed'
-          const firstOwnedNotCompleted = nextSteps.findIndex((s) => s.status !== 'completed' && (userRole === 'administrator' || s.role === userRole) && (s.id !== 'closure' || counselingDone))
+          const counselingDone = nextSteps.find((s) => s.id === "counseling")?.status === "completed"
+          const firstOwnedNotCompleted = nextSteps.findIndex(
+            (s) =>
+              s.status !== "completed" &&
+              (userRole === "administrator" || s.role === userRole) &&
+              (s.id !== "closure" || counselingDone),
+          )
           if (firstOwnedNotCompleted >= 0) {
-            nextSteps[firstOwnedNotCompleted] = { ...nextSteps[firstOwnedNotCompleted], status: 'in-progress' }
+            nextSteps[firstOwnedNotCompleted] = { ...nextSteps[firstOwnedNotCompleted], status: "in-progress" }
           }
 
           setWorkflowSteps(nextSteps)
 
-          const firstActionableLocalIdx = nextSteps.findIndex((s) => s.status !== 'completed' && (userRole === 'administrator' || s.role === userRole))
+          const firstActionableLocalIdx = nextSteps.findIndex(
+            (s) => s.status !== "completed" && (userRole === "administrator" || s.role === userRole),
+          )
           if (firstActionableLocalIdx >= 0) {
             setCurrentStep(firstActionableLocalIdx)
           }
@@ -655,7 +718,9 @@ export function ClinicalWorkflow({
         const notes: any[] = notesRes.success && Array.isArray(notesRes.data) ? notesRes.data : []
         setClinicalSummary({
           notes,
-          referrals: (refsRes.success && Array.isArray(refsRes.data) ? refsRes.data : []).filter((r: any) => !r.visit_id || r.visit_id === vId),
+          referrals: (refsRes.success && Array.isArray(refsRes.data) ? refsRes.data : []).filter(
+            (r: any) => !r.visit_id || r.visit_id === vId,
+          ),
         })
 
         // Map latest server notes into summary fields
@@ -664,31 +729,34 @@ export function ClinicalWorkflow({
           arr.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
           return arr[0]?.content as string | undefined
         }
-        const latestAssessment = latestOfType('Assessment')
-        let latestDiagnosis = latestOfType('Diagnosis')
-        const latestTreatment = latestOfType('Treatment')
-        const latestCounseling = latestOfType('Counseling')
+        const latestAssessment = latestOfType("Assessment")
+        let latestDiagnosis = latestOfType("Diagnosis")
+        const latestTreatment = latestOfType("Treatment")
+        const latestCounseling = latestOfType("Counseling")
 
-        if (!latestDiagnosis && latestTreatment && typeof latestTreatment === 'string') {
+        if (!latestDiagnosis && latestTreatment && typeof latestTreatment === "string") {
           const m = latestTreatment.match(/Diagnosis:\s*(.*)/i)
           if (m && m[1]) latestDiagnosis = m[1].trim()
         }
 
         let prescriptionsText: string | undefined
         try {
-          const treatNode = (notes || []).find((n: any) => n.note_type === 'Treatment')
+          const treatNode = (notes || []).find((n: any) => n.note_type === "Treatment")
           let meds = treatNode && treatNode.medications_prescribed
-          if (typeof meds === 'string') {
+          if (typeof meds === "string") {
             try {
               const parsed = JSON.parse(meds)
               if (Array.isArray(parsed)) meds = parsed
             } catch {
-              meds = meds.split(',').map((s: string) => s.trim()).filter((s: string) => !!s)
+              meds = meds
+                .split(",")
+                .map((s: string) => s.trim())
+                .filter((s: string) => !!s)
             }
           }
           if (Array.isArray(meds) && meds.length) {
-            prescriptionsText = meds.join(', ')
-          } else if (typeof latestTreatment === 'string') {
+            prescriptionsText = meds.join(", ")
+          } else if (typeof latestTreatment === "string") {
             const m = latestTreatment.match(/Prescriptions:\s*(.*)/i)
             if (m && m[1]) prescriptionsText = m[1].trim()
           }
@@ -748,7 +816,11 @@ export function ClinicalWorkflow({
       if (!vId) {
         const created = await apiService.createVisit(Number(patientId), {})
         if (!created.success || !created.data?.visit_id) {
-          toast({ title: "Failed to start visit", description: created.error || "Could not create visit.", variant: "destructive" })
+          toast({
+            title: "Failed to start visit",
+            description: created.error || "Could not create visit.",
+            variant: "destructive",
+          })
           setSavingVitals(false)
           return
         }
@@ -858,11 +930,7 @@ export function ClinicalWorkflow({
             <div className="flex justify-end">
               <Button
                 onClick={saveVitals}
-                disabled={
-                  savingVitals ||
-                  completingStep ||
-                  nursingStep?.status === "completed"
-                }
+                disabled={savingVitals || completingStep || nursingStep?.status === "completed"}
               >
                 {nursingStep?.status === "completed"
                   ? "Vital signs submitted"
@@ -879,69 +947,105 @@ export function ClinicalWorkflow({
         const vitalAlerts = generateVitalAlerts()
         return (
           <div className="space-y-6">
-            {/* Patient Summary Header */}
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex justify-between items-start">
+            <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-6 shadow-lg">
+              <div className="absolute inset-0 bg-grid-white/5 [mask-image:radial-gradient(white,transparent_85%)]" />
+              <div className="relative">
+                <div className="flex items-start justify-between mb-4">
                   <div>
-                    <CardTitle className="text-lg">{patientName}</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      Patient ID: {patientId} â€¢ {new Date().toLocaleDateString()}
+                    <h3 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                      {patientName}
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      ID: {patientId} •{" "}
+                      {new Date().toLocaleDateString("en-ZA", {
+                        weekday: "long",
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })}
                     </p>
                   </div>
-                  <Badge variant="outline" className="ml-2">
+                  <Badge variant="outline" className="bg-background/50 backdrop-blur-sm border-primary/30">
                     <Clock className="w-3 h-3 mr-1" />
-                    {new Date().toLocaleTimeString()}
+                    {new Date().toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}
                   </Badge>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {/* Smart Vitals Display with Alerts */}
-                  {vitalAlerts.length > 0 && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {vitalAlerts.map((alert, index) => (
-                        <div key={index} className={`p-2 rounded text-xs border ${
-                          alert.severity === 'critical' ? 'border-red-200 bg-red-50' :
-                          alert.severity === 'caution' ? 'border-yellow-200 bg-yellow-50' :
-                          'border-green-200 bg-green-50'
-                        }`}>
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">{alert.parameter}</span>
-                            {alert.severity !== 'normal' && (
-                              <AlertTriangle className="w-3 h-3 text-orange-500" />
-                            )}
-                          </div>
-                          <div className="font-mono text-sm">{alert.value}</div>
-                          <div className="text-muted-foreground text-xs">Ref: {alert.reference}</div>
+
+                {vitalAlerts.length > 0 && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {vitalAlerts.map((alert, index) => (
+                      <div
+                        key={index}
+                        className={`group relative overflow-hidden rounded-xl p-4 transition-all duration-300 hover:scale-105 ${
+                          alert.severity === "critical"
+                            ? "bg-gradient-to-br from-red-500/10 to-red-600/5 border border-red-500/30 shadow-lg shadow-red-500/10"
+                            : alert.severity === "caution"
+                              ? "bg-gradient-to-br from-yellow-500/10 to-orange-500/5 border border-yellow-500/30 shadow-lg shadow-yellow-500/10"
+                              : "bg-gradient-to-br from-green-500/10 to-emerald-500/5 border border-green-500/30 shadow-lg shadow-green-500/10"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-semibold text-foreground/80">{alert.parameter}</span>
+                          {alert.severity !== "normal" && (
+                            <AlertTriangle
+                              className={`w-4 h-4 ${
+                                alert.severity === "critical" ? "text-red-500" : "text-yellow-500"
+                              }`}
+                            />
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        <div className="text-2xl font-bold mb-1">{alert.value}</div>
+                        <div className="text-xs text-muted-foreground">Ref: {alert.reference}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-                  {/* Nursing Assessment Preview */}
-                  {clinicalNotes.nursingAssessment && (
-                    <div>
-                      <span className="font-medium text-sm">Nursing Assessment:</span>
-                      <p className="text-sm mt-1 p-2 bg-muted rounded line-clamp-2">
-                        {clinicalNotes.nursingAssessment}
-                      </p>
+                {clinicalNotes.nursingAssessment && (
+                  <div className="mt-4 p-4 rounded-xl bg-background/50 backdrop-blur-sm border border-border/50">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Heart className="w-4 h-4 text-primary" />
+                      <span className="font-semibold text-sm">Nursing Assessment</span>
                     </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                    <p className="text-sm text-muted-foreground line-clamp-2">{clinicalNotes.nursingAssessment}</p>
+                  </div>
+                )}
+              </div>
+            </div>
 
-            {/* Enhanced Doctor Consultation Interface */}
             <Tabs defaultValue="assessment" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="assessment">Assessment</TabsTrigger>
-                <TabsTrigger value="diagnosis">Diagnosis</TabsTrigger>
-                <TabsTrigger value="treatment">Treatment</TabsTrigger>
-                <TabsTrigger value="review">Review</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-4 h-auto p-1 bg-muted/50 backdrop-blur-sm">
+                <TabsTrigger
+                  value="assessment"
+                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg transition-all"
+                >
+                  <Clipboard className="w-4 h-4 mr-2" />
+                  Assessment
+                </TabsTrigger>
+                <TabsTrigger
+                  value="diagnosis"
+                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg transition-all"
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  Diagnosis
+                </TabsTrigger>
+                <TabsTrigger
+                  value="treatment"
+                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg transition-all"
+                >
+                  <Pill className="w-4 h-4 mr-2" />
+                  Treatment
+                </TabsTrigger>
+                <TabsTrigger
+                  value="review"
+                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg transition-all"
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Review
+                </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="assessment" className="space-y-4">
+              <TabsContent value="assessment" className="space-y-4 mt-6">
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -957,9 +1061,9 @@ export function ClinicalWorkflow({
                         value={clinicalNotes.doctorDiagnosis}
                         onChange={(e) => {
                           updateClinicalNotes("doctorDiagnosis", e.target.value)
-                          analyzeText(e.target.value, 'assessment')
+                          analyzeText(e.target.value, "assessment")
                         }}
-                        onFocus={() => setActiveInput('assessment')}
+                        onFocus={() => setActiveInput("assessment")}
                         rows={6}
                         className="mt-1"
                       />
@@ -969,26 +1073,54 @@ export function ClinicalWorkflow({
                     <div className="space-y-2">
                       <Label className="text-sm font-medium">Quick Templates</Label>
                       <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" size="sm" onClick={() => 
-                          updateClinicalNotes("doctorDiagnosis", clinicalNotes.doctorDiagnosis + '\nâ€¢ Normal cardiovascular examination')
-                        }>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            updateClinicalNotes(
+                              "doctorDiagnosis",
+                              clinicalNotes.doctorDiagnosis + "\nâ€¢ Normal cardiovascular examination",
+                            )
+                          }
+                        >
                           <Heart className="w-3 h-3 mr-1" />
                           Normal CVS
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => 
-                          updateClinicalNotes("doctorDiagnosis", clinicalNotes.doctorDiagnosis + '\nâ€¢ Clear chest on auscultation')
-                        }>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            updateClinicalNotes(
+                              "doctorDiagnosis",
+                              clinicalNotes.doctorDiagnosis + "\nâ€¢ Clear chest on auscultation",
+                            )
+                          }
+                        >
                           <Activity className="w-3 h-3 mr-1" />
                           Clear Chest
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => 
-                          updateClinicalNotes("doctorDiagnosis", clinicalNotes.doctorDiagnosis + '\nâ€¢ Abdomen soft, non-tender')
-                        }>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            updateClinicalNotes(
+                              "doctorDiagnosis",
+                              clinicalNotes.doctorDiagnosis + "\nâ€¢ Abdomen soft, non-tender",
+                            )
+                          }
+                        >
                           Soft Abdomen
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => 
-                          updateClinicalNotes("doctorDiagnosis", clinicalNotes.doctorDiagnosis + '\nâ€¢ Neurologically intact')
-                        }>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            updateClinicalNotes(
+                              "doctorDiagnosis",
+                              clinicalNotes.doctorDiagnosis + "\nâ€¢ Neurologically intact",
+                            )
+                          }
+                        >
                           <Brain className="w-3 h-3 mr-1" />
                           Normal Neuro
                         </Button>
@@ -998,144 +1130,159 @@ export function ClinicalWorkflow({
                 </Card>
               </TabsContent>
 
-              <TabsContent value="diagnosis" className="space-y-4">
-                <Card>
-                  <CardHeader>
+              <TabsContent value="diagnosis" className="space-y-4 mt-6">
+                <Card className="border-primary/20 shadow-lg">
+                  <CardHeader className="bg-gradient-to-r from-primary/5 to-secondary/5">
                     <CardTitle className="text-lg flex items-center gap-2">
-                      <Eye className="w-5 h-5" />
-                      Diagnosis & Coding
+                      <Eye className="w-5 h-5 text-primary" />
+                      Diagnosis & ICD-10 Coding
                     </CardTitle>
+                    <CardDescription>Document clinical findings and assign diagnostic codes</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-6 pt-6">
                     <div>
-                      <Label className="text-sm font-medium">Primary Diagnosis</Label>
-                      <div className="relative">
-                        <Textarea
-                          placeholder="Enter primary and differential diagnoses..."
-                          value={clinicalNotes.doctorDiagnosis}
-                          onChange={(e) => {
-                            updateClinicalNotes("doctorDiagnosis", e.target.value)
-                            analyzeText(e.target.value, 'diagnosis')
-                          }}
-                          rows={3}
-                          className="mt-1 pr-10"
-                        />
-                        <Search className="absolute top-3 right-3 w-4 h-4 text-muted-foreground" />
-                      </div>
+                      <Label className="text-sm font-semibold mb-2 flex items-center gap-2">
+                        <Target className="w-4 h-4 text-primary" />
+                        Primary Diagnosis
+                      </Label>
+                      <Textarea
+                        placeholder="Enter primary and differential diagnoses..."
+                        value={clinicalNotes.doctorDiagnosis}
+                        onChange={(e) => {
+                          updateClinicalNotes("doctorDiagnosis", e.target.value)
+                          analyzeText(e.target.value, "diagnosis")
+                        }}
+                        rows={4}
+                        className="mt-2 resize-none border-primary/20 focus:border-primary focus:ring-primary/20"
+                      />
                     </div>
 
-                    {/* ICD-10 Codes */}
                     <div>
-                      <Label className="text-sm font-medium">ICD-10 Codes</Label>
-                      <div className="flex flex-wrap gap-2 mt-1 mb-2">
-                        {clinicalNotes.icd10Codes.split(',').filter(c => c.trim()).map((code, index) => {
-                          const codeInfo = icd10Codes.find(ic => ic.code === code.trim())
-                          return (
-                            <Badge key={index} variant="secondary" className="text-xs py-1 px-2">
-                              <span className="font-mono font-semibold">{code.trim()}</span>
-                              {codeInfo && (
-                                <span className="ml-1 font-normal text-muted-foreground">
-                                  {codeInfo.description.substring(0, 30)}...
-                                </span>
-                              )}
-                              <button
-                                onClick={() => {
-                                  const codes = clinicalNotes.icd10Codes.split(',').filter(c => c.trim())
-                                  codes.splice(index, 1)
-                                  updateClinicalNotes("icd10Codes", codes.join(', '))
-                                }}
-                                className="ml-2 hover:text-red-500"
-                                aria-label="Remove code"
-                              >
-                                ×
-                              </button>
-                            </Badge>
-                          )
-                        })}
+                      <Label className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-primary" />
+                        ICD-10 Diagnostic Codes
+                      </Label>
+
+                      {/* Selected codes display */}
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {selectedICD10Codes.map((item, index) => (
+                          <Badge
+                            key={index}
+                            variant="secondary"
+                            className="px-3 py-2 text-sm bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/30 hover:border-primary/50 transition-all group"
+                          >
+                            <span className="font-mono font-bold text-primary mr-2">{item.code}</span>
+                            <span className="text-xs text-muted-foreground mr-2">{item.description}</span>
+                            <button
+                              onClick={() => removeICD10Code(item.code)}
+                              className="ml-1 hover:text-destructive transition-colors"
+                              aria-label={`Remove ${item.code} code`}
+                            >
+                              <span className="sr-only">Remove {item.code}</span>
+                              <X className="w-3 h-3" aria-hidden="true" />
+                            </button>
+                          </Badge>
+                        ))}
                       </div>
-                      
-                      <Popover open={icd10PopoverOpen} onOpenChange={setIcd10PopoverOpen}>
+
+                      {/* ICD-10 Search Popover */}
+                      <Popover open={icd10SearchOpen} onOpenChange={setIcd10SearchOpen}>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
-                            role="combobox"
-                            aria-expanded={icd10PopoverOpen}
-                            className="w-full justify-between"
+                            className="w-full justify-start text-left font-normal border-primary/20 hover:border-primary hover:bg-primary/5 bg-transparent"
                           >
-                            <span className="text-muted-foreground">
-                              Search ICD-10 codes...
-                            </span>
-                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            <Search className="mr-2 h-4 w-4 text-primary" />
+                            <span className="text-muted-foreground">Search ICD-10 codes...</span>
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-[500px] p-0" align="start">
-                          <Command shouldFilter={false}>
-                            <CommandInput 
-                              placeholder="Search by code or description..." 
-                              value={icd10SearchTerm}
-                              onValueChange={(value) => {
-                                setIcd10SearchTerm(value)
-                                loadICD10Codes(value)
-                              }}
+                          <Command>
+                            <CommandInput
+                              placeholder="Search by code or description..."
+                              value={icd10SearchQuery}
+                              onValueChange={setIcd10SearchQuery}
                             />
                             <CommandList>
-                              <CommandEmpty>
-                                {loadingIcd10 ? "Searching..." : "No ICD-10 codes found."}
-                              </CommandEmpty>
-                              <CommandGroup heading={icd10SearchTerm ? "Search Results" : "Common Codes"}>
-                                {icd10Codes.map((code) => (
-                                  <CommandItem
-                                    key={code.code}
-                                    value={code.code}
-                                    onSelect={() => addICD10Code(code)}
-                                    className="cursor-pointer"
-                                  >
-                                    <Check
-                                      className={`mr-2 h-4 w-4 ${
-                                        clinicalNotes.icd10Codes.includes(code.code)
-                                          ? "opacity-100"
-                                          : "opacity-0"
-                                      }`}
-                                    />
-                                    <div className="flex flex-col">
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-mono font-semibold">{code.code}</span>
-                                        {code.isCommon && (
-                                          <Badge variant="outline" className="text-xs">Common</Badge>
+                              {icd10SearchLoading && (
+                                <div className="p-4 text-center text-sm text-muted-foreground">
+                                  <div className="spinner-sm mx-auto mb-2" />
+                                  Searching...
+                                </div>
+                              )}
+                              {!icd10SearchLoading &&
+                                icd10SearchQuery.length >= 2 &&
+                                icd10SearchResults.length === 0 && <CommandEmpty>No ICD-10 codes found.</CommandEmpty>}
+                              {!icd10SearchLoading && icd10SearchResults.length > 0 && (
+                                <CommandGroup heading="Search Results">
+                                  {icd10SearchResults.map((result) => (
+                                    <CommandItem
+                                      key={result.code}
+                                      onSelect={() => addICD10Code(result.code, result.description)}
+                                      className="flex items-start gap-3 p-3 cursor-pointer"
+                                    >
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <Badge variant="outline" className="font-mono text-xs">
+                                            {result.code}
+                                          </Badge>
+                                          {result.is_common && (
+                                            <Badge variant="secondary" className="text-xs">
+                                              Common
+                                            </Badge>
+                                          )}
+                                        </div>
+                                        <p className="text-sm font-medium">{result.description}</p>
+                                        {result.category && (
+                                          <p className="text-xs text-muted-foreground mt-1">{result.category}</p>
                                         )}
                                       </div>
-                                      <span className="text-sm text-muted-foreground">
-                                        {code.description}
-                                      </span>
-                                    </div>
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
+                                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              )}
                             </CommandList>
                           </Command>
                         </PopoverContent>
                       </Popover>
                     </div>
 
-                    {/* Smart Suggestions */}
                     {smartSuggestions.length > 0 && (
-                      <Alert>
-                        <AlertTriangle className="h-4 w-4" />
+                      <Alert className="border-primary/30 bg-gradient-to-r from-primary/5 to-secondary/5">
+                        <Sparkles className="h-4 w-4 text-primary" />
                         <AlertDescription>
-                          <div className="space-y-2">
-                            <span className="text-sm font-medium">AI Suggestions:</span>
+                          <div className="space-y-3">
+                            <span className="text-sm font-semibold flex items-center gap-2">
+                              <Zap className="w-4 h-4 text-yellow-500" />
+                              AI-Powered Suggestions
+                            </span>
                             {smartSuggestions.map((suggestion, index) => (
-                              <div key={index} className="flex items-center justify-between bg-white p-2 rounded border">
-                                <span className="text-sm">
-                                  {suggestion.text} {suggestion.code && `(${suggestion.code})`}
-                                  <Badge variant="outline" className="ml-2 text-xs">
-                                    {Math.round(suggestion.confidence * 100)}% confidence
-                                  </Badge>
-                                </span>
-                                <Button 
-                                  size="sm" 
-                                  variant="outline" 
+                              <div
+                                key={index}
+                                className="flex items-center justify-between p-3 bg-background rounded-lg border border-border/50 hover:border-primary/50 transition-all group"
+                              >
+                                <div className="flex-1">
+                                  <span className="text-sm font-medium">
+                                    {suggestion.text} {suggestion.code && `(${suggestion.code})`}
+                                  </span>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <div className="h-1.5 w-24 bg-muted rounded-full overflow-hidden">
+                                      <div
+                                        className="h-full bg-gradient-to-r from-primary to-secondary rounded-full"
+                                        style={{ width: `${suggestion.confidence * 100}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-xs text-muted-foreground">
+                                      {Math.round(suggestion.confidence * 100)}% confidence
+                                    </span>
+                                  </div>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
                                   onClick={() => applySuggestion(suggestion)}
+                                  className="ml-3 border-primary/30 hover:bg-primary hover:text-primary-foreground"
                                 >
                                   Apply
                                 </Button>
@@ -1149,7 +1296,7 @@ export function ClinicalWorkflow({
                 </Card>
               </TabsContent>
 
-              <TabsContent value="treatment" className="space-y-4">
+              <TabsContent value="treatment" className="space-y-4 mt-6">
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -1165,7 +1312,7 @@ export function ClinicalWorkflow({
                         value={clinicalNotes.treatmentPlan}
                         onChange={(e) => {
                           updateClinicalNotes("treatmentPlan", e.target.value)
-                          analyzeText(e.target.value, 'treatment')
+                          analyzeText(e.target.value, "treatment")
                         }}
                         rows={4}
                         className="mt-1"
@@ -1177,21 +1324,21 @@ export function ClinicalWorkflow({
                       <div className="flex justify-between items-center mb-3">
                         <Label className="text-sm font-medium">Medications Prescribed</Label>
                         <div className="flex gap-1">
-                          <Button size="sm" variant="outline" onClick={() => addQuickMedication('paracetamol')}>
+                          <Button size="sm" variant="outline" onClick={() => addQuickMedication("paracetamol")}>
                             + Paracetamol
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => addQuickMedication('ibuprofen')}>
+                          <Button size="sm" variant="outline" onClick={() => addQuickMedication("ibuprofen")}>
                             + Ibuprofen
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => addQuickMedication('amoxicillin')}>
+                          <Button size="sm" variant="outline" onClick={() => addQuickMedication("amoxicillin")}>
                             + Antibiotic
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => addQuickMedication('amlodipine')}>
+                          <Button size="sm" variant="outline" onClick={() => addQuickMedication("amlodipine")}>
                             + Amlodipine
                           </Button>
                         </div>
                       </div>
-                      
+
                       <div className="space-y-2">
                         {medications.map((med, index) => (
                           <div key={index} className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
@@ -1213,11 +1360,7 @@ export function ClinicalWorkflow({
                                 <span>{med.duration}</span>
                               </div>
                             </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => removeMedication(index)}
-                            >
+                            <Button size="sm" variant="outline" onClick={() => removeMedication(index)}>
                               Remove
                             </Button>
                           </div>
@@ -1231,21 +1374,24 @@ export function ClinicalWorkflow({
                         <Input placeholder="Frequency" id="med-frequency" />
                         <div className="flex gap-1">
                           <Input placeholder="Duration" id="med-duration" className="flex-1" />
-                          <Button size="sm" onClick={() => {
-                            const name = (document.getElementById('med-name') as HTMLInputElement)?.value
-                            const dosage = (document.getElementById('med-dosage') as HTMLInputElement)?.value
-                            const frequency = (document.getElementById('med-frequency') as HTMLInputElement)?.value
-                            const duration = (document.getElementById('med-duration') as HTMLInputElement)?.value
-                            
-                            if (name && dosage && frequency && duration) {
-                              addCustomMedication({ name, dosage, frequency, duration })
-                              // Clear inputs
-                              ;(document.getElementById('med-name') as HTMLInputElement).value = ''
-                              ;(document.getElementById('med-dosage') as HTMLInputElement).value = ''
-                              ;(document.getElementById('med-frequency') as HTMLInputElement).value = ''
-                              ;(document.getElementById('med-duration') as HTMLInputElement).value = ''
-                            }
-                          }}>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              const name = (document.getElementById("med-name") as HTMLInputElement)?.value
+                              const dosage = (document.getElementById("med-dosage") as HTMLInputElement)?.value
+                              const frequency = (document.getElementById("med-frequency") as HTMLInputElement)?.value
+                              const duration = (document.getElementById("med-duration") as HTMLInputElement)?.value
+
+                              if (name && dosage && frequency && duration) {
+                                addCustomMedication({ name, dosage, frequency, duration })
+                                // Clear inputs
+                                ;(document.getElementById("med-name") as HTMLInputElement).value = ""
+                                ;(document.getElementById("med-dosage") as HTMLInputElement).value = ""
+                                ;(document.getElementById("med-frequency") as HTMLInputElement).value = ""
+                                ;(document.getElementById("med-duration") as HTMLInputElement).value = ""
+                              }
+                            }}
+                          >
                             Add
                           </Button>
                         </div>
@@ -1259,38 +1405,38 @@ export function ClinicalWorkflow({
                         {investigations.map((inv, index) => (
                           <Badge key={index} variant="outline" className="text-xs">
                             {inv}
-                            <button
-                              onClick={() => removeInvestigation(index)}
-                              className="ml-1 hover:text-red-500"
-                            >
+                            <button onClick={() => removeInvestigation(index)} className="ml-1 hover:text-red-500">
                               Ã—
                             </button>
                           </Badge>
                         ))}
                       </div>
                       <div className="flex gap-1">
-                        <Input 
-                          placeholder="Add investigation (e.g., FBC, U&E, CXR)" 
+                        <Input
+                          placeholder="Add investigation (e.g., FBC, U&E, CXR)"
                           id="investigation-input"
                           className="flex-1"
                           onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
+                            if (e.key === "Enter") {
                               const value = (e.target as HTMLInputElement).value.trim()
                               if (value) {
                                 addInvestigation(value)
-                                ;(e.target as HTMLInputElement).value = ''
+                                ;(e.target as HTMLInputElement).value = ""
                               }
                             }
                           }}
                         />
-                        <Button size="sm" onClick={() => {
-                          const input = document.getElementById('investigation-input') as HTMLInputElement
-                          const value = input.value.trim()
-                          if (value) {
-                            addInvestigation(value)
-                            input.value = ''
-                          }
-                        }}>
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const input = document.getElementById("investigation-input") as HTMLInputElement
+                            const value = input.value.trim()
+                            if (value) {
+                              addInvestigation(value)
+                              input.value = ""
+                            }
+                          }}
+                        >
                           Add
                         </Button>
                       </div>
@@ -1316,12 +1462,13 @@ export function ClinicalWorkflow({
                     <div className="space-y-2">
                       <label className="flex items-center gap-2">
                         <Checkbox
+                          id="counsel-follow-up"
                           checked={clinicalNotes.followUpRequired}
                           onCheckedChange={(v) => updateClinicalNotes("followUpRequired", Boolean(v) as any)}
                         />
                         <span className="text-sm font-medium">Follow-up required</span>
                       </label>
-                      
+
                       {clinicalNotes.followUpRequired && (
                         <div className="grid grid-cols-2 gap-2 ml-6">
                           <div>
@@ -1336,9 +1483,12 @@ export function ClinicalWorkflow({
                             <Label className="text-xs">Instructions</Label>
                             <Input
                               placeholder="Follow-up instructions"
-                              onChange={(e) => updateClinicalNotes("treatmentPlan", 
-                                clinicalNotes.treatmentPlan + `\nFollow-up: ${e.target.value}`
-                              )}
+                              onChange={(e) =>
+                                updateClinicalNotes(
+                                  "treatmentPlan",
+                                  clinicalNotes.treatmentPlan + `\nFollow-up: ${e.target.value}`,
+                                )
+                              }
                             />
                           </div>
                         </div>
@@ -1348,7 +1498,7 @@ export function ClinicalWorkflow({
                 </Card>
               </TabsContent>
 
-              <TabsContent value="review" className="space-y-4">
+              <TabsContent value="review" className="space-y-4 mt-6">
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -1364,29 +1514,28 @@ export function ClinicalWorkflow({
                           <Eye className="w-4 h-4" />
                           Diagnosis:
                         </h4>
-                        <p className="text-sm mt-1">{clinicalNotes.doctorDiagnosis || 'Not specified'}</p>
+                        <p className="text-sm mt-1">{clinicalNotes.doctorDiagnosis || "Not specified"}</p>
                         {clinicalNotes.icd10Codes && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            ICD-10 Codes: {clinicalNotes.icd10Codes}
-                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">ICD-10 Codes: {clinicalNotes.icd10Codes}</p>
                         )}
                       </div>
-                      
+
                       <div>
                         <h4 className="font-medium flex items-center gap-2">
                           <Plus className="w-4 h-4" />
                           Treatment Plan:
                         </h4>
-                        <p className="text-sm mt-1">{clinicalNotes.treatmentPlan || 'Not specified'}</p>
+                        <p className="text-sm mt-1">{clinicalNotes.treatmentPlan || "Not specified"}</p>
                       </div>
-                      
+
                       {medications.length > 0 && (
                         <div>
                           <h4 className="font-medium">Medications:</h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
                             {medications.map((med, index) => (
                               <div key={index} className="text-sm p-2 bg-white rounded border">
-                                <span className="font-medium">{med.name}</span> {med.dosage} {med.frequency} for {med.duration}
+                                <span className="font-medium">{med.name}</span> {med.dosage} {med.frequency} for{" "}
+                                {med.duration}
                               </div>
                             ))}
                           </div>
@@ -1409,7 +1558,11 @@ export function ClinicalWorkflow({
                       {clinicalNotes.followUpRequired && (
                         <div>
                           <h4 className="font-medium text-blue-600">Follow-up Required:</h4>
-                          <p className="text-sm">{clinicalNotes.followUpDate ? `Scheduled for ${clinicalNotes.followUpDate}` : 'Date to be arranged'}</p>
+                          <p className="text-sm">
+                            {clinicalNotes.followUpDate
+                              ? `Scheduled for ${clinicalNotes.followUpDate}`
+                              : "Date to be arranged"}
+                          </p>
                         </div>
                       )}
                     </div>
@@ -1486,24 +1639,37 @@ export function ClinicalWorkflow({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                 <div>
                   <span className="font-medium">BP:</span>
-                  <span className="ml-2">{vitalSigns.bloodPressureSystolic && vitalSigns.bloodPressureDiastolic ? `${vitalSigns.bloodPressureSystolic}/${vitalSigns.bloodPressureDiastolic}` : 'â€”'}</span>
+                  <span className="ml-2">
+                    {vitalSigns.bloodPressureSystolic && vitalSigns.bloodPressureDiastolic
+                      ? `${vitalSigns.bloodPressureSystolic}/${vitalSigns.bloodPressureDiastolic}`
+                      : "â€”"}
+                  </span>
                 </div>
                 <div>
                   <span className="font-medium">Pulse:</span>
-                  <span className="ml-2">{vitalSigns.pulse || 'â€”'} bpm</span>
+                  <span className="ml-2">{vitalSigns.pulse || "â€”"} bpm</span>
                 </div>
                 <div>
                   <span className="font-medium">Temp:</span>
-                  <span className="ml-2">{vitalSigns.temperature || 'â€”'} Â°C</span>
+                  <span className="ml-2">{vitalSigns.temperature || "â€”"} Â°C</span>
                 </div>
               </div>
 
               {/* Key clinical summary */}
               <div className="mt-4 space-y-1">
-                <div className="text-sm"><span className="font-medium">Nursing:</span> {clinicalNotes.nursingAssessment || 'â€”'}</div>
-                <div className="text-sm"><span className="font-medium">Diagnosis:</span> {clinicalNotes.doctorDiagnosis || 'â€”'}</div>
-                <div className="text-sm"><span className="font-medium">Medications:</span> {medications.length > 0 ? medications.map(m => m.name).join(', ') : 'â€”'}</div>
-                <div className="text-sm"><span className="font-medium">Counseling:</span> {clinicalNotes.counselingNotes || 'â€”'}</div>
+                <div className="text-sm">
+                  <span className="font-medium">Nursing:</span> {clinicalNotes.nursingAssessment || "â€”"}
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium">Diagnosis:</span> {clinicalNotes.doctorDiagnosis || "â€”"}
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium">Medications:</span>{" "}
+                  {medications.length > 0 ? medications.map((m) => m.name).join(", ") : "â€”"}
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium">Counseling:</span> {clinicalNotes.counselingNotes || "â€”"}
+                </div>
               </div>
 
               {/* Referrals summary */}
@@ -1513,7 +1679,8 @@ export function ClinicalWorkflow({
                   <ul className="text-sm list-disc ml-5 space-y-1">
                     {clinicalSummary.referrals.map((r: any) => (
                       <li key={r.id}>
-                        {r.referral_type} - {r.reason} ({r.status}){r.appointment_date ? ` â€¢ ${r.appointment_date}` : ''}
+                        {r.referral_type} - {r.reason} ({r.status})
+                        {r.appointment_date ? ` â€¢ ${r.appointment_date}` : ""}
                       </li>
                     ))}
                   </ul>
@@ -1523,19 +1690,19 @@ export function ClinicalWorkflow({
               {/* Completion checklist */}
               <div className="mt-4 text-sm space-y-1">
                 {(() => {
-                  const hasVitals = workflowSteps.find((s) => s.id === 'nursing')?.status === 'completed'
-                  const hasDoctorNote = workflowSteps.find((s) => s.id === 'doctor')?.status === 'completed'
-                  const hasCounseling = workflowSteps.find((s) => s.id === 'counseling')?.status === 'completed'
+                  const hasVitals = workflowSteps.find((s) => s.id === "nursing")?.status === "completed"
+                  const hasDoctorNote = workflowSteps.find((s) => s.id === "doctor")?.status === "completed"
+                  const hasCounseling = workflowSteps.find((s) => s.id === "counseling")?.status === "completed"
                   const items = [
-                    { ok: hasVitals, label: 'Vital signs recorded' },
-                    { ok: hasDoctorNote, label: 'Doctor consultation completed' },
-                    { ok: hasCounseling, label: 'Counseling session completed' },
+                    { ok: hasVitals, label: "Vital signs recorded" },
+                    { ok: hasDoctorNote, label: "Doctor consultation completed" },
+                    { ok: hasCounseling, label: "Counseling session completed" },
                   ]
                   return (
                     <ul className="list-disc ml-5">
                       {items.map((it, idx) => (
-                        <li key={idx} className={it.ok ? 'text-green-700' : 'text-red-700'}>
-                          {it.label} {it.ok ? 'âœ“' : 'âœ—'}
+                        <li key={idx} className={it.ok ? "text-green-700" : "text-red-700"}>
+                          {it.label} {it.ok ? "âœ“" : "âœ—"}
                         </li>
                       ))}
                     </ul>
@@ -1549,8 +1716,8 @@ export function ClinicalWorkflow({
               <Textarea
                 placeholder="Any additional notes or follow-up instructions..."
                 rows={3}
-                value={clinicalNotes.finalNotes || ''}
-                onChange={(e) => updateClinicalNotes('finalNotes' as any, e.target.value)}
+                value={clinicalNotes.finalNotes || ""}
+                onChange={(e) => updateClinicalNotes("finalNotes" as any, e.target.value)}
               />
             </div>
           </div>
@@ -1632,27 +1799,24 @@ export function ClinicalWorkflow({
               {canAccessStep(step) && step.status !== "completed" && step.id !== "nursing" && (
                 <div className="mt-6 flex flex-col items-end gap-2">
                   {(() => {
-                    const nursingDone = workflowSteps.find((s) => s.id === 'nursing')?.status === 'completed'
-                    const doctorDone = workflowSteps.find((s) => s.id === 'doctor')?.status === 'completed'
-                    const counselingDone = workflowSteps.find((s) => s.id === 'counseling')?.status === 'completed'
-                    const closureReady = step.id !== 'closure' || (nursingDone && doctorDone && counselingDone)
+                    const nursingDone = workflowSteps.find((s) => s.id === "nursing")?.status === "completed"
+                    const doctorDone = workflowSteps.find((s) => s.id === "doctor")?.status === "completed"
+                    const counselingDone = workflowSteps.find((s) => s.id === "counseling")?.status === "completed"
+                    const closureReady = step.id !== "closure" || (nursingDone && doctorDone && counselingDone)
                     return (
                       <>
-                        {step.id === 'closure' && !closureReady && (
+                        {step.id === "closure" && !closureReady && (
                           <div className="text-xs text-muted-foreground mr-auto">
                             {(() => {
                               const missing: string[] = []
-                              if (!nursingDone) missing.push('Nursing Assessment')
-                              if (!doctorDone) missing.push('Doctor Consultation')
-                              if (!counselingDone) missing.push('Counseling Session')
-                              return `Complete required steps before closing: ${missing.join(' and ')}.`
+                              if (!nursingDone) missing.push("Nursing Assessment")
+                              if (!doctorDone) missing.push("Doctor Consultation")
+                              if (!counselingDone) missing.push("Counseling Session")
+                              return `Complete required steps before closing: ${missing.join(" and ")}.`
                             })()}
                           </div>
                         )}
-                        <Button
-                          onClick={completeCurrentStep}
-                          disabled={!closureReady || completingStep}
-                        >
+                        <Button onClick={completeCurrentStep} disabled={!closureReady || completingStep}>
                           {completingStep ? "Completing..." : `Complete ${step.title}`}
                           <CheckCircle className="w-4 h-4 ml-2" />
                         </Button>

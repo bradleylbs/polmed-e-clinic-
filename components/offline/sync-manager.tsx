@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { RefreshCw, CheckCircle, AlertCircle, Clock } from "lucide-react"
+import { RefreshCw, Clock, Wifi, WifiOff } from "lucide-react"
 import { offlineManager } from "@/lib/offline-manager"
 
 interface SyncStatus {
@@ -57,32 +57,43 @@ export function SyncManager() {
   }
 
   return (
-    <Card>
+    <Card className="hover:shadow-lg transition-shadow border-primary/20">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <RefreshCw className="h-5 w-5" />
+          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+            <RefreshCw className="h-5 w-5 text-primary" />
+          </div>
           Data Synchronization
         </CardTitle>
         <CardDescription>Manage offline data and synchronization with the server</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-muted/30 rounded-xl">
           <span className="text-sm font-medium">Connection Status</span>
-          <Badge variant={syncStatus.isOnline ? "default" : "secondary"}>
-            {syncStatus.isOnline ? <CheckCircle className="h-3 w-3 mr-1" /> : <AlertCircle className="h-3 w-3 mr-1" />}
-            {syncStatus.isOnline ? "Online" : "Offline"}
+          <Badge variant={syncStatus.isOnline ? "default" : "secondary"} className="shadow-sm">
+            {syncStatus.isOnline ? (
+              <>
+                <Wifi className="h-3 w-3 mr-1" />
+                Online
+              </>
+            ) : (
+              <>
+                <WifiOff className="h-3 w-3 mr-1" />
+                Offline
+              </>
+            )}
           </Badge>
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-muted/30 rounded-xl">
           <span className="text-sm font-medium">Pending Changes</span>
-          <Badge variant={syncStatus.pendingCount > 0 ? "destructive" : "outline"}>
+          <Badge variant={syncStatus.pendingCount > 0 ? "destructive" : "outline"} className="shadow-sm">
             {syncStatus.pendingCount} items
           </Badge>
         </div>
 
         {syncStatus.lastSync && (
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-muted/30 rounded-xl">
             <span className="text-sm font-medium">Last Sync</span>
             <div className="flex items-center gap-1 text-sm text-muted-foreground">
               <Clock className="h-3 w-3" />
@@ -94,7 +105,7 @@ export function SyncManager() {
         <Button
           onClick={handleManualSync}
           disabled={!syncStatus.isOnline || syncStatus.isSyncing || syncStatus.pendingCount === 0}
-          className="w-full"
+          className="w-full shadow-md hover:shadow-lg transition-all"
         >
           {syncStatus.isSyncing ? (
             <>
@@ -110,7 +121,7 @@ export function SyncManager() {
         </Button>
 
         {!syncStatus.isOnline && (
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="p-4 bg-gradient-to-r from-amber-50 to-amber-100/50 border border-amber-200 rounded-xl">
             <p className="text-sm text-amber-800">
               You're currently offline. Changes will be saved locally and synced when connection is restored.
             </p>

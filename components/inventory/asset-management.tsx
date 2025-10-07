@@ -119,8 +119,7 @@ export function AssetManagement({ userRole }: AssetManagementProps) {
         fetchCategories()
       }
 
-      const toDateOnly = (d?: string | null) =>
-        d ? new Date(d).toISOString().split("T")[0] : ""
+      const toDateOnly = (d?: string | null) => (d ? new Date(d).toISOString().split("T")[0] : "")
 
       setEditAsset({
         asset_name: selectedAsset.asset_name || "",
@@ -427,20 +426,20 @@ export function AssetManagement({ userRole }: AssetManagementProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Asset Management</h2>
-          <p className="text-muted-foreground">Track and manage medical equipment and assets</p>
+          <h2 className="text-3xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
+            Asset Management
+          </h2>
+          <p className="text-muted-foreground mt-1">Track and manage medical equipment and assets</p>
         </div>
         {(userRole === "administrator" || userRole === "doctor" || userRole === "nurse") && (
           <Button
             onClick={() => {
               setShowAddForm(true)
-              // Refresh categories when opening the form to ensure latest options
               fetchCategories()
             }}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/30"
           >
             <Plus className="w-4 h-4" />
             Add Asset
@@ -448,8 +447,7 @@ export function AssetManagement({ userRole }: AssetManagementProps) {
         )}
       </div>
 
-      {/* Filters */}
-      <Card>
+      <Card className="border-primary/10 shadow-lg shadow-primary/5">
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
@@ -497,9 +495,9 @@ export function AssetManagement({ userRole }: AssetManagementProps) {
 
       {/* Add Asset Form */}
       {showAddForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Add New Asset</CardTitle>
+        <Card className="border-primary/20 shadow-xl shadow-primary/10">
+          <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent border-b border-primary/10">
+            <CardTitle className="text-xl">Add New Asset</CardTitle>
             <CardDescription>Register a new medical asset or equipment</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -557,7 +555,9 @@ export function AssetManagement({ userRole }: AssetManagementProps) {
                   disabled={categories.length === 0}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder={categories.length === 0 ? "No categories available" : "Select a category"} />
+                    <SelectValue
+                      placeholder={categories.length === 0 ? "No categories available" : "Select a category"}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {categories.length === 0 ? (
@@ -648,7 +648,7 @@ export function AssetManagement({ userRole }: AssetManagementProps) {
       {/* Asset List */}
       <div className="grid gap-4">
         {filteredAssets.length === 0 ? (
-          <Card>
+          <Card className="border-primary/10">
             <CardContent className="pt-6 text-center">
               <p className="text-muted-foreground">No assets found matching your criteria.</p>
             </CardContent>
@@ -660,12 +660,15 @@ export function AssetManagement({ userRole }: AssetManagementProps) {
             const maintenanceAlert = getMaintenanceAlert(asset)
 
             return (
-              <Card key={asset.id} className="hover:shadow-md transition-shadow">
+              <Card
+                key={asset.id}
+                className="hover:shadow-xl hover:shadow-primary/10 transition-all duration-300 border-primary/10 hover:border-primary/30 group"
+              >
                 <CardContent className="pt-6">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-start gap-4 flex-1">
-                      <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                        <Package className="w-6 h-6 text-primary" />
+                      <div className="w-14 h-14 bg-gradient-to-br from-primary/20 to-primary/5 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-primary/10">
+                        <Package className="w-7 h-7 text-primary" />
                       </div>
 
                       <div className="flex-1 min-w-0">
@@ -811,7 +814,9 @@ export function AssetManagement({ userRole }: AssetManagementProps) {
                   disabled={categories.length === 0}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder={categories.length === 0 ? "No categories available" : "Select a category"} />
+                    <SelectValue
+                      placeholder={categories.length === 0 ? "No categories available" : "Select a category"}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {categories.length === 0 ? (
@@ -853,7 +858,9 @@ export function AssetManagement({ userRole }: AssetManagementProps) {
                 <Input
                   type="number"
                   value={editAsset.purchase_cost}
-                  onChange={(e) => setEditAsset({ ...editAsset, purchase_cost: Number.parseFloat(e.target.value) || 0 })}
+                  onChange={(e) =>
+                    setEditAsset({ ...editAsset, purchase_cost: Number.parseFloat(e.target.value) || 0 })
+                  }
                   placeholder="0"
                 />
               </div>
@@ -863,7 +870,9 @@ export function AssetManagement({ userRole }: AssetManagementProps) {
                 <Input
                   type="number"
                   value={editAsset.current_value}
-                  onChange={(e) => setEditAsset({ ...editAsset, current_value: Number.parseFloat(e.target.value) || 0 })}
+                  onChange={(e) =>
+                    setEditAsset({ ...editAsset, current_value: Number.parseFloat(e.target.value) || 0 })
+                  }
                   placeholder="0"
                 />
               </div>

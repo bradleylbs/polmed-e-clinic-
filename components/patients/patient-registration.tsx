@@ -34,7 +34,6 @@ interface PatientData {
   membershipStatus?: "active" | "inactive" | "pending"
 }
 
-// Shape of a POLMED member record returned by search
 interface MemberRecord {
   full_name?: string
   telephone_number?: string
@@ -79,8 +78,6 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
     setError(null)
 
     try {
-      // For now, simulate member search since apiService.searchMember might not exist
-      // Replace this with actual API call when available
       const response: { success: boolean; data: MemberRecord | null } = { success: false, data: null }
 
       if (response.success && response.data) {
@@ -94,7 +91,7 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
           membershipStatus: response.data?.status || "active",
         }))
         setMemberFound(true)
-  setSuccess("POLMED member found and details populated")
+        setSuccess("POLMED member found and details populated")
       } else {
         setMemberFound(false)
         setFormData((prev) => ({ ...prev, isMember: false }))
@@ -114,26 +111,44 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
     setSuccess(null)
 
     try {
-      // ...existing code...
       const nameParts = formData.fullName.trim().split(" ")
       const firstName = nameParts[0] || ""
       const lastName = nameParts.slice(1).join(" ") || "N/A"
 
-      // ...existing validation code...
-      if (!formData.fullName.trim()) { setError("Full name is required"); setIsSubmitting(false); return }
-      if (!formData.dateOfBirth) { setError("Date of birth is required"); setIsSubmitting(false); return }
-  if (!formData.gender) { setError("Gender is required"); setIsSubmitting(false); return }
-  if (!formData.idNumber.trim()) { setError("ID number is required"); setIsSubmitting(false); return }
-      if (!formData.telephone.trim()) { setError("Phone number is required"); setIsSubmitting(false); return }
+      if (!formData.fullName.trim()) {
+        setError("Full name is required")
+        setIsSubmitting(false)
+        return
+      }
+      if (!formData.dateOfBirth) {
+        setError("Date of birth is required")
+        setIsSubmitting(false)
+        return
+      }
+      if (!formData.gender) {
+        setError("Gender is required")
+        setIsSubmitting(false)
+        return
+      }
+      if (!formData.idNumber.trim()) {
+        setError("ID number is required")
+        setIsSubmitting(false)
+        return
+      }
+      if (!formData.telephone.trim()) {
+        setError("Phone number is required")
+        setIsSubmitting(false)
+        return
+      }
 
       const g = formData.gender.trim().toLowerCase()
-      const genderForApi = g === 'male' ? 'Male' : g === 'female' ? 'Female' : g ? 'Other' : ''
+      const genderForApi = g === "male" ? "Male" : g === "female" ? "Female" : g ? "Other" : ""
       const patientPayload = {
         first_name: firstName.trim(),
         last_name: lastName.trim() || "N/A",
         date_of_birth: formData.dateOfBirth.trim(),
         gender: genderForApi,
-  id_number: formData.idNumber.trim(),
+        id_number: formData.idNumber.trim(),
         phone_number: formData.telephone.trim(),
         medical_aid_number: formData.medicalAidNumber.trim() || null,
         email: formData.email.trim() || null,
@@ -147,10 +162,17 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
         current_medications: formData.currentMedications.trim() ? [formData.currentMedications.trim()] : [],
       }
 
-      if (!patientPayload.date_of_birth) { setError("Date of birth cannot be empty"); setIsSubmitting(false); return }
-      if (!patientPayload.gender) { setError("Gender must be selected"); setIsSubmitting(false); return }
+      if (!patientPayload.date_of_birth) {
+        setError("Date of birth cannot be empty")
+        setIsSubmitting(false)
+        return
+      }
+      if (!patientPayload.gender) {
+        setError("Gender must be selected")
+        setIsSubmitting(false)
+        return
+      }
 
-      // Use offlineManager if offline
       if (!offlineManager.getConnectionStatus()) {
         await offlineManager.saveData("patients", {
           ...patientPayload,
@@ -161,12 +183,14 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
         return
       }
 
-      // Online: use API as before
       const result = await apiService.createPatient(patientPayload as any)
       if (result.success) {
         const patientData: PatientData = {
           ...formData,
-          id: (result as any)?.data?.patient_id?.toString() || (result as any)?.patient_id?.toString() || `PAT-${Date.now()}`,
+          id:
+            (result as any)?.data?.patient_id?.toString() ||
+            (result as any)?.patient_id?.toString() ||
+            `PAT-${Date.now()}`,
         }
         onPatientRegistered(patientData)
         setSuccess("Patient registered successfully!")
@@ -205,18 +229,18 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
   }
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <UserPlus className="w-5 h-5" />
+    <Card className="w-full max-w-2xl mx-auto border-primary/10 shadow-2xl">
+      <CardHeader className="bg-gradient-to-br from-primary/5 via-primary/3 to-transparent border-b border-primary/10">
+        <CardTitle className="flex items-center gap-2 text-2xl">
+          <UserPlus className="w-6 h-6 text-primary" />
           Patient Registration
         </CardTitle>
         <CardDescription>Register new patient or update existing patient information</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-6">
         <form onSubmit={handleSubmit} className="space-y-6">
           {error && (
-            <Alert variant="destructive">
+            <Alert variant="destructive" className="border-red-200 bg-red-50">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>
@@ -237,12 +261,14 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                 value={formData.medicalAidNumber}
                 onChange={(e) => updateFormData("medicalAidNumber", e.target.value)}
                 placeholder="Enter medical aid number (e.g., PAL123456)"
+                className="border-primary/20 focus:border-primary/40"
               />
               <Button
                 type="button"
                 variant="outline"
                 onClick={handleMedicalAidSearch}
                 disabled={!formData.medicalAidNumber || isSearching}
+                className="hover:bg-primary/10 hover:border-primary/30 bg-transparent"
               >
                 {isSearching ? "Searching..." : <Search className="w-4 h-4" />}
               </Button>
@@ -253,14 +279,14 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                 {memberFound ? (
                   <>
                     <CheckCircle className="w-4 h-4 text-green-600" />
-                    <Badge variant="default" className="bg-green-100 text-green-800">
+                    <Badge variant="default" className="bg-teal-50 text-teal-700 border-teal-200">
                       POLMED Member Found
                     </Badge>
                   </>
                 ) : (
                   <>
                     <AlertCircle className="w-4 h-4 text-orange-600" />
-                    <Badge variant="secondary" className="bg-orange-100 text-orange-800">
+                    <Badge variant="secondary" className="bg-coral-50 text-coral-700 border-coral-200">
                       Non-member / Dependent
                     </Badge>
                   </>
@@ -269,7 +295,7 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
             )}
           </div>
 
-          <Separator />
+          <Separator className="bg-primary/10" />
 
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Personal Information</h3>
@@ -282,6 +308,7 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                   onChange={(e) => updateFormData("fullName", e.target.value)}
                   required
                   placeholder="Enter full name"
+                  className="border-primary/20 focus:border-primary/40"
                 />
               </div>
 
@@ -293,13 +320,14 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                   value={formData.dateOfBirth}
                   onChange={(e) => updateFormData("dateOfBirth", e.target.value)}
                   required
+                  className="border-primary/20 focus:border-primary/40"
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="gender">Gender *</Label>
                 <Select value={formData.gender} onValueChange={(value) => updateFormData("gender", value)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="border-primary/20">
                     <SelectValue placeholder="Select gender" />
                   </SelectTrigger>
                   <SelectContent>
@@ -318,6 +346,7 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                   onChange={(e) => updateFormData("idNumber", e.target.value)}
                   required
                   placeholder="Enter national ID number"
+                  className="border-primary/20 focus:border-primary/40"
                 />
               </div>
 
@@ -330,6 +359,7 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                   onChange={(e) => updateFormData("telephone", e.target.value)}
                   required
                   placeholder="+27123456789"
+                  className="border-primary/20 focus:border-primary/40"
                 />
               </div>
 
@@ -341,6 +371,7 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                   value={formData.email}
                   onChange={(e) => updateFormData("email", e.target.value)}
                   placeholder="patient@example.com"
+                  className="border-primary/20 focus:border-primary/40"
                 />
               </div>
 
@@ -352,12 +383,13 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                   onChange={(e) => updateFormData("physicalAddress", e.target.value)}
                   placeholder="Enter complete physical address"
                   rows={3}
+                  className="border-primary/20 focus:border-primary/40"
                 />
               </div>
             </div>
           </div>
 
-          <Separator />
+          <Separator className="bg-primary/10" />
 
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Emergency Contact</h3>
@@ -369,6 +401,7 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                   value={formData.emergencyContact}
                   onChange={(e) => updateFormData("emergencyContact", e.target.value)}
                   placeholder="Contact person name"
+                  className="border-primary/20 focus:border-primary/40"
                 />
               </div>
 
@@ -380,12 +413,13 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                   value={formData.emergencyPhone}
                   onChange={(e) => updateFormData("emergencyPhone", e.target.value)}
                   placeholder="+27123456789"
+                  className="border-primary/20 focus:border-primary/40"
                 />
               </div>
             </div>
           </div>
 
-          <Separator />
+          <Separator className="bg-primary/10" />
 
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Medical History</h3>
@@ -398,6 +432,7 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                   onChange={(e) => updateFormData("knownAllergies", e.target.value)}
                   placeholder="List any known allergies (medications, food, environmental)"
                   rows={2}
+                  className="border-primary/20 focus:border-primary/40"
                 />
               </div>
 
@@ -409,6 +444,7 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                   onChange={(e) => updateFormData("currentMedications", e.target.value)}
                   placeholder="List current medications and dosages"
                   rows={2}
+                  className="border-primary/20 focus:border-primary/40"
                 />
               </div>
 
@@ -420,12 +456,17 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
                   onChange={(e) => updateFormData("chronicConditions", e.target.value)}
                   placeholder="List any chronic medical conditions"
                   rows={2}
+                  className="border-primary/20 focus:border-primary/40"
                 />
               </div>
             </div>
           </div>
 
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
+          <Button
+            type="submit"
+            className="w-full shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
+            disabled={isSubmitting}
+          >
             {isSubmitting ? "Registering Patient..." : "Register Patient"}
           </Button>
         </form>

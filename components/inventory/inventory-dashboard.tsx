@@ -288,74 +288,109 @@ export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-foreground">Inventory Management</h2>
-        <p className="text-muted-foreground">Manage medical assets, consumables, and supplies</p>
+        <h2 className="text-3xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
+          Inventory Management
+        </h2>
+        <p className="text-muted-foreground mt-1">Manage medical assets, consumables, and supplies</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="assets">Assets</TabsTrigger>
-          <TabsTrigger value="consumables">Consumables</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1">
+          <TabsTrigger
+            value="overview"
+            className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary/80 data-[state=active]:text-primary-foreground"
+          >
+            Overview
+          </TabsTrigger>
+          <TabsTrigger
+            value="assets"
+            className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary/80 data-[state=active]:text-primary-foreground"
+          >
+            Assets
+          </TabsTrigger>
+          <TabsTrigger
+            value="consumables"
+            className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary/80 data-[state=active]:text-primary-foreground"
+          >
+            Consumables
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
+            <Card className="border-primary/10 hover:shadow-lg hover:shadow-primary/10 transition-all duration-300 group">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Assets</CardTitle>
-                <Package className="h-4 w-4 text-muted-foreground" />
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Package className="h-5 w-5 text-primary" />
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{summaryData.totalAssets}</div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                  {summaryData.totalAssets}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
                   <CheckCircle className="w-3 h-3 text-green-600" />
                   {summaryData.operationalAssets} operational
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-primary/10 hover:shadow-lg hover:shadow-primary/10 transition-all duration-300 group">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Consumables</CardTitle>
-                <Package className="h-4 w-4 text-muted-foreground" />
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Package className="h-5 w-5 text-primary" />
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{summaryData.totalConsumables}</div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                  {summaryData.totalConsumables}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
                   <AlertTriangle className="w-3 h-3 text-orange-600" />
                   {summaryData.lowStockItems} low stock
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-primary/10 hover:shadow-lg hover:shadow-primary/10 transition-all duration-300 group">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Inventory Value</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <DollarSign className="h-5 w-5 text-primary" />
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
-                  {new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 }).format(
-                    Math.round(Number.isFinite(summaryData.totalInventoryValue) ? summaryData.totalInventoryValue : 0)
+                <div className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                  {new Intl.NumberFormat("en-ZA", {
+                    style: "currency",
+                    currency: "ZAR",
+                    maximumFractionDigits: 0,
+                  }).format(
+                    Math.round(Number.isFinite(summaryData.totalInventoryValue) ? summaryData.totalInventoryValue : 0),
                   )}
                 </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
                   <TrendingUp className="w-3 h-3 text-green-600" />
                   Total portfolio value
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-primary/10 hover:shadow-lg hover:shadow-primary/10 transition-all duration-300 group">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Alerts</CardTitle>
-                <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <AlertTriangle className="h-5 w-5 text-primary" />
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{alerts.length}</div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                  {alerts.length}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
                   <Clock className="w-3 h-3" />
                   Require attention
                 </div>
