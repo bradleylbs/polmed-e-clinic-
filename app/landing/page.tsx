@@ -56,9 +56,23 @@ export default function LandingPage() {
             className="flex items-center gap-2 transition-all duration-300"
           >
             {scrolled ? (
-              <PolmedLogoCompact priority showGlow animated />
+              <Image
+                src="/polmed_logo.png"
+                alt="POLMED Logo"
+                width={120}
+                height={40}
+                priority
+                className="h-8 w-auto object-contain"
+              />
             ) : (
-              <PolmedLogoHeader priority showGlow animated />
+              <Image
+                src="/polmed_logo.png"
+                alt="POLMED Logo"
+                width={180}
+                height={60}
+                priority
+                className="h-12 w-auto object-contain"
+              />
             )}
           </Link>
           
@@ -529,11 +543,6 @@ export default function LandingPage() {
           <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-12">
             <div className="space-y-6 max-w-md">
               <div className="flex flex-col gap-6">
-                {/* POLMED Logo */}
-                <div className="flex flex-col gap-2">
-                  <PolmedLogoHeader className="max-w-[200px]" showGlow={false} />
-                </div>
-                
                 {/* Partnership Section */}
                 <div className="flex flex-col gap-3">
                   <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
