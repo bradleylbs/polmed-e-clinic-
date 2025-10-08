@@ -228,9 +228,9 @@ export function ClinicalWorkflow({
       const severity = temp >= 38.5 ? "critical" : temp >= 37.5 ? "caution" : "normal"
       alerts.push({
         parameter: "Temperature",
-        value: `${temp}Â°C`,
+        value: `${temp}°C`,
         severity,
-        reference: "36.1-37.2Â°C",
+        reference: "36.1-37.2°C",
       })
     }
 
@@ -254,7 +254,7 @@ export function ClinicalWorkflow({
         parameter: "SpO2",
         value: `${spo2}%`,
         severity,
-        reference: "â‰¥95%",
+        reference: "≥95%",
       })
     }
 
@@ -933,7 +933,7 @@ export function ClinicalWorkflow({
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Temperature (Â°C)</Label>
+                  <Label>Temperature (°C)</Label>
                   <Input
                     placeholder="36.5"
                     value={vitalSigns.temperature}
@@ -1141,7 +1141,7 @@ export function ClinicalWorkflow({
                           onClick={() =>
                             updateClinicalNotes(
                               "doctorDiagnosis",
-                              clinicalNotes.doctorDiagnosis + "\nâ€¢ Normal cardiovascular examination",
+                              clinicalNotes.doctorDiagnosis + "\n• Normal cardiovascular examination",
                             )
                           }
                         >
@@ -1154,7 +1154,7 @@ export function ClinicalWorkflow({
                           onClick={() =>
                             updateClinicalNotes(
                               "doctorDiagnosis",
-                              clinicalNotes.doctorDiagnosis + "\nâ€¢ Clear chest on auscultation",
+                              clinicalNotes.doctorDiagnosis + "\n• Clear chest on auscultation",
                             )
                           }
                         >
@@ -1167,7 +1167,7 @@ export function ClinicalWorkflow({
                           onClick={() =>
                             updateClinicalNotes(
                               "doctorDiagnosis",
-                              clinicalNotes.doctorDiagnosis + "\nâ€¢ Abdomen soft, non-tender",
+                              clinicalNotes.doctorDiagnosis + "\n• Abdomen soft, non-tender",
                             )
                           }
                         >
@@ -1179,7 +1179,7 @@ export function ClinicalWorkflow({
                           onClick={() =>
                             updateClinicalNotes(
                               "doctorDiagnosis",
-                              clinicalNotes.doctorDiagnosis + "\nâ€¢ Neurologically intact",
+                              clinicalNotes.doctorDiagnosis + "\n• Neurologically intact",
                             )
                           }
                         >
