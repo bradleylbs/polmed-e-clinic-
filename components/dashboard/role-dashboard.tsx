@@ -179,7 +179,16 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
   const [dashboardData, setDashboardData] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
   const { toast } = useToast()
+
+  console.log("[v0] RoleDashboard rendered with user:", JSON.stringify(user, null, 2))
+  console.log("[v0] User role:", user.role, "Type:", typeof user.role)
+
   const roleInfo = roleConfig[user.role] || roleConfig["clerk"]
+
+  if (!roleConfig[user.role]) {
+    console.warn("[v0] Role not found in roleConfig:", user.role, "Using default 'clerk'")
+  }
+
   const RoleIcon = roleInfo?.icon
 
   const labels = getRoleSpecificLabels(user.role, dashboardData?.roleSpecificMetrics?.metricType || "")

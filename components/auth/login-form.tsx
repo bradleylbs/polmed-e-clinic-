@@ -9,15 +9,20 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Shield, Stethoscope, UserCheck, Users, Heart, AlertCircle, Eye, EyeOff } from "lucide-react"
 
 type UserRole = "administrator" | "doctor" | "nurse" | "clerk" | "social_worker"
 
 interface LoginFormProps {
-  onLogin: (credentials: { email: string; password: string; role: UserRole; mpNumber?: string }) => Promise<void>
+  onLogin: (credentials: {
+    email: string
+    password: string
+    role: UserRole
+    mpNumber?: string
+    userData?: any
+    token?: string
+  }) => void
 }
 
 const roleConfig = {
@@ -56,17 +61,14 @@ const roleConfig = {
 export function LoginForm({ onLogin }: LoginFormProps) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [role, setRole] = useState<UserRole>("clerk")
-  const [mpNumber, setMpNumber] = useState("")
-  const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showRoleSelection, setShowRoleSelection] = useState(false)
+  const [showPassword, setShowPassword] = useState(false) // Declare showPassword and setShowPassword
 
   // Clear error when inputs change
   useEffect(() => {
     setError(null)
-  }, [email, password, mpNumber])
+  }, [email, password])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -87,31 +89,56 @@ export function LoginForm({ onLogin }: LoginFormProps) {
     }
 
     try {
-      // Call the parent's onLogin function with credentials
-      await onLogin({
+      console.log("[v0] Attempting login for:", email)
+
+      const response = await apiService.login({
         email: email.trim().toLowerCase(),
-        password,
-        role,
-        ...(role === "doctor" && mpNumber && { mpNumber }),
+        password: password,
       })
+
+      console.log("[v0] Login response:", response)
+
+      if (response.success && response.data) {
+        const rawRole = String(response.data.user.role).toLowerCase().trim()
+        const userRole = rawRole.replace(/\s+/g, "_") as UserRole
+
+        console.log("[v0] Raw role from backend:", response.data.user.role)
+        console.log("[v0] Normalized role:", userRole)
+        console.log("[v0] Full user data:", JSON.stringify(response.data.user, null, 2))
+
+        console.log("[v0] Login successful, role:", userRole)
+
+        onLogin({
+          email: email.trim().toLowerCase(),
+          password,
+          role: userRole,
+          mpNumber: response.data.user.mp_number,
+          userData: response.data.user, // Pass full user data
+          token: response.data.token, // Pass token
+        })
+      } else {
+        console.error("[v0] Login failed:", response.error)
+        setError(response.error || "Login failed. Please check your credentials.")
+      }
     } catch (err: any) {
-      console.error("Login error:", err)
-      setError(err.message || "Login failed. Please check your credentials.")
+      console.error("[v0] Login error:", err)
+      setError("Network error. Please check your connection and try again.")
     } finally {
       setIsLoading(false)
     }
   }
 
-
-
-  const RoleIcon = roleConfig[role]?.icon || UserCheck
+  const handleFormSubmit = handleSubmit
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background via-background to-muted/20 p-4">
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse animate-delay-1s" />
+        <div
+          className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse"
+          style={{ animationDelay: "1s" }}
+        />
       </div>
 
       <Card className="w-full max-w-md relative shadow-2xl border-2 border-border/50 bg-card/80 backdrop-blur-sm animate-fade-in">
@@ -134,7 +161,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
           </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleFormSubmit} className="space-y-5">
             {error && (
               <Alert variant="destructive" className="animate-fade-in">
                 <AlertCircle className="h-4 w-4" />
@@ -166,7 +193,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
               <div className="relative">
                 <Input
                   id="password"
-                  type={showPassword ? "text" : "password"}
+                  type={showPassword ? "text" : "password"} // Use showPassword to toggle password visibility
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -184,65 +211,15 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                   disabled={isLoading}
                 >
                   {showPassword ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  ) : (
                     <Eye className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <span className="sr-only">{showPassword ? "Hide password" : "Show password"}</span>
+                  ) : (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  )}{" "}
+                  {/* Toggle icon based on showPassword */}
+                  <span className="sr-only">Toggle password visibility</span>
                 </Button>
               </div>
             </div>
-
-            {showRoleSelection && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="role" className="text-sm font-medium">
-                    User Role
-                  </Label>
-                  <Select value={role} onValueChange={(value: UserRole) => setRole(value)} disabled={isLoading}>
-                    <SelectTrigger className="h-11">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(roleConfig).map(([key, config]) => {
-                        const Icon = config.icon
-                        return (
-                          <SelectItem key={key} value={key}>
-                            <div className="flex items-center gap-2">
-                              <Icon className="w-4 h-4" />
-                              <span>{config.label}</span>
-                            </div>
-                          </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
-                  {roleConfig[role] && (
-                    <Badge className={`${roleConfig[role].color} transition-all duration-300 hover:scale-105`}>
-                      <RoleIcon className="w-3 h-3 mr-1" />
-                      {roleConfig[role].description}
-                    </Badge>
-                  )}
-                </div>
-
-                {role === "doctor" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="mpNumber" className="text-sm font-medium">
-                      MP Number (Optional)
-                    </Label>
-                    <Input
-                      id="mpNumber"
-                      type="text"
-                      value={mpNumber}
-                      onChange={(e) => setMpNumber(e.target.value)}
-                      placeholder="Medical Practice number"
-                      disabled={isLoading}
-                      className="h-11 transition-all duration-300 focus:ring-2 focus:ring-primary/20"
-                    />
-                  </div>
-                )}
-              </>
-            )}
 
             <Button
               type="submit"
@@ -261,21 +238,6 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                 </>
               )}
             </Button>
-
-            {showRoleSelection && (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full h-11 border-2 hover:bg-primary/5 hover:border-primary/50 transition-all duration-300 bg-transparent"
-                onClick={() => {
-                  setShowRoleSelection(false)
-                  setError(null)
-                }}
-                disabled={isLoading}
-              >
-                Back to Login
-              </Button>
-            )}
           </form>
         </CardContent>
       </Card>
