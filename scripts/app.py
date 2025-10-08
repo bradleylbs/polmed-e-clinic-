@@ -1217,14 +1217,11 @@ def search_icd10_codes():
         SELECT 
             code,
             description,
-            category,
-            subcategory,
             is_common
         FROM icd10_codes
         WHERE 
             code LIKE %s 
             OR LOWER(description) LIKE %s
-            OR LOWER(category) LIKE %s
         ORDER BY 
             is_common DESC,
             CASE 
@@ -1236,12 +1233,12 @@ def search_icd10_codes():
         LIMIT %s
         """
         
-        search_pattern = f"%{query}%"
-        code_pattern = f"{query}%"
+        search_pattern = f"%{query.lower()}%"
+        code_pattern = f"{query.upper()}%"
         
         results = DatabaseManager.execute_query(
             search_query,
-            (code_pattern, search_pattern, search_pattern, code_pattern, search_pattern, limit),
+            (code_pattern, search_pattern, code_pattern, search_pattern, limit),
             fetch=True
         )
         
