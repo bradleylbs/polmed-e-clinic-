@@ -1163,89 +1163,188 @@ export function ClinicalWorkflow({
                         ICD-10 Diagnostic Codes
                       </Label>
 
-                      {/* Selected codes display */}
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {selectedICD10Codes.map((item, index) => (
-                          <Badge
-                            key={index}
-                            variant="secondary"
-                            className="px-3 py-2 text-sm bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/30 hover:border-primary/50 transition-all group"
-                          >
-                            <span className="font-mono font-bold text-primary mr-2">{item.code}</span>
-                            <span className="text-xs text-muted-foreground mr-2">{item.description}</span>
-                            <button
-                              onClick={() => removeICD10Code(item.code)}
-                              className="ml-1 hover:text-destructive transition-colors"
-                              aria-label={`Remove ${item.code} code`}
-                            >
-                              <span className="sr-only">Remove {item.code}</span>
-                              <X className="w-3 h-3" aria-hidden="true" />
-                            </button>
-                          </Badge>
-                        ))}
-                      </div>
+                      {/* Enhanced Selected Codes Display */}
+                      {selectedICD10Codes.length > 0 && (
+                        <div className="mb-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                          <div className="flex items-center gap-2 mb-2">
+                            <CheckCircle className="w-4 h-4 text-green-600" />
+                            <span className="text-sm font-medium text-foreground">
+                              Selected ICD-10 Codes ({selectedICD10Codes.length})
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedICD10Codes.map((item, index) => (
+                              <Badge
+                                key={index}
+                                variant="secondary"
+                                className="px-3 py-2 text-sm bg-white border-2 border-primary/30 hover:border-primary/60 transition-all group shadow-sm"
+                              >
+                                <span className="font-mono font-bold text-primary mr-2">{item.code}</span>
+                                <span className="text-xs text-foreground mr-2 max-w-48 truncate" title={item.description}>
+                                  {item.description}
+                                </span>
+                                <button
+                                  onClick={() => removeICD10Code(item.code)}
+                                  className="ml-1 hover:text-destructive transition-colors rounded-full hover:bg-destructive/10 p-0.5"
+                                  aria-label={`Remove ${item.code} code`}
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
-                      {/* ICD-10 Search Popover */}
+                      {/* Enhanced ICD-10 Search Interface */}
                       <Popover open={icd10SearchOpen} onOpenChange={setIcd10SearchOpen}>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
-                            className="w-full justify-start text-left font-normal border-primary/20 hover:border-primary hover:bg-primary/5 bg-transparent"
+                            size="lg"
+                            className="w-full justify-start text-left font-normal border-2 border-dashed border-primary/30 hover:border-primary hover:bg-primary/5 bg-gradient-to-r from-primary/5 to-transparent transition-all duration-200 h-auto py-3"
                           >
-                            <Search className="mr-2 h-4 w-4 text-primary" />
-                            <span className="text-muted-foreground">Search ICD-10 codes...</span>
+                            <Search className="mr-3 h-5 w-5 text-primary" />
+                            <div className="flex flex-col items-start">
+                              <span className="text-sm font-medium text-foreground">Add ICD-10 Diagnostic Code</span>
+                              <span className="text-xs text-muted-foreground">Search by code (e.g., A00.0) or condition name</span>
+                            </div>
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-[500px] p-0" align="start">
+                        <PopoverContent className="w-[600px] p-0 shadow-xl border-2" align="start">
+                          <div className="border-b bg-muted/30 p-3">
+                            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                              <Target className="w-4 h-4" />
+                              ICD-10-CM Code Search
+                              {icd10SearchResults.length > 0 && (
+                                <Badge variant="outline" className="ml-auto text-xs">
+                                  {icd10SearchResults.length} results
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
                           <Command>
                             <CommandInput
-                              placeholder="Search by code or description..."
+                              placeholder="Type to search... (e.g., 'diabetes', 'hypertension', 'E11.9')"
                               value={icd10SearchQuery}
                               onValueChange={setIcd10SearchQuery}
+                              className="border-0 focus:ring-0 text-base"
                             />
-                            <CommandList>
+                            <CommandList className="max-h-96">
                               {icd10SearchLoading && (
-                                <div className="p-4 text-center text-sm text-muted-foreground">
-                                  <div className="spinner-sm mx-auto mb-2" />
-                                  Searching...
+                                <div className="p-6 text-center">
+                                  <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                                    Searching ICD-10 database...
+                                  </div>
                                 </div>
                               )}
+                              
+                              {!icd10SearchLoading && icd10SearchQuery.length < 2 && (
+                                <div className="p-6 text-center">
+                                  <Brain className="w-8 h-8 text-muted-foreground/50 mx-auto mb-2" />
+                                  <p className="text-sm text-muted-foreground mb-1">Start typing to search ICD-10 codes</p>
+                                  <p className="text-xs text-muted-foreground">Search by code, condition, or symptoms</p>
+                                </div>
+                              )}
+
                               {!icd10SearchLoading &&
                                 icd10SearchQuery.length >= 2 &&
-                                icd10SearchResults.length === 0 && <CommandEmpty>No ICD-10 codes found.</CommandEmpty>}
+                                icd10SearchResults.length === 0 && (
+                                  <div className="p-6 text-center">
+                                    <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                                    <p className="text-sm font-medium mb-1">No ICD-10 codes found</p>
+                                    <p className="text-xs text-muted-foreground">Try different keywords or check spelling</p>
+                                  </div>
+                                )}
+
                               {!icd10SearchLoading && icd10SearchResults.length > 0 && (
-                                <CommandGroup heading="Search Results">
-                                  {icd10SearchResults.map((result) => (
+                                <CommandGroup>
+                                  {icd10SearchResults.map((result, index) => (
                                     <CommandItem
                                       key={result.code}
                                       onSelect={() => addICD10Code(result.code, result.description)}
-                                      className="flex items-start gap-3 p-3 cursor-pointer"
+                                      className="flex items-start gap-3 p-4 cursor-pointer hover:bg-primary/5 border-b border-border/50 last:border-0 transition-colors duration-150"
                                     >
-                                      <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-1">
-                                          <Badge variant="outline" className="font-mono text-xs">
+                                      <div className="flex-shrink-0 w-2 h-2 rounded-full bg-primary/60 mt-2" />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <Badge 
+                                            variant="outline" 
+                                            className="font-mono text-sm font-bold bg-primary/10 border-primary/30 text-primary px-2 py-1"
+                                          >
                                             {result.code}
                                           </Badge>
                                           {result.is_common && (
-                                            <Badge variant="secondary" className="text-xs">
+                                            <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 border-green-200">
+                                              <Sparkles className="w-3 h-3 mr-1" />
                                               Common
                                             </Badge>
                                           )}
+                                          <Badge variant="outline" className="text-xs text-muted-foreground">
+                                            #{index + 1}
+                                          </Badge>
                                         </div>
-                                        <p className="text-sm font-medium">{result.description}</p>
+                                        <p className="text-sm font-semibold text-foreground leading-tight mb-1">
+                                          {result.description}
+                                        </p>
                                         {result.category && (
-                                          <p className="text-xs text-muted-foreground mt-1">{result.category}</p>
+                                          <p className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded">
+                                            Category: {result.category}
+                                          </p>
                                         )}
                                       </div>
-                                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                                      <div className="flex-shrink-0 flex items-center">
+                                        <Plus className="w-4 h-4 text-primary" />
+                                      </div>
                                     </CommandItem>
                                   ))}
                                 </CommandGroup>
                               )}
                             </CommandList>
                           </Command>
+                          
+                          {icd10SearchResults.length > 0 && (
+                            <div className="border-t bg-muted/20 p-3">
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Zap className="w-3 h-3" />
+                                Click any code to add it to the patient's diagnosis
+                              </p>
+                            </div>
+                          )}
                         </PopoverContent>
                       </Popover>
+
+                      {/* Quick access to common codes */}
+                      {selectedICD10Codes.length === 0 && !icd10SearchOpen && (
+                        <div className="mt-3 p-3 bg-muted/30 rounded-lg border border-dashed">
+                          <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" />
+                            Quick Access - Common ICD-10 Codes:
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {[
+                              { code: "Z00.00", desc: "General examination" },
+                              { code: "I10", desc: "Hypertension" },
+                              { code: "E11.9", desc: "Type 2 diabetes" }, 
+                              { code: "J06.9", desc: "Upper respiratory infection" },
+                              { code: "M79.3", desc: "Panniculitis, unspecified" },
+                              { code: "R50.9", desc: "Fever, unspecified" }
+                            ].map((item) => (
+                              <Button
+                                key={item.code}
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => addICD10Code(item.code, item.desc)}
+                                className="text-xs h-7 px-2 hover:bg-primary/10 border border-transparent hover:border-primary/20 font-mono"
+                                title={item.desc}
+                              >
+                                {item.code}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {smartSuggestions.length > 0 && (
