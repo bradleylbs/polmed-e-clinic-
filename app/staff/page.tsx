@@ -5,17 +5,27 @@ import { PatientPortalLogin } from "@/components/patient-portal/patient-portal-l
 import { PatientPortalDashboard } from "@/components/patient-portal/patient-portal-dashboard"
 import { PatientPortalRegistration } from "@/components/patient-portal/patient-portal-registration"
 import { patientPortalService, type PatientDashboardData } from "@/lib/patient-portal-service"
+import { apiService } from "@/lib/api-service"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, ShieldCheck, Mail, CheckCircle2, AlertCircle } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { RoleDashboard } from "@/components/dashboard/role-dashboard"
 
 type ViewMode = "login" | "register" | "dashboard" | "verify-email" | "loading"
+type UserRole = "administrator" | "doctor" | "nurse" | "clerk" | "social_worker"
 
-interface PatientSession {
+interface StaffSession {
   token: string
-  patient_data: PatientDashboardData["patient_info"]
+  user: {
+    id: number
+    email: string
+    username: string
+    role: UserRole
+    full_name?: string
+    employee_id?: string
+  }
   timestamp: number
   expiresAt: number
 }
@@ -30,21 +40,21 @@ const SESSION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000
 
 export default function PatientPortalPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("loading")
-  const [session, setSession] = useState<PatientSession | null>(null)
+  const [session, setSession] = useState<StaffSession | null>(null)
   const [verificationState, setVerificationState] = useState<VerificationState>({ status: "idle" })
   const { toast } = useToast()
 
   // Session management utilities
-  const saveSession = useCallback((sessionData: Omit<PatientSession, "timestamp" | "expiresAt">) => {
+  const saveSession = useCallback((sessionData: Omit<StaffSession, "timestamp" | "expiresAt">) => {
     const now = Date.now()
-    const fullSession: PatientSession = {
+    const fullSession: StaffSession = {
       ...sessionData,
       timestamp: now,
       expiresAt: now + SESSION_EXPIRY_MS,
     }
     
     try {
-      localStorage.setItem("patient_portal_session", JSON.stringify(fullSession))
+      localStorage.setItem("staff_session", JSON.stringify(fullSession))
       setSession(fullSession)
     } catch (error) {
       console.error("Failed to save session:", error)
@@ -58,15 +68,15 @@ export default function PatientPortalPage() {
 
   const clearSession = useCallback(() => {
     try {
-      localStorage.removeItem("patient_portal_session")
+      localStorage.removeItem("staff_session")
       setSession(null)
     } catch (error) {
       console.error("Failed to clear session:", error)
     }
   }, [])
 
-  const isSessionValid = useCallback((sessionData: PatientSession): boolean => {
-    if (!sessionData?.patient_data?.id || !sessionData?.token) {
+  const isSessionValid = useCallback((sessionData: StaffSession): boolean => {
+    if (!sessionData?.user?.id || !sessionData?.token) {
       return false
     }
     
@@ -96,10 +106,10 @@ export default function PatientPortalPage() {
         }
 
         // Check for saved session
-        const savedSession = localStorage.getItem("patient_portal_session")
+        const savedSession = localStorage.getItem("staff_session")
         if (savedSession) {
           try {
-            const parsedSession: PatientSession = JSON.parse(savedSession)
+            const parsedSession: StaffSession = JSON.parse(savedSession)
             
             if (isSessionValid(parsedSession)) {
               setSession(parsedSession)
@@ -108,7 +118,7 @@ export default function PatientPortalPage() {
               // Show welcome back message
               toast({
                 title: "Welcome back!",
-                description: `Hello ${parsedSession.patient_data.full_name}`,
+                description: `Hello ${parsedSession.user.full_name || parsedSession.user.email}`,
               })
             } else {
               // Session expired or invalid
@@ -193,16 +203,27 @@ export default function PatientPortalPage() {
   // Login handler with enhanced validation
   const handleLogin = async (email: string, password: string) => {
     try {
-      const response = await patientPortalService.loginPatient(email, password)
+      const response = await apiService.login({ email, password })
 
       if (response.success && response.data) {
-        if (!response.data.patient_data?.id) {
-          throw new Error("Invalid patient data received")
+        if (!response.data.user?.user_id && !response.data.user?.id) {
+          throw new Error("Invalid user data received")
+        }
+
+        // Create a normalized user object with username
+        const user = response.data.user
+        const normalizedUser = {
+          id: user.user_id || user.id,
+          email: user.email,
+          username: user.username || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email,
+          role: user.role as UserRole,
+          full_name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email,
+          employee_id: user.mp_number || user.employee_id,
         }
 
         const sessionData = {
           token: response.data.token,
-          patient_data: response.data.patient_data,
+          user: normalizedUser,
         }
 
         saveSession(sessionData)
@@ -210,7 +231,7 @@ export default function PatientPortalPage() {
 
         toast({
           title: "Welcome Back",
-          description: `Hello ${response.data.patient_data.full_name}!`,
+          description: `Hello ${response.data.user.full_name || response.data.user.email}!`,
         })
       } else {
         toast({
@@ -371,12 +392,11 @@ export default function PatientPortalPage() {
   }
 
   // Dashboard view
-  if (viewMode === "dashboard" && session?.patient_data?.id) {
+  if (viewMode === "dashboard" && session?.user?.id) {
     return (
       <div className="animate-fade-in">
-        <PatientPortalDashboard 
-          patientId={session.patient_data.id} 
-          onLogout={handleLogout} 
+        <RoleDashboard 
+          user={session.user}
         />
       </div>
     )
