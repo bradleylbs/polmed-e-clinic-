@@ -338,16 +338,43 @@ export function ClinicalWorkflow({
 
     setIcd10SearchLoading(true)
     try {
-      const response = await apiService.searchICD10(query, 15)
+      // Enhanced search with more results and better filtering
+      const response = await apiService.searchICD10(query, 25)
       if (response.success && response.data) {
-        setIcd10SearchResults(response.data)
+        // Filter out already selected codes and sort by relevance
+        const filteredResults = response.data
+          .filter(result => !selectedICD10Codes.find(selected => selected.code === result.code))
+          .sort((a, b) => {
+            // Prioritize exact code matches
+            if (a.code.toLowerCase().startsWith(query.toLowerCase()) && !b.code.toLowerCase().startsWith(query.toLowerCase())) return -1
+            if (b.code.toLowerCase().startsWith(query.toLowerCase()) && !a.code.toLowerCase().startsWith(query.toLowerCase())) return 1
+            
+            // Prioritize common codes
+            if (a.is_common && !b.is_common) return -1
+            if (b.is_common && !a.is_common) return 1
+            
+            // Sort by description relevance
+            const aRelevance = a.description.toLowerCase().indexOf(query.toLowerCase())
+            const bRelevance = b.description.toLowerCase().indexOf(query.toLowerCase())
+            if (aRelevance !== -1 && bRelevance === -1) return -1
+            if (bRelevance !== -1 && aRelevance === -1) return 1
+            
+            return 0
+          })
+        
+        setIcd10SearchResults(filteredResults)
       }
     } catch (error) {
       console.error("ICD-10 search error:", error)
+      toast({
+        title: "Search Error",
+        description: "Failed to search ICD-10 codes. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setIcd10SearchLoading(false)
     }
-  }, [])
+  }, [selectedICD10Codes, toast])
 
   useEffect(() => {
     if (searchTimeoutRef.current) {
@@ -374,9 +401,44 @@ export function ClinicalWorkflow({
       const newCodes = [...selectedICD10Codes, { code, description }]
       setSelectedICD10Codes(newCodes)
       updateClinicalNotes("icd10Codes", newCodes.map((c) => c.code).join(", "))
+      
+      // Enhanced feedback for successful selection
+      toast({
+        title: "ICD-10 Code Added",
+        description: `${code}: ${description.substring(0, 50)}${description.length > 50 ? '...' : ''}`,
+        duration: 2000,
+      })
+      
+      // Keep search open for multiple selections, but clear query
+      setIcd10SearchQuery("")
+    } else {
+      // Provide feedback if code already selected
+      toast({
+        title: "Code Already Selected",
+        description: `${code} is already in your diagnosis list.`,
+        variant: "destructive",
+        duration: 2000,
+      })
     }
-    setIcd10SearchOpen(false)
-    setIcd10SearchQuery("")
+  }
+
+  // Enhanced function for bulk code selection
+  const addMultipleICD10Codes = (codes: Array<{ code: string, description: string }>) => {
+    const newCodes = codes.filter(newCode => 
+      !selectedICD10Codes.find(existing => existing.code === newCode.code)
+    )
+    
+    if (newCodes.length > 0) {
+      const updatedCodes = [...selectedICD10Codes, ...newCodes]
+      setSelectedICD10Codes(updatedCodes)
+      updateClinicalNotes("icd10Codes", updatedCodes.map((c) => c.code).join(", "))
+      
+      toast({
+        title: `${newCodes.length} ICD-10 Codes Added`,
+        description: newCodes.map(c => c.code).join(", "),
+        duration: 3000,
+      })
+    }
   }
 
   const removeICD10Code = (code: string) => {
@@ -1202,13 +1264,20 @@ export function ClinicalWorkflow({
                           <Button
                             variant="outline"
                             size="lg"
-                            className="w-full justify-start text-left font-normal border-2 border-dashed border-primary/30 hover:border-primary hover:bg-primary/5 bg-gradient-to-r from-primary/5 to-transparent transition-all duration-200 h-auto py-3"
+                            className="w-full justify-between text-left font-normal border-2 border-dashed border-primary/30 hover:border-primary hover:bg-primary/5 bg-gradient-to-r from-primary/5 to-transparent transition-all duration-200 h-auto py-3"
                           >
-                            <Search className="mr-3 h-5 w-5 text-primary" />
-                            <div className="flex flex-col items-start">
-                              <span className="text-sm font-medium text-foreground">Add ICD-10 Diagnostic Code</span>
-                              <span className="text-xs text-muted-foreground">Search by code (e.g., A00.0) or condition name</span>
+                            <div className="flex items-center">
+                              <Search className="mr-3 h-5 w-5 text-primary" />
+                              <div className="flex flex-col items-start">
+                                <span className="text-sm font-medium text-foreground">Search & Add ICD-10 Codes</span>
+                                <span className="text-xs text-muted-foreground">Type to search database • Press Enter to select</span>
+                              </div>
                             </div>
+                            {selectedICD10Codes.length > 0 && (
+                              <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
+                                {selectedICD10Codes.length} selected
+                              </Badge>
+                            )}
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-[600px] p-0 shadow-xl border-2" align="start">
@@ -1259,89 +1328,180 @@ export function ClinicalWorkflow({
                                 )}
 
                               {!icd10SearchLoading && icd10SearchResults.length > 0 && (
-                                <CommandGroup>
-                                  {icd10SearchResults.map((result, index) => (
-                                    <CommandItem
-                                      key={result.code}
-                                      onSelect={() => addICD10Code(result.code, result.description)}
-                                      className="flex items-start gap-3 p-4 cursor-pointer hover:bg-primary/5 border-b border-border/50 last:border-0 transition-colors duration-150"
-                                    >
-                                      <div className="flex-shrink-0 w-2 h-2 rounded-full bg-primary/60 mt-2" />
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-2">
-                                          <Badge 
-                                            variant="outline" 
-                                            className="font-mono text-sm font-bold bg-primary/10 border-primary/30 text-primary px-2 py-1"
-                                          >
-                                            {result.code}
-                                          </Badge>
-                                          {result.is_common && (
-                                            <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 border-green-200">
-                                              <Sparkles className="w-3 h-3 mr-1" />
-                                              Common
+                                <CommandGroup heading={`${icd10SearchResults.length} ICD-10 Codes Found`}>
+                                  {icd10SearchResults.map((result, index) => {
+                                    const isAlreadySelected = selectedICD10Codes.find(c => c.code === result.code)
+                                    return (
+                                      <CommandItem
+                                        key={result.code}
+                                        onSelect={() => addICD10Code(result.code, result.description)}
+                                        className={`flex items-start gap-3 p-4 cursor-pointer border-b border-border/50 last:border-0 transition-all duration-200 ${
+                                          isAlreadySelected 
+                                            ? 'bg-green-50 hover:bg-green-100 border-green-200' 
+                                            : 'hover:bg-primary/5 hover:border-primary/20'
+                                        }`}
+                                        disabled={!!isAlreadySelected}
+                                      >
+                                        <div className={`flex-shrink-0 w-3 h-3 rounded-full mt-2 transition-colors ${
+                                          isAlreadySelected ? 'bg-green-500' : 'bg-primary/60'
+                                        }`} />
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-2 mb-2">
+                                            <Badge 
+                                              variant="outline" 
+                                              className={`font-mono text-sm font-bold px-2 py-1 ${
+                                                isAlreadySelected 
+                                                  ? 'bg-green-100 border-green-300 text-green-800' 
+                                                  : 'bg-primary/10 border-primary/30 text-primary'
+                                              }`}
+                                            >
+                                              {result.code}
                                             </Badge>
-                                          )}
-                                          <Badge variant="outline" className="text-xs text-muted-foreground">
-                                            #{index + 1}
-                                          </Badge>
-                                        </div>
-                                        <p className="text-sm font-semibold text-foreground leading-tight mb-1">
-                                          {result.description}
-                                        </p>
-                                        {result.category && (
-                                          <p className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded">
-                                            Category: {result.category}
+                                            {result.is_common && (
+                                              <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700 border-amber-200">
+                                                <Sparkles className="w-3 h-3 mr-1" />
+                                                Common
+                                              </Badge>
+                                            )}
+                                            <Badge variant="outline" className="text-xs text-muted-foreground">
+                                              #{index + 1}
+                                            </Badge>
+                                            {isAlreadySelected && (
+                                              <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
+                                                <CheckCircle className="w-3 h-3 mr-1" />
+                                                Selected
+                                              </Badge>
+                                            )}
+                                          </div>
+                                          <p className={`text-sm font-semibold leading-tight mb-1 ${
+                                            isAlreadySelected ? 'text-green-800' : 'text-foreground'
+                                          }`}>
+                                            {result.description}
                                           </p>
-                                        )}
-                                      </div>
-                                      <div className="flex-shrink-0 flex items-center">
-                                        <Plus className="w-4 h-4 text-primary" />
-                                      </div>
-                                    </CommandItem>
-                                  ))}
+                                          {result.category && (
+                                            <p className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded">
+                                              Category: {result.category}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div className="flex-shrink-0 flex items-center">
+                                          {isAlreadySelected ? (
+                                            <CheckCircle className="w-4 h-4 text-green-600" />
+                                          ) : (
+                                            <Plus className="w-4 h-4 text-primary hover:text-primary/80" />
+                                          )}
+                                        </div>
+                                      </CommandItem>
+                                    )
+                                  })}
                                 </CommandGroup>
                               )}
                             </CommandList>
                           </Command>
                           
                           {icd10SearchResults.length > 0 && (
-                            <div className="border-t bg-muted/20 p-3">
-                              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Zap className="w-3 h-3" />
-                                Click any code to add it to the patient's diagnosis
-                              </p>
+                            <div className="border-t bg-muted/20 p-3 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Zap className="w-3 h-3" />
+                                  Click any code to add it to diagnosis
+                                </p>
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <kbd className="px-1 py-0.5 bg-muted rounded border text-xs">↑↓</kbd>
+                                  <span>Navigate</span>
+                                  <kbd className="px-1 py-0.5 bg-muted rounded border text-xs">Enter</kbd>
+                                  <span>Select</span>
+                                  <kbd className="px-1 py-0.5 bg-muted rounded border text-xs">Esc</kbd>
+                                  <span>Close</span>
+                                </div>
+                              </div>
+                              {selectedICD10Codes.length > 0 && (
+                                <div className="flex items-center gap-2 text-xs text-green-600">
+                                  <CheckCircle className="w-3 h-3" />
+                                  <span>{selectedICD10Codes.length} code(s) selected • Search continues for more</span>
+                                </div>
+                              )}
                             </div>
                           )}
                         </PopoverContent>
                       </Popover>
 
-                      {/* Quick access to common codes */}
-                      {selectedICD10Codes.length === 0 && !icd10SearchOpen && (
-                        <div className="mt-3 p-3 bg-muted/30 rounded-lg border border-dashed">
-                          <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-                            <Sparkles className="w-3 h-3" />
-                            Quick Access - Common ICD-10 Codes:
-                          </p>
-                          <div className="flex flex-wrap gap-1">
-                            {[
-                              { code: "Z00.00", desc: "General examination" },
-                              { code: "I10", desc: "Hypertension" },
-                              { code: "E11.9", desc: "Type 2 diabetes" }, 
-                              { code: "J06.9", desc: "Upper respiratory infection" },
-                              { code: "M79.3", desc: "Panniculitis, unspecified" },
-                              { code: "R50.9", desc: "Fever, unspecified" }
-                            ].map((item) => (
-                              <Button
-                                key={item.code}
-                                variant="ghost" 
-                                size="sm"
-                                onClick={() => addICD10Code(item.code, item.desc)}
-                                className="text-xs h-7 px-2 hover:bg-primary/10 border border-transparent hover:border-primary/20 font-mono"
-                                title={item.desc}
-                              >
-                                {item.code}
-                              </Button>
-                            ))}
+                      {/* Enhanced Quick Access and Management */}
+                      {!icd10SearchOpen && (
+                        <div className="mt-3 space-y-3">
+                          {/* Quick Access - Always shown when search is closed */}
+                          <div className="p-3 bg-muted/30 rounded-lg border border-dashed">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Sparkles className="w-3 h-3" />
+                                Quick Access - Common ICD-10 Codes:
+                              </p>
+                              {selectedICD10Codes.length > 0 && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedICD10Codes([])
+                                    updateClinicalNotes("icd10Codes", "")
+                                    toast({
+                                      title: "Codes Cleared",
+                                      description: "All ICD-10 codes have been removed.",
+                                    })
+                                  }}
+                                  className="text-xs h-6 px-2 text-muted-foreground hover:text-destructive"
+                                >
+                                  <X className="w-3 h-3 mr-1" />
+                                  Clear All
+                                </Button>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {[
+                                { code: "Z00.00", desc: "General adult medical examination" },
+                                { code: "I10", desc: "Essential hypertension" },
+                                { code: "E11.9", desc: "Type 2 diabetes mellitus without complications" }, 
+                                { code: "J06.9", desc: "Acute upper respiratory infection, unspecified" },
+                                { code: "M79.3", desc: "Panniculitis, unspecified" },
+                                { code: "R50.9", desc: "Fever, unspecified" },
+                                { code: "K59.00", desc: "Constipation, unspecified" },
+                                { code: "R06.02", desc: "Shortness of breath" }
+                              ].map((item) => {
+                                const isSelected = selectedICD10Codes.find(c => c.code === item.code)
+                                return (
+                                  <Button
+                                    key={item.code}
+                                    variant={isSelected ? "secondary" : "ghost"}
+                                    size="sm"
+                                    onClick={() => addICD10Code(item.code, item.desc)}
+                                    disabled={!!isSelected}
+                                    className={`text-xs h-7 px-2 font-mono transition-all ${
+                                      isSelected 
+                                        ? 'bg-green-100 text-green-700 border-green-200 cursor-not-allowed' 
+                                        : 'hover:bg-primary/10 border border-transparent hover:border-primary/20'
+                                    }`}
+                                    title={item.desc}
+                                  >
+                                    {isSelected && <CheckCircle className="w-3 h-3 mr-1" />}
+                                    {item.code}
+                                  </Button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                          
+                          {/* Search Tips */}
+                          <div className="text-xs text-muted-foreground bg-blue-50 border border-blue-200 rounded-lg p-2">
+                            <div className="flex items-start gap-2">
+                              <Brain className="w-3 h-3 text-blue-600 mt-0.5 flex-shrink-0" />
+                              <div>
+                                <p className="font-medium text-blue-900 mb-1">Search Tips:</p>
+                                <ul className="space-y-0.5 text-blue-700">
+                                  <li>• Use specific terms: "diabetes", "hypertension", "infection"</li>
+                                  <li>• Search by code: "E11", "I10", "J06" for partial matches</li>
+                                  <li>• Multiple codes can be selected in one search session</li>
+                                </ul>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       )}
