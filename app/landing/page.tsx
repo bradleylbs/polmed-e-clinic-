@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { PolmedLogoHeader } from "@/components/ui/polmed-logo"
+import { PolmedLogoHeader, PolmedLogoCompact } from "@/components/ui/polmed-logo"
 import {
   CalendarDays,
   Stethoscope,
@@ -42,18 +42,24 @@ export default function LandingPage() {
     <main className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 overflow-x-hidden">
       {/* Enhanced Header */}
       <header
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 will-change-transform ${
           scrolled
-            ? "bg-background/95 backdrop-blur-xl border-b border-border/50 shadow-lg"
-            : "bg-background/80 backdrop-blur-xl border-b border-border/30"
+            ? "bg-background/95 backdrop-blur-xl border-b border-border/60 shadow-lg transform-gpu"
+            : "bg-background/85 backdrop-blur-xl border-b border-border/40"
         }`}
       >
-        <div className="container mx-auto max-w-7xl px-4 sm:px-6 py-4 flex items-center justify-between">
+        <div className={`container mx-auto max-w-7xl px-4 sm:px-6 flex items-center justify-between transition-all duration-300 ${
+          scrolled ? "py-2" : "py-4"
+        }`}>
           <Link
             href="/landing"
             className="flex items-center gap-2 transition-all duration-300"
           >
-            <PolmedLogoHeader priority showGlow animated />
+            {scrolled ? (
+              <PolmedLogoCompact priority showGlow animated />
+            ) : (
+              <PolmedLogoHeader priority showGlow animated />
+            )}
           </Link>
           
           {/* Desktop Navigation */}
@@ -522,22 +528,31 @@ export default function LandingPage() {
         <div className="container relative mx-auto max-w-7xl px-4 py-16 text-sm text-muted-foreground space-y-12">
           <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-12">
             <div className="space-y-6 max-w-md">
-              <div className="flex flex-col gap-4">
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                  Powered by
-                </span>
-                <Image
-                  src="/rm_logo.png"
-                  alt="Masala Ramabulana Holdings"
-                  width={320}
-                  height={140}
-                  className="h-20 w-auto sm:h-24 transition-all hover:scale-105 duration-300"
-                  priority
-                />
+              <div className="flex flex-col gap-6">
+                {/* POLMED Logo */}
+                <div className="flex flex-col gap-2">
+                  <PolmedLogoHeader className="max-w-[200px]" showGlow={false} />
+                </div>
+                
+                {/* Partnership Section */}
+                <div className="flex flex-col gap-3">
+                  <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                    Powered by
+                  </span>
+                  <Image
+                    src="/rm_logo.png"
+                    alt="Masala Ramabulana Holdings"
+                    width={320}
+                    height={140}
+                    className="h-16 w-auto sm:h-18 lg:h-20 object-contain transition-all hover:scale-105 duration-300 filter brightness-110"
+                    priority
+                    quality={100}
+                  />
+                </div>
               </div>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 Masala Ramabulana Holdings is proud to partner in delivering innovative healthcare access across the
-                PALMED mobile clinic network.
+                POLMED mobile clinic network.
               </p>
             </div>
             

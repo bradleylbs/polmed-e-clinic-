@@ -19,8 +19,8 @@ export function PolmedLogo({
   priority = false 
 }: PolmedLogoProps) {
   const sizeClasses = {
-    compact: "polmed-logo-header max-w-[120px]",
-    header: "polmed-logo-header",
+    compact: "polmed-logo-compact max-w-[100px] max-h-8",
+    header: "polmed-logo-header max-w-[160px] max-h-12",
     hero: "polmed-logo-hero",
     large: "polmed-logo-large"
   }
@@ -35,8 +35,8 @@ export function PolmedLogo({
       <Image
         src="/polmed_logo.png"
         alt="POLMED - Professional Online Medical Services"
-        width={variant === "large" ? 400 : variant === "hero" ? 320 : 200}
-        height={variant === "large" ? 120 : variant === "hero" ? 96 : 60}
+        width={variant === "large" ? 400 : variant === "hero" ? 320 : variant === "compact" ? 120 : 200}
+        height={variant === "large" ? 120 : variant === "hero" ? 96 : variant === "compact" ? 36 : 60}
         className="w-full h-auto object-contain"
         priority={priority}
         quality={95}
