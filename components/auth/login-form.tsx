@@ -17,7 +17,7 @@ import { Shield, Stethoscope, UserCheck, Users, Heart, AlertCircle, Eye, EyeOff 
 type UserRole = "administrator" | "doctor" | "nurse" | "clerk" | "social_worker"
 
 interface LoginFormProps {
-  onLogin: (credentials: { email: string; password: string; role: UserRole; mpNumber?: string }) => void
+  onLogin: (credentials: { email: string; password: string; role: UserRole; mpNumber?: string }) => Promise<void>
 }
 
 const roleConfig = {
@@ -87,85 +87,22 @@ export function LoginForm({ onLogin }: LoginFormProps) {
     }
 
     try {
-      console.log("Attempting login for:", email)
-
-      const response = await apiService.login({
+      // Call the parent's onLogin function with credentials
+      await onLogin({
         email: email.trim().toLowerCase(),
-        password: password,
+        password,
+        role,
+        ...(role === "doctor" && mpNumber && { mpNumber }),
       })
-
-      console.log("Login response:", response)
-
-      if (response.success && response.data) {
-        const userRole = String(response.data.user.role).toLowerCase().replace(/\s+/g, "_") as UserRole
-
-        // Auto-set role based on backend response
-        setRole(userRole)
-        setShowRoleSelection(false)
-
-        // Validate MP number for doctors if provided
-        if (userRole === "doctor" && mpNumber && response.data.user.mp_number) {
-          if (response.data.user.mp_number !== mpNumber) {
-            setError("MP number does not match your registered number")
-            setIsLoading(false)
-            return
-          }
-        }
-
-        // Success - call onLogin with actual user role
-        onLogin({
-          email: email.trim().toLowerCase(),
-          password,
-          role: userRole,
-          ...(userRole === "doctor" && mpNumber && { mpNumber }),
-        })
-      } else {
-        console.error("Login failed:", response.error)
-        setError(response.error || "Login failed. Please check your credentials.")
-        setShowRoleSelection(false)
-      }
     } catch (err: any) {
       console.error("Login error:", err)
-      setError("Network error. Please check your connection and try again.")
-      setShowRoleSelection(false)
+      setError(err.message || "Login failed. Please check your credentials.")
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleInitialSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
 
-    if (!email.trim() || !password.trim()) {
-      setError("Please fill in all required fields")
-      return
-    }
-
-    // First, try to determine user role from backend
-    try {
-      setIsLoading(true)
-      const response = await apiService.login({
-        email: email.trim().toLowerCase(),
-        password: password,
-      })
-
-      if (response.success && response.data) {
-        // Login successful - use actual role from backend (normalized)
-        const userRole = String(response.data.user.role).toLowerCase().replace(/\s+/g, "_") as UserRole
-        onLogin({
-          email: email.trim().toLowerCase(),
-          password,
-          role: userRole,
-        })
-      } else {
-        setError(response.error || "Invalid credentials")
-      }
-    } catch (err) {
-      setError("Network error. Please check your connection.")
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   const RoleIcon = roleConfig[role]?.icon || UserCheck
 
@@ -174,10 +111,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse" />
-        <div
-          className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDelay: "1s" }}
-        />
+        <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse animate-delay-1s" />
       </div>
 
       <Card className="w-full max-w-md relative shadow-2xl border-2 border-border/50 bg-card/80 backdrop-blur-sm animate-fade-in">
@@ -200,7 +134,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
           </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={showRoleSelection ? handleSubmit : handleInitialSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <Alert variant="destructive" className="animate-fade-in">
                 <AlertCircle className="h-4 w-4" />

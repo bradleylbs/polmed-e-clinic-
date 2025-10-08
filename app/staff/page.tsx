@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { PatientPortalLogin } from "@/components/patient-portal/patient-portal-login"
+import { LoginForm } from "@/components/auth/login-form"
 import { PatientPortalDashboard } from "@/components/patient-portal/patient-portal-dashboard"
 import { PatientPortalRegistration } from "@/components/patient-portal/patient-portal-registration"
 import { patientPortalService, type PatientDashboardData } from "@/lib/patient-portal-service"
@@ -201,9 +201,9 @@ export default function PatientPortalPage() {
   }
 
   // Login handler with enhanced validation
-  const handleLogin = async (email: string, password: string) => {
+  const handleLogin = async (credentials: {email: string, password: string, role?: string, mpNumber?: string}) => {
     try {
-      const response = await apiService.login({ email, password })
+      const response = await apiService.login({ email: credentials.email, password: credentials.password })
 
       if (response.success && response.data) {
         if (!response.data.user?.user_id && !response.data.user?.id) {
@@ -417,10 +417,7 @@ export default function PatientPortalPage() {
   // Login view (default)
   return (
     <div className="animate-fade-in">
-      <PatientPortalLogin 
-        onLogin={handleLogin} 
-        onRegister={() => setViewMode("register")} 
-      />
+      <LoginForm onLogin={handleLogin} />
     </div>
   )
 }
