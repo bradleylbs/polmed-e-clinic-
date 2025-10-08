@@ -62,6 +62,7 @@ const navigationItems = [
 
 export function AppShell({ user, children, onLogout }: AppShellProps) {
   const [activeTab, setActiveTab] = useState("patients")
+  const [showUserMenu, setShowUserMenu] = useState(false)
 
   const handleNavigation = (itemId: string) => {
     setActiveTab(itemId)
@@ -91,8 +92,19 @@ export function AppShell({ user, children, onLogout }: AppShellProps) {
     )
   }
 
-  const RoleIcon = roleConfig[user.role]?.icon // Add optional chaining
-  const userNavItems = navigationItems.filter((item) => item.roles.includes(user.role))
+  const normalizedRole = String(user.role).toLowerCase().replace(/\s+/g, "_") as UserRole
+  const roleInfo = roleConfig[normalizedRole] || roleConfig["clerk"]
+  const RoleIcon = roleInfo.icon
+
+  console.log("[v0] AppShell user role:", user.role, "Normalized:", normalizedRole)
+
+  const userNavItems = navigationItems.filter((item) => item.roles.includes(normalizedRole))
+
+  console.log(
+    "[v0] Available navigation items for role:",
+    normalizedRole,
+    userNavItems.map((i) => i.id),
+  )
 
   return (
     <div className="min-h-screen bg-background">
@@ -113,14 +125,20 @@ export function AppShell({ user, children, onLogout }: AppShellProps) {
 
             <div className="text-right">
               <p className="text-sm font-medium text-white">{user.username}</p>
-              <Badge className={`text-xs ${roleConfig[user.role]?.color || "bg-white/20 text-white"} shadow-sm`}>
-                {RoleIcon && <RoleIcon className="w-3 h-3 mr-1" />}
-                {roleConfig[user.role]?.label || "Unknown Role"}
+              <Badge className={`text-xs ${roleInfo.color} shadow-sm`}>
+                <RoleIcon className="w-3 h-3 mr-1" />
+                {roleInfo.label}
               </Badge>
             </div>
 
-            <Button variant="ghost" size="sm" onClick={onLogout} className="text-white hover:bg-white/20">
-              <LogOut className="w-4 h-4" />
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onLogout}
+              className="bg-white/20 hover:bg-white/30 text-white border border-white/30 shadow-lg"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Logout
             </Button>
           </div>
         </div>
@@ -128,27 +146,33 @@ export function AppShell({ user, children, onLogout }: AppShellProps) {
 
       <main className="pb-16">{children}</main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-lg border-t border-border shadow-2xl">
+      <nav className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-lg border-t border-border shadow-2xl z-50">
         <div className="flex">
-          {userNavItems.map((item) => {
-            const Icon = item.icon
-            const isActive = activeTab === item.id
+          {userNavItems.length > 0 ? (
+            userNavItems.map((item) => {
+              const Icon = item.icon
+              const isActive = activeTab === item.id
 
-            return (
-              <button
-                key={item.id}
-                onClick={() => handleNavigation(item.id)}
-                className={`flex-1 flex flex-col items-center gap-1 py-3 px-1 transition-all duration-300 ${
-                  isActive
-                    ? "text-primary bg-primary/10 border-t-2 border-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                }`}
-              >
-                <Icon className={`w-5 h-5 transition-transform ${isActive ? "scale-110" : ""}`} />
-                <span className={`text-xs font-medium ${isActive ? "font-semibold" : ""}`}>{item.label}</span>
-              </button>
-            )
-          })}
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleNavigation(item.id)}
+                  className={`flex-1 flex flex-col items-center gap-1 py-3 px-1 transition-all duration-300 ${
+                    isActive
+                      ? "text-primary bg-primary/10 border-t-2 border-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  <Icon className={`w-5 h-5 transition-transform ${isActive ? "scale-110" : ""}`} />
+                  <span className={`text-xs font-medium ${isActive ? "font-semibold" : ""}`}>{item.label}</span>
+                </button>
+              )
+            })
+          ) : (
+            <div className="flex-1 text-center py-3 text-sm text-muted-foreground">
+              No navigation items available for your role
+            </div>
+          )}
         </div>
       </nav>
     </div>

@@ -180,21 +180,15 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
   const [loading, setLoading] = useState(true)
   const { toast } = useToast()
 
-  console.log("[v0] RoleDashboard rendered with user:", JSON.stringify(user, null, 2))
-  console.log("[v0] User role:", user.role, "Type:", typeof user.role)
+  const normalizedRole = String(user.role).toLowerCase().replace(/\s+/g, "_") as UserRole
+  const roleInfo = roleConfig[normalizedRole] || roleConfig["clerk"]
 
-  const roleInfo = roleConfig[user.role] || roleConfig["clerk"]
+  console.log("[v0] RoleDashboard user role:", user.role, "Normalized:", normalizedRole)
+  console.log("[v0] Role info found:", roleInfo ? "Yes" : "No", roleInfo)
 
-  if (!roleConfig[user.role]) {
-    console.warn("[v0] Role not found in roleConfig:", user.role, "Using default 'clerk'")
-  }
+  const RoleIcon = roleInfo.icon
 
-  const RoleIcon = roleInfo?.icon
-
-  const labels = getRoleSpecificLabels(user.role, dashboardData?.roleSpecificMetrics?.metricType || "")
-  const TodayIcon = labels.todayIcon
-  const WeekIcon = labels.weekIcon
-  const CompletedIcon = labels.completedIcon
+  const labels = getRoleSpecificLabels(normalizedRole, dashboardData?.roleSpecificMetrics?.metricType || "")
 
   useEffect(() => {
     fetchDashboardData()
@@ -380,28 +374,28 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{labels.today}</CardTitle>
             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-              <TodayIcon className="h-5 w-5 text-primary" />
+              {labels.todayIcon && <labels.todayIcon className="h-5 w-5 text-primary" />}
             </div>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-primary">{dashboardData.todayPatients ?? 0}</div>
-            {user.role === "clerk" && dashboardData.roleSpecificMetrics.todayBookings !== undefined && (
+            {normalizedRole === "clerk" && dashboardData.roleSpecificMetrics.todayBookings !== undefined && (
               <p className="text-xs text-muted-foreground">
                 +{dashboardData.roleSpecificMetrics.todayBookings} bookings
               </p>
             )}
-            {user.role === "doctor" && dashboardData.roleSpecificMetrics.todayDiagnoses !== undefined && (
+            {normalizedRole === "doctor" && dashboardData.roleSpecificMetrics.todayDiagnoses !== undefined && (
               <p className="text-xs text-muted-foreground">
                 {dashboardData.roleSpecificMetrics.todayDiagnoses} diagnoses,{" "}
                 {dashboardData.roleSpecificMetrics.todayTreatments || 0} treatments
               </p>
             )}
-            {user.role === "nurse" && dashboardData.roleSpecificMetrics.todayAssessments !== undefined && (
+            {normalizedRole === "nurse" && dashboardData.roleSpecificMetrics.todayAssessments !== undefined && (
               <p className="text-xs text-muted-foreground">
                 {dashboardData.roleSpecificMetrics.todayAssessments} assessments
               </p>
             )}
-            {user.role === "social_worker" && dashboardData.roleSpecificMetrics.todayReferrals !== undefined && (
+            {normalizedRole === "social_worker" && dashboardData.roleSpecificMetrics.todayReferrals !== undefined && (
               <p className="text-xs text-muted-foreground">
                 {dashboardData.roleSpecificMetrics.todayReferrals} referrals made
               </p>
@@ -413,7 +407,7 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{labels.weekly}</CardTitle>
             <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center">
-              <WeekIcon className="h-5 w-5 text-secondary" />
+              {labels.weekIcon && <labels.weekIcon className="h-5 w-5 text-secondary" />}
             </div>
           </CardHeader>
           <CardContent>
@@ -439,7 +433,7 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{labels.completed}</CardTitle>
             <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
-              <CompletedIcon className="h-5 w-5 text-green-600" />
+              {labels.completedIcon && <labels.completedIcon className="h-5 w-5 text-green-600" />}
             </div>
           </CardHeader>
           <CardContent>
@@ -450,7 +444,7 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
       </div>
 
       {/* Role-specific Alerts */}
-      {(user.role === "administrator" || user.role === "doctor" || user.role === "nurse") &&
+      {(normalizedRole === "administrator" || normalizedRole === "doctor" || normalizedRole === "nurse") &&
         (dashboardData.lowStockAlerts > 0 || dashboardData.maintenanceAlerts > 0) && (
           <Card className="border-orange-500/30 shadow-lg">
             <CardHeader>
@@ -571,7 +565,7 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
       </div>
 
       {/* Role-specific Performance Metrics */}
-      {user.role === "doctor" && (
+      {normalizedRole === "doctor" && (
         <Card>
           <CardHeader>
             <CardTitle>Clinical Performance</CardTitle>
@@ -614,7 +608,7 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
         </Card>
       )}
 
-      {user.role === "nurse" && (
+      {normalizedRole === "nurse" && (
         <Card>
           <CardHeader>
             <CardTitle>Nursing Metrics</CardTitle>
@@ -649,7 +643,7 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
         </Card>
       )}
 
-      {user.role === "clerk" && (
+      {normalizedRole === "clerk" && (
         <Card>
           <CardHeader>
             <CardTitle>Registration Metrics</CardTitle>
@@ -684,7 +678,7 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
         </Card>
       )}
 
-      {user.role === "social_worker" && (
+      {normalizedRole === "social_worker" && (
         <Card>
           <CardHeader>
             <CardTitle>Counseling Metrics</CardTitle>

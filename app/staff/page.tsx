@@ -1,131 +1,231 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback } from "react"
+import type { ReactElement } from "react"
 import { LoginForm } from "@/components/auth/login-form"
-import { PatientPortalDashboard } from "@/components/patient-portal/patient-portal-dashboard"
-import { PatientPortalRegistration } from "@/components/patient-portal/patient-portal-registration"
-import { patientPortalService, type PatientDashboardData } from "@/lib/patient-portal-service"
-import { apiService } from "@/lib/api-service"
-import { useToast } from "@/hooks/use-toast"
-import { Loader2, ShieldCheck, Mail, CheckCircle2, AlertCircle } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { AppShell } from "@/components/layout/app-shell"
+import { PatientList } from "@/components/patients/patient-list"
+import { PatientRegistration } from "@/components/patients/patient-registration"
+import { ClinicalWorkflow } from "@/components/patients/clinical-workflow"
+import { RouteList } from "@/components/routes/route-list"
+import { RoutePlanner } from "@/components/routes/route-planner"
+import { AppointmentBooking } from "@/components/routes/appointment-booking"
+import { InventoryDashboard } from "@/components/inventory/inventory-dashboard"
 import { RoleDashboard } from "@/components/dashboard/role-dashboard"
+import { UserManagement } from "@/components/admin/user-management"
+import { SyncManager } from "@/components/offline/sync-manager"
+import { offlineManager } from "@/lib/offline-manager"
+import { useToast } from "@/hooks/use-toast"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { AlertTriangle, RefreshCcw, Home, ShieldAlert } from "lucide-react"
+import type { Patient as ApiPatient, Route as ApiRoute } from "@/lib/api-service"
+import { ErrorFallback } from "@/components/ui/error-fallback" // Import ErrorFallback component
 
-type ViewMode = "login" | "register" | "dashboard" | "verify-email" | "loading"
 type UserRole = "administrator" | "doctor" | "nurse" | "clerk" | "social_worker"
 
-interface StaffSession {
-  token: string
-  user: {
-    id: number
-    email: string
-    username: string
-    role: UserRole
-    full_name?: string
-    employee_id?: string
-  }
-  timestamp: number
-  expiresAt: number
+interface User {
+  username: string
+  role: UserRole
+  mpNumber?: string
+  assignedLocation?: string
+  province?: string
+  loginTime?: number
+  sessionId?: string
 }
 
-interface VerificationState {
-  status: "idle" | "verifying" | "success" | "error"
-  message?: string
+interface Patient {
+  id: string
+  fullName: string
+  medicalAidNumber: string
+  telephone: string
+  email: string
+  dateOfBirth: string
+  gender: string
+  isMember: boolean
+  membershipStatus?: "active" | "inactive" | "pending"
+  lastVisit?: string
+  workflowStatus: "registered" | "in-progress" | "completed"
+  assignedTo?: string
 }
 
-// Session expiry: 7 days
-const SESSION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000
+interface RouteLocation {
+  id: string
+  name: string
+  type: "police_station" | "school" | "community_center"
+  address: string
+  province: string
+  capacity: number
+  contactPerson?: string
+  contactPhone?: string
+}
 
-export default function PatientPortalPage() {
-  const [viewMode, setViewMode] = useState<ViewMode>("loading")
-  const [session, setSession] = useState<StaffSession | null>(null)
-  const [verificationState, setVerificationState] = useState<VerificationState>({ status: "idle" })
+interface TimeSlot {
+  id: string
+  startTime: string
+  endTime: string
+  maxAppointments: number
+  bookedAppointments: number
+  locationId: string
+}
+
+interface RouteSchedule {
+  id: string
+  routeName: string
+  description: string
+  locations: RouteLocation[]
+  startDate: Date
+  endDate: Date
+  timeSlots: TimeSlot[]
+  status: "draft" | "published" | "active" | "completed"
+  createdBy: string
+  createdAt: Date
+}
+
+interface Appointment {
+  id: string
+  patientName: string
+  patientPhone: string
+  medicalAidNumber: string
+  routeId: string
+  locationId: string
+  timeSlotId: string
+  appointmentDate: Date
+  status: "confirmed" | "cancelled" | "completed" | "pending_sync"
+  createdAt: Date
+}
+
+type ViewMode =
+  | "dashboard"
+  | "patients"
+  | "patient-register"
+  | "patient-workflow"
+  | "routes"
+  | "route-planner"
+  | "appointment-booking"
+  | "inventory"
+  | "user-management"
+  | "sync-manager"
+
+type InitializationStatus = "initializing" | "ready" | "error"
+
+interface AppError {
+  title: string
+  message: string
+  action?: () => void
+  actionLabel?: string
+}
+
+const VALID_ROLES: UserRole[] = ["administrator", "doctor", "nurse", "clerk", "social_worker"]
+const SESSION_STORAGE_KEY = "staff_session"
+const SESSION_EXPIRY_MS = 8 * 60 * 60 * 1000 // 8 hours
+
+const roleConfig: Record<UserRole, { label: string }> = {
+  administrator: { label: "Administrator" },
+  doctor: { label: "Doctor" },
+  nurse: { label: "Nurse" },
+  clerk: { label: "Clerk" },
+  social_worker: { label: "Social Worker" },
+}
+
+export default function StaffHomePage() {
+  const [user, setUser] = useState<User | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>("dashboard")
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
+  const [selectedRoute, setSelectedRoute] = useState<RouteSchedule | null>(null)
+  const [routeToEdit, setRouteToEdit] = useState<{
+    id?: number
+    name: string
+    description?: string
+    province: string
+    scheduled_date: string
+    start_time?: string
+    end_time?: string
+    route_type?: string
+    max_appointments?: number
+  } | null>(null)
+  const [initStatus, setInitStatus] = useState<InitializationStatus>("initializing")
+  const [appError, setAppError] = useState<AppError | null>(null)
+  const [isOnline, setIsOnline] = useState(true)
   const { toast } = useToast()
 
   // Session management utilities
-  const saveSession = useCallback((sessionData: Omit<StaffSession, "timestamp" | "expiresAt">) => {
-    const now = Date.now()
-    const fullSession: StaffSession = {
-      ...sessionData,
-      timestamp: now,
-      expiresAt: now + SESSION_EXPIRY_MS,
-    }
-    
-    try {
-      localStorage.setItem("staff_session", JSON.stringify(fullSession))
-      setSession(fullSession)
-    } catch (error) {
-      console.error("Failed to save session:", error)
-      toast({
-        title: "Storage Error",
-        description: "Failed to save session. Please check your browser settings.",
-        variant: "destructive",
-      })
-    }
-  }, [toast])
+  const saveSession = useCallback(
+    (userData: User) => {
+      try {
+        const sessionData = {
+          ...userData,
+          loginTime: Date.now(),
+          sessionId: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        }
+        sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionData))
+        setUser(sessionData)
+      } catch (error) {
+        console.error("Failed to save session:", error)
+        toast({
+          title: "Session Error",
+          description: "Failed to save session. Your session may not persist.",
+          variant: "destructive",
+        })
+      }
+    },
+    [toast],
+  )
 
   const clearSession = useCallback(() => {
     try {
-      localStorage.removeItem("staff_session")
-      setSession(null)
+      sessionStorage.removeItem(SESSION_STORAGE_KEY)
+      setUser(null)
+      setViewMode("dashboard")
+      setSelectedPatient(null)
+      setSelectedRoute(null)
+      setRouteToEdit(null)
     } catch (error) {
       console.error("Failed to clear session:", error)
     }
   }, [])
 
-  const isSessionValid = useCallback((sessionData: StaffSession): boolean => {
-    if (!sessionData?.user?.id || !sessionData?.token) {
+  const isSessionValid = useCallback((sessionData: User): boolean => {
+    if (!sessionData?.username || !sessionData?.role) {
       return false
     }
-    
-    const now = Date.now()
-    if (sessionData.expiresAt && now > sessionData.expiresAt) {
-      return false
+
+    if (sessionData.loginTime) {
+      const now = Date.now()
+      if (now - sessionData.loginTime > SESSION_EXPIRY_MS) {
+        return false
+      }
     }
-    
-    return true
+
+    return VALID_ROLES.includes(sessionData.role)
   }, [])
 
-  // Check for existing session on mount
+  // Initialize application
   useEffect(() => {
-    const initializeSession = async () => {
+    const initializeApp = async () => {
       try {
-        // Check URL for verification token first
-        const urlParams = new URLSearchParams(window.location.search)
-        const verifyToken = urlParams.get("verify")
-        
-        if (verifyToken) {
-          setViewMode("verify-email")
-          // Remove token from URL without page reload
-          const newUrl = window.location.pathname
-          window.history.replaceState({}, document.title, newUrl)
-          await handleEmailVerification(verifyToken)
-          return
-        }
+        setInitStatus("initializing")
 
-        // Check for saved session
-        const savedSession = localStorage.getItem("staff_session")
-        if (savedSession) {
-          try {
-            const parsedSession: StaffSession = JSON.parse(savedSession)
-            
-            if (isSessionValid(parsedSession)) {
-              setSession(parsedSession)
-              setViewMode("dashboard")
-              
-              // Show welcome back message
+        // Initialize offline manager
+        await offlineManager.init()
+        console.log("Offline manager initialized successfully")
+
+        // Check for existing session
+        try {
+          const savedSession = sessionStorage.getItem(SESSION_STORAGE_KEY)
+          if (savedSession) {
+            const sessionData: User = JSON.parse(savedSession)
+
+            if (isSessionValid(sessionData)) {
+              setUser(sessionData)
               toast({
                 title: "Welcome back!",
-                description: `Hello ${parsedSession.user.full_name || parsedSession.user.email}`,
+                description: `Hello ${sessionData.username}`,
               })
             } else {
-              // Session expired or invalid
               clearSession()
-              setViewMode("login")
-              
-              if (parsedSession.expiresAt && Date.now() > parsedSession.expiresAt) {
+              if (sessionData.loginTime && Date.now() - sessionData.loginTime > SESSION_EXPIRY_MS) {
                 toast({
                   title: "Session Expired",
                   description: "Please log in again to continue.",
@@ -133,176 +233,88 @@ export default function PatientPortalPage() {
                 })
               }
             }
-          } catch (parseError) {
-            console.error("Failed to parse session:", parseError)
-            clearSession()
-            setViewMode("login")
           }
-        } else {
-          setViewMode("login")
+        } catch (sessionError) {
+          console.error("Failed to restore session:", sessionError)
+          clearSession()
         }
+
+        // Check for deep-link view parameter
+        try {
+          const urlParams = new URLSearchParams(window.location.search)
+          const viewParam = urlParams.get("view")?.toLowerCase()
+
+          if (viewParam) {
+            const viewMap: Record<string, ViewMode> = {
+              appointments: "routes",
+              routes: "routes",
+              "route-planner": "route-planner",
+              patients: "patients",
+              inventory: "inventory",
+              dashboard: "dashboard",
+            }
+
+            const mappedView = viewMap[viewParam]
+            if (mappedView && user) {
+              setViewMode(mappedView)
+            }
+          }
+        } catch (urlError) {
+          console.warn("Failed to parse view parameter:", urlError)
+        }
+
+        setInitStatus("ready")
       } catch (error) {
-        console.error("Initialization error:", error)
-        setViewMode("login")
+        console.error("Failed to initialize application:", error)
+        setInitStatus("error")
+        setAppError({
+          title: "Initialization Failed",
+          message: "Failed to initialize the application. Please refresh the page to try again.",
+          action: () => window.location.reload(),
+          actionLabel: "Refresh Page",
+        })
       }
     }
 
-    initializeSession()
+    initializeApp()
   }, [isSessionValid, clearSession, toast])
 
-  // Email verification handler
-  const handleEmailVerification = async (token: string) => {
-    setVerificationState({ status: "verifying" })
-    
-    try {
-      const response = await patientPortalService.verifyPatientEmail(token)
-
-      if (response.success) {
-        setVerificationState({
-          status: "success",
-          message: "Your email has been verified successfully!",
-        })
-        
-        toast({
-          title: "Email Verified",
-          description: "You can now log in to access your patient portal.",
-        })
-        
-        // Redirect to login after 3 seconds
-        setTimeout(() => {
-          setViewMode("login")
-          setVerificationState({ status: "idle" })
-        }, 3000)
-      } else {
-        setVerificationState({
-          status: "error",
-          message: response.error || "Failed to verify email. The link may have expired.",
-        })
-        
-        toast({
-          title: "Verification Failed",
-          description: response.error || "Failed to verify email. Please try again or contact support.",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("Verification error:", error)
-      setVerificationState({
-        status: "error",
-        message: "An unexpected error occurred during verification.",
-      })
-      
-      toast({
-        title: "Verification Error",
-        description: "An error occurred. Please try again or contact support.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Login handler with enhanced validation
-  const handleLogin = async (credentials: {email: string, password: string, role?: string, mpNumber?: string}) => {
-    try {
-      const response = await apiService.login({ email: credentials.email, password: credentials.password })
-
-      if (response.success && response.data) {
-        if (!response.data.user?.user_id && !response.data.user?.id) {
-          throw new Error("Invalid user data received")
-        }
-
-        // Create a normalized user object with username
-        const user = response.data.user
-        const normalizedUser = {
-          id: user.user_id || user.id,
-          email: user.email,
-          username: user.username || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email,
-          role: user.role as UserRole,
-          full_name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email,
-          employee_id: user.mp_number || user.employee_id,
-        }
-
-        const sessionData = {
-          token: response.data.token,
-          user: normalizedUser,
-        }
-
-        saveSession(sessionData)
-        setViewMode("dashboard")
-
-        toast({
-          title: "Welcome Back",
-          description: `Hello ${response.data.user.full_name || response.data.user.email}!`,
-        })
-      } else {
-        toast({
-          title: "Login Failed",
-          description: response.error || "Invalid email or password. Please try again.",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("Login error:", error)
-      toast({
-        title: "Login Error",
-        description: error instanceof Error ? error.message : "An error occurred during login. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Registration handler with enhanced feedback
-  const handleRegistration = async (registrationData: any) => {
-    try {
-      const response = await patientPortalService.registerPatient(registrationData)
-
-      if (response.success && response.data) {
-        if (response.data.requires_verification) {
-          toast({
-            title: "Registration Successful!",
-            description: "Please check your email to verify your account before logging in.",
-          })
-        } else {
-          toast({
-            title: "Registration Successful!",
-            description: "You can now log in with your credentials.",
-          })
-        }
-        
-        setViewMode("login")
-      } else {
-        toast({
-          title: "Registration Failed",
-          description: response.error || "Failed to register. Please check your information and try again.",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("Registration error:", error)
-      toast({
-        title: "Registration Error",
-        description: error instanceof Error ? error.message : "An error occurred during registration. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Logout handler with cleanup
-  const handleLogout = useCallback(() => {
-    clearSession()
-    setViewMode("login")
-    
-    toast({
-      title: "Logged Out",
-      description: "You have been logged out successfully.",
-    })
-  }, [clearSession, toast])
-
-  // Auto-logout on session expiry
+  // Monitor online/offline status
   useEffect(() => {
-    if (!session || viewMode !== "dashboard") return
+    const handleOnline = () => {
+      setIsOnline(true)
+      toast({
+        title: "Back Online",
+        description: "Your connection has been restored.",
+      })
+    }
+
+    const handleOffline = () => {
+      setIsOnline(false)
+      toast({
+        title: "You're Offline",
+        description: "Changes will be saved locally and synced when you're back online.",
+        variant: "destructive",
+      })
+    }
+
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+
+    setIsOnline(navigator.onLine)
+
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+    }
+  }, [toast])
+
+  // Session expiry check
+  useEffect(() => {
+    if (!user) return
 
     const checkSessionExpiry = () => {
-      if (!isSessionValid(session)) {
+      if (!isSessionValid(user)) {
         handleLogout()
         toast({
           title: "Session Expired",
@@ -312,13 +324,562 @@ export default function PatientPortalPage() {
       }
     }
 
-    // Check every minute
-    const interval = setInterval(checkSessionExpiry, 60000)
+    // Check every 5 minutes
+    const interval = setInterval(checkSessionExpiry, 5 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [session, viewMode, isSessionValid, handleLogout, toast])
+  }, [user, isSessionValid, toast])
 
-  // Loading state with professional spinner
-  if (viewMode === "loading") {
+  // Navigation event handler
+  useEffect(() => {
+    const handleNavigationEvent = (event: CustomEvent) => {
+      try {
+        const view = event?.detail?.view
+        if (!view) return
+
+        console.log("Navigation event received:", view)
+
+        const navigationMap: Record<string, () => void> = {
+          patients: () => {
+            setViewMode("patients")
+            setSelectedPatient(null)
+          },
+          routes: () => {
+            setViewMode("routes")
+            setSelectedRoute(null)
+          },
+          appointments: () => {
+            setViewMode("routes")
+          },
+          inventory: () => {
+            setViewMode("inventory")
+          },
+          reports: () => {
+            setViewMode("dashboard")
+          },
+          settings: () => {
+            if (user?.role === "administrator") {
+              setViewMode("user-management")
+            } else {
+              setViewMode("dashboard")
+              toast({
+                title: "Access Denied",
+                description: "Administrator privileges required.",
+                variant: "destructive",
+              })
+            }
+          },
+          sync: () => {
+            setViewMode("sync-manager")
+          },
+        }
+
+        const handler = navigationMap[view] || (() => setViewMode("dashboard"))
+        handler()
+      } catch (error) {
+        console.error("Navigation error:", error)
+        setViewMode("dashboard")
+        toast({
+          title: "Navigation Error",
+          description: "Failed to navigate. Returning to dashboard.",
+          variant: "destructive",
+        })
+      }
+    }
+
+    window.addEventListener("navigate", handleNavigationEvent as EventListener)
+    return () => window.removeEventListener("navigate", handleNavigationEvent as EventListener)
+  }, [user, toast])
+
+  // Login handler with validation
+  const handleLogin = useCallback(
+    (credentials: {
+      email: string
+      password: string
+      role: UserRole
+      mpNumber?: string
+      userData?: any // Add userData from backend
+      token?: string // Add token from backend
+    }) => {
+      try {
+        console.log("[v0] Processing login with credentials:", { email: credentials.email, role: credentials.role })
+
+        // Validate credentials
+        if (!credentials.email || !credentials.password || !credentials.role) {
+          toast({
+            title: "Invalid Credentials",
+            description: "Please provide all required information.",
+            variant: "destructive",
+          })
+          return
+        }
+
+        const normalizedRole = String(credentials.role).toLowerCase().replace(/\s+/g, "_") as UserRole
+
+        if (!VALID_ROLES.includes(normalizedRole)) {
+          console.error("[v0] Invalid role after normalization:", normalizedRole, "Valid roles:", VALID_ROLES)
+          toast({
+            title: "Invalid Role",
+            description: `The role "${credentials.role}" is not valid. Please contact support.`,
+            variant: "destructive",
+          })
+          return
+        }
+
+        const displayName = credentials.userData?.first_name
+          ? `${credentials.userData.first_name} ${credentials.userData.last_name}`
+          : credentials.email.split("@")[0]
+
+        const newUser: User = {
+          username: displayName,
+          role: normalizedRole, // Use normalized role
+          mpNumber: credentials.mpNumber || credentials.userData?.mp_number,
+          assignedLocation: credentials.userData?.assigned_location || "Mobile Clinic Unit 1",
+          province: credentials.userData?.assigned_province || "Gauteng",
+        }
+
+        console.log("[v0] User object created with normalized role:", JSON.stringify(newUser, null, 2))
+
+        saveSession(newUser)
+
+        toast({
+          title: "Login Successful",
+          description: `Welcome, ${displayName}! You are logged in as ${roleConfig[normalizedRole]?.label || normalizedRole}.`,
+        })
+
+        // Clear previous selections
+        setSelectedPatient(null)
+        setSelectedRoute(null)
+        setRouteToEdit(null)
+      } catch (error) {
+        console.error("[v0] Login error:", error)
+        toast({
+          title: "Login Failed",
+          description: "An error occurred during login. Please try again.",
+          variant: "destructive",
+        })
+      }
+    },
+    [saveSession, toast],
+  )
+
+  // Logout handler
+  const handleLogout = useCallback(() => {
+    try {
+      console.log("User logged out")
+      clearSession()
+
+      toast({
+        title: "Logged Out",
+        description: "You have been logged out successfully.",
+      })
+    } catch (error) {
+      console.error("Logout error:", error)
+      toast({
+        title: "Logout Error",
+        description: "An error occurred during logout.",
+        variant: "destructive",
+      })
+    }
+  }, [clearSession, toast])
+
+  // Patient management handlers
+  const handlePatientSelect = useCallback(
+    (patient: ApiPatient) => {
+      try {
+        if (!patient?.id) {
+          throw new Error("Invalid patient data")
+        }
+
+        console.log("Patient selected:", patient)
+
+        const mappedPatient: Patient = {
+          id: String(patient.id),
+          fullName: patient.full_name,
+          medicalAidNumber: patient.medical_aid_number,
+          telephone: patient.telephone_number,
+          email: patient.email || "",
+          dateOfBirth: "",
+          gender: "",
+          isMember: !!patient.medical_aid_number && patient.medical_aid_number.startsWith("PAL"),
+          workflowStatus: "registered",
+        }
+
+        setSelectedPatient(mappedPatient)
+        setViewMode("patient-workflow")
+      } catch (error) {
+        console.error("Patient selection error:", error)
+        toast({
+          title: "Selection Error",
+          description: "Failed to select patient. Please try again.",
+          variant: "destructive",
+        })
+      }
+    },
+    [toast],
+  )
+
+  const handleNewPatient = useCallback(() => {
+    console.log("Creating new patient")
+    setSelectedPatient(null)
+    setViewMode("patient-register")
+  }, [])
+
+  const handlePatientRegistered = useCallback(
+    async (patient: any) => {
+      try {
+        if (!patient) {
+          throw new Error("No patient data provided")
+        }
+
+        console.log("Patient registered:", patient)
+
+        const patientData = {
+          ...patient,
+          id: patient.id || `patient-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          synced: false,
+        }
+
+        await offlineManager.saveData("patients", patientData)
+        console.log("Patient saved to offline storage")
+
+        toast({
+          title: "Patient Registered",
+          description: "Patient has been successfully registered.",
+        })
+
+        setViewMode("patients")
+      } catch (error) {
+        console.error("Failed to register patient:", error)
+        toast({
+          title: "Registration Error",
+          description: "Failed to save patient data. Please try again.",
+          variant: "destructive",
+        })
+        setViewMode("patients")
+      }
+    },
+    [toast],
+  )
+
+  const handleWorkflowComplete = useCallback(() => {
+    console.log("Clinical workflow completed")
+
+    toast({
+      title: "Workflow Complete",
+      description: "Patient workflow has been completed successfully.",
+    })
+
+    setViewMode("patients")
+    setSelectedPatient(null)
+  }, [toast])
+
+  // Route management handlers
+  const handleRouteSelect = useCallback(
+    (route: ApiRoute) => {
+      try {
+        if (!route?.id) {
+          throw new Error("Invalid route data")
+        }
+
+        console.log("Route selected:", route)
+
+        const mappedRoute: RouteSchedule = {
+          id: String(route.id),
+          routeName: route.name || route.route_name || "Unnamed Route",
+          description: `${route.location || "Unknown Location"} - ${route.province || "Unknown Province"}`,
+          locations: [],
+          startDate: new Date(route.scheduled_date || route.start_date || new Date().toISOString()),
+          endDate: new Date(route.scheduled_date || route.end_date || new Date().toISOString()),
+          timeSlots: [],
+          status: (["draft", "published", "active", "completed"] as const).includes(route.status as any)
+            ? (route.status as any)
+            : "draft",
+          createdBy: "system",
+          createdAt: new Date(),
+        }
+
+        setSelectedRoute(mappedRoute)
+        setViewMode("appointment-booking")
+      } catch (error) {
+        console.error("Route selection error:", error)
+        toast({
+          title: "Selection Error",
+          description: "Failed to select route. Please try again.",
+          variant: "destructive",
+        })
+      }
+    },
+    [toast],
+  )
+
+  const handleNewRoute = useCallback(() => {
+    console.log("Creating new route")
+    setSelectedRoute(null)
+    setRouteToEdit(null)
+    setViewMode("route-planner")
+  }, [])
+
+  const handleEditRoute = useCallback(
+    (route: ApiRoute) => {
+      try {
+        if (!route?.id) {
+          throw new Error("Invalid route data")
+        }
+
+        // Transform ApiRoute to RoutePlanner expected format
+        const transformedRoute = {
+          id: typeof route.id === 'string' ? parseInt(route.id, 10) : route.id,
+          name: route.name || route.route_name || "Unnamed Route",
+          description: route.description || `${route.location || "Unknown Location"} - ${route.province || "Unknown Province"}`,
+          province: route.province || "Gauteng",
+          scheduled_date: route.scheduled_date || route.start_date || new Date().toISOString().split('T')[0],
+          start_time: route.start_time,
+          end_time: route.end_time,
+          route_type: route.route_type,
+          max_appointments: route.max_appointments || route.max_appointments_per_day,
+        }
+
+        setRouteToEdit(transformedRoute)
+        setViewMode("route-planner")
+      } catch (error) {
+        console.error("Edit route error:", error)
+        toast({
+          title: "Edit Error",
+          description: "Failed to load route for editing.",
+          variant: "destructive",
+        })
+      }
+    },
+    [toast],
+  )
+
+  const handleRouteCreated = useCallback(
+    async (route: RouteSchedule) => {
+      try {
+        if (!route) {
+          throw new Error("No route data provided")
+        }
+
+        console.log("Route created:", route)
+
+        const routeData = {
+          ...route,
+          id: route.id || `route-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          synced: false,
+        }
+
+        await offlineManager.saveData("routes", routeData)
+        console.log("Route saved to offline storage")
+
+        toast({
+          title: "Route Created",
+          description: "Route has been successfully created.",
+        })
+
+        setViewMode("routes")
+      } catch (error) {
+        console.error("Failed to create route:", error)
+        toast({
+          title: "Creation Error",
+          description: "Failed to save route data. Please try again.",
+          variant: "destructive",
+        })
+        setViewMode("routes")
+      }
+    },
+    [toast],
+  )
+
+  const handleAppointmentBooked = useCallback(
+    async (appointment: Appointment) => {
+      try {
+        if (!appointment) {
+          throw new Error("No appointment data provided")
+        }
+
+        console.log("Appointment booked:", appointment)
+
+        const appointmentData = {
+          ...appointment,
+          id: appointment.id || `appointment-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          synced: false,
+        }
+
+        await offlineManager.saveData("appointments", appointmentData)
+        console.log("Appointment saved to offline storage")
+
+        toast({
+          title: "Appointment Booked",
+          description: "Appointment has been successfully booked.",
+        })
+
+        setViewMode("routes")
+        setSelectedRoute(null)
+      } catch (error) {
+        console.error("Failed to book appointment:", error)
+        toast({
+          title: "Booking Error",
+          description: "Failed to save appointment data. Please try again.",
+          variant: "destructive",
+        })
+        setViewMode("routes")
+        setSelectedRoute(null)
+      }
+    },
+    [toast],
+  )
+
+  const handleBackToRoutes = useCallback(() => {
+    console.log("Navigating back to routes")
+    setViewMode("routes")
+    setSelectedRoute(null)
+  }, [])
+
+  // Error boundary renderer
+  const renderError = useCallback(
+    (error: AppError) => (
+      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-xl animate-fade-in">
+          <CardContent className="p-8 space-y-6">
+            <div className="text-center space-y-4">
+              <div className="mx-auto w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
+                <AlertTriangle className="w-10 h-10 text-destructive" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-2xl font-bold text-destructive">{error.title}</h2>
+                <p className="text-muted-foreground">{error.message}</p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                {error.action && error.actionLabel && (
+                  <Button onClick={error.action} className="flex-1">
+                    <RefreshCcw className="w-4 h-4 mr-2" />
+                    {error.actionLabel}
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => setViewMode("dashboard")} className="flex-1">
+                  <Home className="w-4 h-4 mr-2" />
+                  Go to Dashboard
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    ),
+    [],
+  )
+
+  // Content renderer with error handling
+  const renderContent = useCallback(() => {
+    try {
+      const viewComponents: Record<ViewMode, ReactElement> = {
+        dashboard: <RoleDashboard user={user!} />,
+        "patient-register": <PatientRegistration onPatientRegistered={handlePatientRegistered} userRole={user!.role} />,
+        "patient-workflow": selectedPatient ? (
+          <ClinicalWorkflow
+            patientId={selectedPatient.id}
+            patientName={selectedPatient.fullName}
+            userRole={user!.role}
+            username={user!.username}
+            onWorkflowComplete={handleWorkflowComplete}
+          />
+        ) : (
+          <ErrorFallback
+            title="No Patient Selected"
+            message="Please select a patient from the patient list to continue."
+            onAction={() => setViewMode("patients")}
+            actionLabel="Go to Patients"
+          />
+        ),
+        patients: (
+          <PatientList userRole={user!.role} onPatientSelect={handlePatientSelect} onNewPatient={handleNewPatient} />
+        ),
+        routes: (
+          <RouteList
+            userRole={user!.role}
+            onRouteSelect={handleRouteSelect}
+            onNewRoute={handleNewRoute}
+            onEditRoute={handleEditRoute}
+          />
+        ),
+        "route-planner": (
+          <RoutePlanner
+            userRole={user!.role}
+            onRouteCreated={handleRouteCreated}
+            routeToEdit={routeToEdit}
+            onRouteUpdated={() => {
+              setViewMode("routes")
+              setRouteToEdit(null)
+            }}
+          />
+        ),
+        "appointment-booking": selectedRoute ? (
+          <AppointmentBooking
+            route={selectedRoute}
+            onAppointmentBooked={handleAppointmentBooked}
+            onBack={handleBackToRoutes}
+          />
+        ) : (
+          <ErrorFallback
+            title="No Route Selected"
+            message="Please select a route from the routes list to book appointments."
+            onAction={() => setViewMode("routes")}
+            actionLabel="Go to Routes"
+          />
+        ),
+        inventory: <InventoryDashboard userRole={user!.role} />,
+        "user-management":
+          user!.role === "administrator" ? (
+            <UserManagement currentUser={user!} />
+          ) : (
+            <ErrorFallback
+              title="Access Denied"
+              message="Administrator privileges required to access user management."
+              onAction={() => setViewMode("dashboard")}
+              actionLabel="Go to Dashboard"
+              icon={<ShieldAlert className="w-10 h-10 text-destructive" />}
+            />
+          ),
+        "sync-manager": <SyncManager />,
+      }
+
+      return viewComponents[viewMode] || <RoleDashboard user={user!} />
+    } catch (error) {
+      console.error("Rendering error:", error)
+      return (
+        <ErrorFallback
+          title="Error Loading Content"
+          message="Something went wrong while loading this page. Please try refreshing or contact support if the problem persists."
+          onAction={() => window.location.reload()}
+          actionLabel="Refresh Page"
+          secondaryAction={() => setViewMode("dashboard")}
+          secondaryActionLabel="Go to Dashboard"
+        />
+      )
+    }
+  }, [
+    viewMode,
+    user,
+    selectedPatient,
+    selectedRoute,
+    routeToEdit,
+    handlePatientRegistered,
+    handleWorkflowComplete,
+    handlePatientSelect,
+    handleNewPatient,
+    handleRouteSelect,
+    handleNewRoute,
+    handleEditRoute,
+    handleRouteCreated,
+    handleAppointmentBooked,
+    handleBackToRoutes,
+  ])
+
+  // Loading state
+  if (initStatus === "initializing") {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
         <div className="text-center space-y-6 animate-fade-in">
@@ -327,97 +888,45 @@ export default function PatientPortalPage() {
             <div className="absolute inset-0 h-16 w-16 animate-pulse rounded-full border-4 border-primary/20 mx-auto" />
           </div>
           <div className="space-y-2">
-            <p className="text-lg font-medium text-foreground">Loading Patient Portal</p>
-            <p className="text-sm text-muted-foreground">Preparing your secure healthcare dashboard...</p>
+            <p className="text-lg font-medium text-foreground">Initializing Application</p>
+            <p className="text-sm text-muted-foreground">Setting up your workspace...</p>
           </div>
         </div>
       </div>
     )
   }
 
-  // Email verification view
-  if (viewMode === "verify-email") {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md shadow-xl animate-fade-in-up">
-          <CardContent className="p-8 space-y-6">
-            <div className="text-center space-y-4">
-              {verificationState.status === "verifying" && (
-                <>
-                  <div className="relative mx-auto w-16 h-16">
-                    <Loader2 className="w-16 h-16 animate-spin text-primary" />
-                  </div>
-                  <div className="space-y-2">
-                    <h2 className="text-2xl font-bold">Verifying Email</h2>
-                    <p className="text-muted-foreground">Please wait while we verify your email address...</p>
-                  </div>
-                </>
-              )}
-
-              {verificationState.status === "success" && (
-                <>
-                  <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-                    <CheckCircle2 className="w-10 h-10 text-primary" />
-                  </div>
-                  <div className="space-y-2">
-                    <h2 className="text-2xl font-bold text-primary">Email Verified!</h2>
-                    <p className="text-muted-foreground">{verificationState.message}</p>
-                    <p className="text-sm text-muted-foreground">Redirecting to login...</p>
-                  </div>
-                </>
-              )}
-
-              {verificationState.status === "error" && (
-                <>
-                  <div className="mx-auto w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
-                    <AlertCircle className="w-10 h-10 text-destructive" />
-                  </div>
-                  <div className="space-y-2">
-                    <h2 className="text-2xl font-bold text-destructive">Verification Failed</h2>
-                    <p className="text-muted-foreground">{verificationState.message}</p>
-                  </div>
-                  <Button 
-                    onClick={() => setViewMode("login")}
-                    className="w-full mt-4"
-                  >
-                    Go to Login
-                  </Button>
-                </>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
+  // Error state
+  if (initStatus === "error" && appError) {
+    return renderError(appError)
   }
 
-  // Dashboard view
-  if (viewMode === "dashboard" && session?.user?.id) {
+  // Login screen
+  if (!user) {
     return (
       <div className="animate-fade-in">
-        <RoleDashboard 
-          user={session.user}
-        />
+        <LoginForm onLogin={handleLogin} />
       </div>
     )
   }
 
-  // Registration view
-  if (viewMode === "register") {
-    return (
-      <div className="animate-fade-in">
-        <PatientPortalRegistration
-          onRegistrationComplete={handleRegistration}
-          onBackToLogin={() => setViewMode("login")}
-        />
-      </div>
-    )
-  }
-
-  // Login view (default)
+  // Main application
   return (
-    <div className="animate-fade-in">
-      <LoginForm onLogin={handleLogin} />
-    </div>
+    <AppShell user={user} onLogout={handleLogout}>
+      {/* Offline indicator */}
+      <div
+        className={`fixed top-0 left-0 right-0 z-[9998] transform transition-all duration-300 ${
+          isOnline ? "-translate-y-full opacity-0" : "translate-y-0 opacity-100"
+        }`}
+      >
+        <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>You're Offline</AlertTitle>
+          <AlertDescription>Changes will be saved locally and synced when you're back online.</AlertDescription>
+        </Alert>
+      </div>
+
+      <div className="p-4 animate-fade-in">{renderContent()}</div>
+    </AppShell>
   )
 }
