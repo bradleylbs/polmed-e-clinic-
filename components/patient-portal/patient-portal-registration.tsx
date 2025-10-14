@@ -129,14 +129,8 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
         break
 
       case 3: // POLMED & Security
-        // Only validate POLMED if user hasn't opted to register without it
-        if (!registerWithoutPolmed) {
-          if (!formData.polmed_number.trim()) {
-            newErrors.polmed_number = "POLMED number is required (or check 'Register without POLMED membership')"
-          } else if (!polmedValidation?.is_valid) {
-            newErrors.polmed_number = "Please validate your POLMED membership or register without membership"
-          }
-        }
+        // POLMED number is completely optional - no validation required
+        // Users can choose to provide it and validate it, or skip it entirely
 
         if (!formData.password) {
           newErrors.password = "Password is required"
@@ -226,9 +220,9 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
         gender: formData.gender,
         email: formData.email.trim().toLowerCase(),
         mobile_number: formData.mobile_number.trim(),  // Changed from phone_number
-        polmed_number: registerWithoutPolmed ? "" : formData.polmed_number.trim(),  // Empty string if no POLMED
+        polmed_number: formData.polmed_number.trim() || "", // Always optional - empty string if not provided
         password: formData.password,
-        is_private_patient: registerWithoutPolmed, // Flag to indicate private patient
+        is_private_patient: registerWithoutPolmed || !formData.polmed_number.trim(), // Private patient if no POLMED number
       }
 
       await onRegistrationComplete(registrationData)
@@ -347,21 +341,21 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
         return (
           <div className="space-y-4">
             <div className="text-center mb-6">
-              <h3 className="text-lg font-semibold">POLMED & Security</h3>
-              <p className="text-sm text-muted-foreground">Verify your membership and secure your account</p>
+              <h3 className="text-lg font-semibold">Medical Aid & Security</h3>
+              <p className="text-sm text-muted-foreground">Optional: Add your POLMED membership details and secure your account</p>
             </div>
 
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="polmed_number">
-                  POLMED Number {!registerWithoutPolmed ? "*" : "(Optional)"}
+                  POLMED Number (Optional)
                 </Label>
                 <div className="flex gap-2">
                   <Input
                     id="polmed_number"
                     value={formData.polmed_number}
                     onChange={(e) => updateFormData("polmed_number", e.target.value.toUpperCase())}
-                    placeholder="e.g., PAL123456789"
+                    placeholder="e.g., PAL123456789 (optional)"
                     className="flex-1"
                     disabled={registerWithoutPolmed}
                   />
@@ -375,6 +369,12 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
                   </Button>
                 </div>
                 {errors.polmed_number && <p className="text-sm text-destructive">{errors.polmed_number}</p>}
+                
+                {!registerWithoutPolmed && (
+                  <p className="text-xs text-muted-foreground">
+                    Leave blank if you don't have POLMED membership. You can add this information later in your profile.
+                  </p>
+                )}
 
                 {polmedValidation && !registerWithoutPolmed && (
                   <Alert variant={polmedValidation.is_valid ? "default" : "destructive"}>
@@ -411,7 +411,7 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
                   }}
                 />
                 <Label htmlFor="register_without_polmed" className="text-sm cursor-pointer">
-                  I don't have POLMED membership and want to register as a private patient
+                  Skip POLMED membership - I'll register as a private patient
                 </Label>
               </div>
 
