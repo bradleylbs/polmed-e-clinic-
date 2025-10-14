@@ -120,12 +120,13 @@ class PatientPortalService {
   async registerPatient(data: {
     email: string
     password: string
-    medical_aid_number: string
+    polmed_number?: string // Optional for non-POLMED users
     first_name: string
     last_name: string
-    phone_number: string
+    mobile_number: string
     date_of_birth: string
     gender: string
+    is_private_patient?: boolean // Flag for non-POLMED users
   }): Promise<ApiResponse<{ patient_id: number; requires_verification: boolean }>> {
     return apiService["request"]("/patient/auth/register", {
       method: "POST",

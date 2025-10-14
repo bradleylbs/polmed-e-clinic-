@@ -75,6 +75,7 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isValidatingPolmed, setIsValidatingPolmed] = useState(false)
+  const [registerWithoutPolmed, setRegisterWithoutPolmed] = useState(false)
   const [polmedValidation, setPolmedValidation] = useState<{
     is_valid: boolean
     member_type?: string
@@ -128,12 +129,13 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
         break
 
       case 3: // POLMED & Security
-        if (!formData.polmed_number.trim()) {  // Changed from medical_aid_number
-          newErrors.polmed_number = "POLMED number is required"  // Changed from medical_aid_number
-        }
-
-        if (!polmedValidation?.is_valid) {
-          newErrors.polmed_number = "Please validate your POLMED membership"  // Changed from medical_aid_number
+        // Only validate POLMED if user hasn't opted to register without it
+        if (!registerWithoutPolmed) {
+          if (!formData.polmed_number.trim()) {
+            newErrors.polmed_number = "POLMED number is required (or check 'Register without POLMED membership')"
+          } else if (!polmedValidation?.is_valid) {
+            newErrors.polmed_number = "Please validate your POLMED membership or register without membership"
+          }
         }
 
         if (!formData.password) {
@@ -224,8 +226,9 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
         gender: formData.gender,
         email: formData.email.trim().toLowerCase(),
         mobile_number: formData.mobile_number.trim(),  // Changed from phone_number
-        polmed_number: formData.polmed_number.trim(),  // Changed from medical_aid_number
+        polmed_number: registerWithoutPolmed ? "" : formData.polmed_number.trim(),  // Empty string if no POLMED
         password: formData.password,
+        is_private_patient: registerWithoutPolmed, // Flag to indicate private patient
       }
 
       await onRegistrationComplete(registrationData)
@@ -348,39 +351,76 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
               <p className="text-sm text-muted-foreground">Verify your membership and secure your account</p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="polmed_number">POLMED Number *</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="polmed_number"
-                  value={formData.polmed_number}
-                  onChange={(e) => updateFormData("polmed_number", e.target.value.toUpperCase())}
-                  placeholder="e.g., PAL123456789"
-                  className="flex-1"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleValidatePolmed}
-                  disabled={!formData.polmed_number || isValidatingPolmed}
-                >
-                  {isValidatingPolmed ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                </Button>
-              </div>
-              {errors.polmed_number && <p className="text-sm text-destructive">{errors.polmed_number}</p>}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="polmed_number">
+                  POLMED Number {!registerWithoutPolmed ? "*" : "(Optional)"}
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="polmed_number"
+                    value={formData.polmed_number}
+                    onChange={(e) => updateFormData("polmed_number", e.target.value.toUpperCase())}
+                    placeholder="e.g., PAL123456789"
+                    className="flex-1"
+                    disabled={registerWithoutPolmed}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleValidatePolmed}
+                    disabled={!formData.polmed_number || isValidatingPolmed || registerWithoutPolmed}
+                  >
+                    {isValidatingPolmed ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  </Button>
+                </div>
+                {errors.polmed_number && <p className="text-sm text-destructive">{errors.polmed_number}</p>}
 
-              {polmedValidation && (
-                <Alert variant={polmedValidation.is_valid ? "default" : "destructive"}>
-                  {polmedValidation.is_valid ? (
-                    <CheckCircle className="h-4 w-4" />
-                  ) : (
-                    <AlertCircle className="h-4 w-4" />
-                  )}
-                  <AlertDescription>
-                    {polmedValidation.validation_message}
-                    {polmedValidation.is_valid && polmedValidation.member_type && (
-                      <span className="block mt-1 font-medium">Member Type: {polmedValidation.member_type}</span>
+                {polmedValidation && !registerWithoutPolmed && (
+                  <Alert variant={polmedValidation.is_valid ? "default" : "destructive"}>
+                    {polmedValidation.is_valid ? (
+                      <CheckCircle className="h-4 w-4" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4" />
                     )}
+                    <AlertDescription>
+                      {polmedValidation.validation_message}
+                      {polmedValidation.is_valid && polmedValidation.member_type && (
+                        <span className="block mt-1 font-medium">Member Type: {polmedValidation.member_type}</span>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="register_without_polmed"
+                  checked={registerWithoutPolmed}
+                  onCheckedChange={(checked) => {
+                    setRegisterWithoutPolmed(!!checked)
+                    if (checked) {
+                      // Clear POLMED related data and errors when opting out
+                      setFormData((prev) => ({ ...prev, polmed_number: "" }))
+                      setPolmedValidation(null)
+                      setErrors((prev) => {
+                        const { polmed_number, ...rest } = prev
+                        return rest
+                      })
+                    }
+                  }}
+                />
+                <Label htmlFor="register_without_polmed" className="text-sm cursor-pointer">
+                  I don't have POLMED membership and want to register as a private patient
+                </Label>
+              </div>
+
+              {registerWithoutPolmed && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    You're registering as a private patient. You can still access all clinic services,
+                    but payment will be required at the time of service.
                   </AlertDescription>
                 </Alert>
               )}

@@ -3994,6 +3994,105 @@ def sync_palmed_member():
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 
+# PATIENT PORTAL AUTHENTICATION ENDPOINTS
+@app.route('/patient/auth/register', methods=['POST'])
+def register_patient_portal_user():
+    """Register a new patient for the patient portal"""
+    try:
+        data = request.get_json() or {}
+        
+        # Validate required fields
+        required_fields = ['first_name', 'last_name', 'email', 'password', 'mobile_number', 'date_of_birth', 'gender']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'success': False, 'error': f'{field} is required'}), 400
+        
+        # Validate email format
+        import re
+        email_pattern = r'^[^\s@]+@[^\s@]+\.[^\s@]+$'
+        if not re.match(email_pattern, data['email']):
+            return jsonify({'success': False, 'error': 'Invalid email format'}), 400
+        
+        # Check if email already exists
+        existing_user = DatabaseManager.execute_query(
+            "SELECT id FROM patient_authentication WHERE email = %s",
+            (data['email'],),
+            fetch=True
+        )
+        if existing_user:
+            return jsonify({'success': False, 'error': 'Email already registered'}), 409
+        
+        # Hash password
+        from werkzeug.security import generate_password_hash
+        hashed_password = generate_password_hash(data['password'])
+        
+        # Handle POLMED membership
+        polmed_number = data.get('polmed_number', '').strip()
+        is_private_patient = data.get('is_private_patient', False)
+        
+        # Set membership flags
+        is_palmed_member = bool(polmed_number and not is_private_patient)
+        member_type = 'Non-member' if is_private_patient else ('POLMED Member' if is_palmed_member else 'Non-member')
+        
+        # Use mobile_number for phone_number field in database
+        phone_number = data['mobile_number']
+        
+        # Create patient record first
+        patient_insert_query = """
+        INSERT INTO patients (medical_aid_number, first_name, last_name, date_of_birth,
+                             gender, phone_number, email, is_palmed_member,
+                             member_type, created_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        
+        patient_values = (
+            polmed_number or None,
+            data['first_name'].strip(),
+            data['last_name'].strip(),
+            data['date_of_birth'],
+            data['gender'],
+            phone_number,
+            data['email'].lower().strip(),
+            is_palmed_member,
+            member_type,
+            datetime.utcnow()
+        )
+        
+        patient_result = DatabaseManager.execute_query(patient_insert_query, patient_values)
+        patient_id = patient_result
+        
+        # Create authentication record
+        auth_insert_query = """
+        INSERT INTO patient_authentication (patient_id, email, password_hash, is_verified, created_at)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        
+        auth_values = (
+            patient_id,
+            data['email'].lower().strip(),
+            hashed_password,
+            False,  # Email verification required
+            datetime.utcnow()
+        )
+        
+        DatabaseManager.execute_query(auth_insert_query, auth_values)
+        
+        logger.info(f"Patient portal registration successful for email: {data['email']}")
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'patient_id': patient_id,
+                'requires_verification': True,
+                'message': f'Registration successful for {"POLMED member" if is_palmed_member else "private patient"}'
+            }
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Patient portal registration error: {e}")
+        return jsonify({'success': False, 'error': 'Registration failed. Please try again.'}), 500
+
+
 @app.route('/api/dashboard/stats', methods=['GET'])
 @token_required
 def get_dashboard_stats():
