@@ -1,6 +1,7 @@
 import { apiService, type ApiResponse } from "./api-service"
 
-const DEFAULT_REMOTE_API_BASE_URL = "https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net/api"
+const DEFAULT_REMOTE_API_BASE_URL =
+  "https://app-polmed-backend-fmamhma6g4gngfey.southafricanorth-01.azurewebsites.net/api"
 
 export interface PatientPortalUser {
   id: number
@@ -335,7 +336,94 @@ class PatientPortalService {
       body: JSON.stringify({ reason }),
     })
   }
+
+  async changePassword(
+    patientId: number,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<ApiResponse<{ changed: boolean }>> {
+    return apiService["request"](`/patient-portal/password/change`, {
+      method: "POST",
+      body: JSON.stringify({
+        patient_id: patientId,
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    })
+  }
+
+  async forgotPassword(email: string): Promise<ApiResponse<{ reset_sent: boolean }>> {
+    return apiService["request"](`/patient-portal/password/forgot`, {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    })
+  }
+
+  async resetPasswordWithToken(token: string, newPassword: string): Promise<ApiResponse<{ reset: boolean }>> {
+    return apiService["request"](`/patient-portal/password/reset`, {
+      method: "POST",
+      body: JSON.stringify({
+        reset_token: token,
+        new_password: newPassword,
+      }),
+    })
+  }
+
+  async getMedicalRecords(patientId: number): Promise<ApiResponse<any[]>> {
+    return apiService["request"](`/patient-portal/medical-records/${patientId}`)
+  }
+
+  async getPrescriptions(patientId: number): Promise<ApiResponse<any[]>> {
+    return apiService["request"](`/patient-portal/prescriptions/${patientId}`)
+  }
+
+  async getTestResults(patientId: number): Promise<ApiResponse<any[]>> {
+    return apiService["request"](`/patient-portal/test-results/${patientId}`)
+  }
+
+  async getInvoices(patientId: number): Promise<ApiResponse<any[]>> {
+    return apiService["request"](`/patient-portal/invoices/${patientId}`)
+  }
+
+  async getPaymentHistory(patientId: number): Promise<ApiResponse<any[]>> {
+    return apiService["request"](`/patient-portal/payments/${patientId}`)
+  }
+
+  async sendMessage(
+    patientId: number,
+    payload: {
+      subject: string
+      message: string
+      recipient_type: "admin" | "doctor" | "support"
+    },
+  ): Promise<ApiResponse<{ message_id: number }>> {
+    return apiService["request"](`/patient-portal/messages/${patientId}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async getMessages(patientId: number): Promise<ApiResponse<any[]>> {
+    return apiService["request"](`/patient-portal/messages/${patientId}`)
+  }
+
+  async getAvailableSlots(params: {
+    province?: string
+    city?: string
+    date?: string
+    location_type?: string
+  }): Promise<ApiResponse<any[]>> {
+    const queryString = new URLSearchParams(params as Record<string, string>).toString()
+    return apiService["request"](`/patient-portal/slots/available?${queryString}`)
+  }
+
+  async getAvailableLocations(params?: {
+    province?: string
+    location_type?: string
+  }): Promise<ApiResponse<any[]>> {
+    const queryString = params ? `?${new URLSearchParams(params as Record<string, string>)}` : ""
+    return apiService["request"](`/patient-portal/locations${queryString}`)
+  }
 }
 
 export const patientPortalService = new PatientPortalService()
-// Already exported above, remove duplicate export
