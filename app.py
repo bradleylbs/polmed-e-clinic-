@@ -3995,7 +3995,7 @@ def sync_palmed_member():
 
 
 # PATIENT PORTAL AUTHENTICATION ENDPOINTS
-@app.route('/patient/auth/register', methods=['POST'])
+@app.route('/api/patient/auth/register', methods=['POST'])
 def register_patient_portal_user():
     """Register a new patient for the patient portal"""
     try:
