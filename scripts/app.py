@@ -480,23 +480,26 @@ def register_patient_portal():
         if existing_patient:
             return jsonify({'success': False, 'error': 'Email already registered'}), 400
         
-        # Hash password
-        from werkzeug.security import generate_password_hash
-        password_hash = generate_password_hash(data['password'])
+        # TODO: Implement proper patient authentication system
+        # For now, we just register the patient data without password storage
+        # A separate patient_users table with password_hash should be created for authentication
         
         # Prepare patient data
         chronic_conditions = json.dumps([])
         allergies = json.dumps([])
         current_medications = json.dumps([])
         
-        # Insert patient record
+        # Insert patient record (without password for now - will need separate auth system)
         insert_query = """
         INSERT INTO patients (
             first_name, last_name, date_of_birth, gender, phone_number, email,
             medical_aid_number, is_palmed_member, member_type, chronic_conditions,
-            allergies, current_medications, password_hash, created_at
+            allergies, current_medications, created_by, created_at
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
+        
+        # For now, use a system user ID (1) as created_by since this is self-registration
+        system_user_id = 1
         
         result = DatabaseManager.execute_query(insert_query, (
             data['first_name'],
@@ -511,7 +514,7 @@ def register_patient_portal():
             chronic_conditions,
             allergies,
             current_medications,
-            password_hash,
+            system_user_id,
             datetime.utcnow()
         ))
         
@@ -549,10 +552,11 @@ def register_patient_portal():
         
         return jsonify({
             'success': True,
-            'message': 'Patient account created successfully',
+            'message': 'Patient registration submitted successfully. Authentication system coming soon.',
             'data': {
                 'patient_id': patient_id,
-                'requires_verification': False  # Set to True if you want email verification
+                'requires_verification': False,
+                'note': 'Patient data registered. Full authentication system will be implemented in next update.'
             }
         }), 201
         
