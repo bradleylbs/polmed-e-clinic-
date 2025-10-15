@@ -4614,7 +4614,337 @@ def list_chronic_disease_enrollments(patient_id: int):
     except Exception as e:
         logger.error(f"List chronic disease enrollments error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+# ==================== USER MANAGEMENT ENDPOINTS ====================
+
+@app.route('/api/users', methods=['GET'])
+@token_required
+def get_users():
+    """Get list of all users with pagination and filtering"""
+    try:
+        # Only administrators can access user management
+        if not is_admin_or_authorized(request.current_user):
+            return jsonify({'success': False, 'error': 'Insufficient permissions'}), 403
+        
+        # Get query parameters
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 20))
+        search = request.args.get('search', '').strip()
+        role_filter = request.args.get('role', '').strip()
+        status_filter = request.args.get('status', '').strip()
+        
+        # Calculate offset
+        offset = (page - 1) * limit
+        
+        # Build base query
+        query = """
+        SELECT 
+            u.id,
+            u.username,
+            u.email,
+            u.first_name,
+            u.last_name,
+            u.phone_number,
+            u.mp_number,
+            u.geographic_restrictions,
+            u.is_active,
+            u.requires_approval,
+            u.created_at,
+            u.updated_at,
+            ur.role_name as role,
+            ur.role_description
+        FROM users u
+        JOIN user_roles ur ON u.role_id = ur.id
+        WHERE 1=1
+        """
+        
+        params = []
+        
+        # Add search filter
+        if search:
+            query += " AND (u.email LIKE %s OR u.first_name LIKE %s OR u.last_name LIKE %s OR u.username LIKE %s)"
+            search_term = f"%{search}%"
+            params.extend([search_term, search_term, search_term, search_term])
+        
+        # Add role filter
+        if role_filter:
+            query += " AND ur.role_name = %s"
+            params.append(role_filter)
+        
+        # Add status filter
+        if status_filter == 'active':
+            query += " AND u.is_active = 1"
+        elif status_filter == 'inactive':
+            query += " AND u.is_active = 0"
+        elif status_filter == 'pending':
+            query += " AND u.requires_approval = 1"
+        
+        # Add ordering
+        query += " ORDER BY u.created_at DESC"
+        
+        # Get total count for pagination
+        count_query = f"SELECT COUNT(*) as total FROM ({query}) as counted"
+        count_result = DatabaseManager.execute_query(count_query, tuple(params), fetch=True)
+        total = count_result[0]['total'] if count_result else 0
+        
+        # Add pagination
+        query += " LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+        
+        # Execute main query
+        users = DatabaseManager.execute_query(query, tuple(params), fetch=True)
+        
+        if users is None:
+            return jsonify({'success': False, 'error': 'Database query failed'}), 500
+        
+        # Format response
+        response_data = {
+            'users': _to_jsonable(users) or [],
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total,
+                'pages': (total + limit - 1) // limit if total > 0 else 0
+            }
+        }
+        
+        return jsonify({
+            'success': True,
+            'data': response_data
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get users error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/users/roles', methods=['GET'])
+@token_required
+def get_user_roles():
+    """Get all available user roles"""
+    try:
+        # Only administrators can access user roles
+        if not is_admin_or_authorized(request.current_user):
+            return jsonify({'success': False, 'error': 'Insufficient permissions'}), 403
+        
+        query = """
+        SELECT 
+            id,
+            role_name,
+            role_description,
+            created_at
+        FROM user_roles 
+        ORDER BY role_name
+        """
+        
+        roles = DatabaseManager.execute_query(query, fetch=True)
+        
+        if roles is None:
+            return jsonify({'success': False, 'error': 'Database query failed'}), 500
+        
+        return jsonify({
+            'success': True,
+            'data': _to_jsonable(roles) or []
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get user roles error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/users', methods=['POST'])
+@token_required
+def create_user():
+    """Create a new user"""
+    try:
+        # Only administrators can create users
+        if not is_admin_or_authorized(request.current_user):
+            return jsonify({'success': False, 'error': 'Insufficient permissions'}), 403
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        # Validate required fields
+        required_fields = ['email', 'password', 'first_name', 'last_name', 'role_id']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'success': False, 'error': f'Missing required field: {field}'}), 400
+        
+        # Check if user already exists
+        existing_user = DatabaseManager.execute_query(
+            "SELECT id FROM users WHERE email = %s",
+            (data['email'],),
+            fetch=True
+        )
+        
+        if existing_user:
+            return jsonify({'success': False, 'error': 'User with this email already exists'}), 400
+        
+        # Generate username if not provided
+        username = data.get('username', data['email'].split('@')[0])
+        
+        # Hash password
+        password_hash = generate_password_hash(data['password'])
+        
+        # Insert user
+        insert_query = """
+        INSERT INTO users (
+            username, email, password_hash, role_id, first_name, last_name,
+            phone_number, mp_number, geographic_restrictions, 
+            is_active, requires_approval, created_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        
+        result = DatabaseManager.execute_query(insert_query, (
+            username,
+            data['email'],
+            password_hash,
+            data['role_id'],
+            data['first_name'],
+            data['last_name'],
+            data.get('phone_number'),
+            data.get('mp_number'),
+            data.get('geographic_restrictions', '[]'),
+            data.get('is_active', True),
+            data.get('requires_approval', False),
+            datetime.now()
+        ))
+        
+        if not result:
+            return jsonify({'success': False, 'error': 'Failed to create user'}), 500
+        
+        return jsonify({
+            'success': True,
+            'message': 'User created successfully'
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Create user error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/users/<int:user_id>', methods=['GET'])
+@token_required
+def get_user(user_id):
+    """Get specific user details"""
+    try:
+        # Only administrators or the user themselves can access user details
+        current_user = request.current_user
+        if not (is_admin_or_authorized(current_user) or current_user.get('id') == user_id):
+            return jsonify({'success': False, 'error': 'Insufficient permissions'}), 403
+        
+        query = """
+        SELECT 
+            u.id,
+            u.username,
+            u.email,
+            u.first_name,
+            u.last_name,
+            u.phone_number,
+            u.mp_number,
+            u.geographic_restrictions,
+            u.is_active,
+            u.requires_approval,
+            u.created_at,
+            u.updated_at,
+            ur.role_name as role,
+            ur.role_description
+        FROM users u
+        JOIN user_roles ur ON u.role_id = ur.id
+        WHERE u.id = %s
+        """
+        
+        user = DatabaseManager.execute_query(query, (user_id,), fetch=True)
+        
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+        
+        return jsonify({
+            'success': True,
+            'data': _to_jsonable(user[0])
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get user error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/users/<int:user_id>', methods=['PATCH'])
+@token_required
+def update_user(user_id):
+    """Update user information"""
+    try:
+        # Only administrators can update users
+        if not is_admin_or_authorized(request.current_user):
+            return jsonify({'success': False, 'error': 'Insufficient permissions'}), 403
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        # Check if user exists
+        existing_user = DatabaseManager.execute_query(
+            "SELECT id FROM users WHERE id = %s",
+            (user_id,),
+            fetch=True
+        )
+        
+        if not existing_user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+        
+        # Build update query dynamically
+        update_fields = []
+        params = []
+        
+        updatable_fields = [
+            'first_name', 'last_name', 'phone_number', 'mp_number',
+            'geographic_restrictions', 'is_active', 'requires_approval', 'role_id'
+        ]
+        
+        for field in updatable_fields:
+            if field in data:
+                update_fields.append(f"{field} = %s")
+                params.append(data[field])
+        
+        # Handle password update
+        if 'password' in data and data['password']:
+            update_fields.append("password_hash = %s")
+            params.append(generate_password_hash(data['password']))
+        
+        if not update_fields:
+            return jsonify({'success': False, 'error': 'No valid fields to update'}), 400
+        
+        # Add updated_at and user_id
+        update_fields.append("updated_at = %s")
+        params.extend([datetime.now(), user_id])
+        
+        query = f"UPDATE users SET {', '.join(update_fields)} WHERE id = %s"
+        
+        result = DatabaseManager.execute_query(query, tuple(params))
+        
+        if not result:
+            return jsonify({'success': False, 'error': 'Failed to update user'}), 500
+        
+        return jsonify({
+            'success': True,
+            'message': 'User updated successfully'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Update user error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+def is_admin_or_authorized(user):
+    """Check if user is administrator or has appropriate permissions"""
+    if not user:
+        return False
     
+    role = user.get('role_name', '').lower()
+    return 'administrator' in role or 'admin' in role
+
 
 if __name__ == '__main__':
     # Disable the reloader to avoid SystemExit in debuggers (parent process exit).
