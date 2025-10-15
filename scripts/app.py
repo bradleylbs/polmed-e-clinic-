@@ -449,6 +449,118 @@ def verify_token():
     }), 200
 
 # ============================================================================
+# PATIENT PORTAL ENDPOINTS
+# ============================================================================
+
+@app.route('/api/patient/auth/register', methods=['POST'])
+def register_patient_portal():
+    """Register a new patient through the patient portal (public endpoint)"""
+    try:
+        data = request.get_json() or {}
+        
+        # Required fields
+        required_fields = ['first_name', 'last_name', 'email', 'password', 'mobile_number', 'date_of_birth', 'gender']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'success': False, 'error': f'{field} is required'}), 400
+        
+        # Validate email format
+        import re
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, data['email']):
+            return jsonify({'success': False, 'error': 'Invalid email format'}), 400
+            
+        # Check if email already exists
+        existing_patient = DatabaseManager.execute_query(
+            "SELECT id FROM patients WHERE email = %s",
+            (data['email'],),
+            fetch=True,
+        )
+        
+        if existing_patient:
+            return jsonify({'success': False, 'error': 'Email already registered'}), 400
+        
+        # Hash password
+        from werkzeug.security import generate_password_hash
+        password_hash = generate_password_hash(data['password'])
+        
+        # Prepare patient data
+        chronic_conditions = json.dumps([])
+        allergies = json.dumps([])
+        current_medications = json.dumps([])
+        
+        # Insert patient record
+        insert_query = """
+        INSERT INTO patients (
+            first_name, last_name, date_of_birth, gender, phone_number, email,
+            medical_aid_number, is_palmed_member, member_type, chronic_conditions,
+            allergies, current_medications, password_hash, created_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        
+        result = DatabaseManager.execute_query(insert_query, (
+            data['first_name'],
+            data['last_name'],
+            data['date_of_birth'],
+            data['gender'],
+            data['mobile_number'],
+            data['email'],
+            data.get('polmed_number'),
+            not data.get('is_private_patient', False),  # If private patient, not POLMED member
+            'Private Patient' if data.get('is_private_patient', False) else 'POLMED Member',
+            chronic_conditions,
+            allergies,
+            current_medications,
+            password_hash,
+            datetime.utcnow()
+        ))
+        
+        if not result:
+            return jsonify({'success': False, 'error': 'Failed to create patient account'}), 500
+        
+        # Get the new patient ID
+        new_patient = DatabaseManager.execute_query(
+            "SELECT id FROM patients WHERE email = %s",
+            (data['email'],),
+            fetch=True,
+        )
+        
+        patient_id = new_patient[0]['id'] if new_patient else None
+        
+        # Log patient registration
+        try:
+            log_query = """
+            INSERT INTO audit_log (table_name, record_id, action, new_values, created_at)
+            VALUES ('patients', %s, 'INSERT', %s, %s)
+            """
+            new_values = json.dumps({
+                'first_name': data['first_name'],
+                'last_name': data['last_name'],
+                'email': data['email'],
+                'registration_source': 'patient_portal'
+            })
+            DatabaseManager.execute_query(log_query, (
+                patient_id,
+                new_values,
+                datetime.utcnow()
+            ))
+        except Exception as log_error:
+            logger.warning(f"Failed to log patient registration: {log_error}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Patient account created successfully',
+            'data': {
+                'patient_id': patient_id,
+                'requires_verification': False  # Set to True if you want email verification
+            }
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Patient registration error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+# ============================================================================
 # PATIENT MANAGEMENT ENDPOINTS
 # ============================================================================
 
@@ -839,6 +951,38 @@ def create_patient_visit(patient_id: int):
             fetch=True,
         )
         new_visit_id = sel[0]['id'] if sel else None
+
+        # Log visit creation activity
+        if new_visit_id:
+            try:
+                # Get patient name for audit log
+                patient_info = DatabaseManager.execute_query(
+                    "SELECT first_name, last_name FROM patients WHERE id = %s",
+                    (patient_id,),
+                    fetch=True,
+                )
+                patient_name = f"{patient_info[0]['first_name']} {patient_info[0]['last_name']}" if patient_info else f"Patient ID {patient_id}"
+                
+                log_query = """
+                INSERT INTO audit_log (user_id, table_name, record_id, action, new_values, created_at)
+                VALUES (%s, 'patient_visits', %s, 'INSERT', %s, %s)
+                """
+                new_values = json.dumps({
+                    'patient_id': patient_id,
+                    'patient_name': patient_name,
+                    'visit_date': visit_date.isoformat(),
+                    'visit_time': visit_time.strftime('%H:%M:%S'),
+                    'location': location,
+                    'chief_complaint': chief_complaint
+                })
+                DatabaseManager.execute_query(log_query, (
+                    request.current_user['id'],
+                    new_visit_id,
+                    new_values,
+                    datetime.utcnow()
+                ))
+            except Exception as log_error:
+                logger.warning(f"Failed to log visit creation: {log_error}")
 
         return jsonify({
             'success': True,
@@ -3302,6 +3446,36 @@ def record_inventory_usage():
             
             remaining_to_use -= quantity_from_batch
         
+        # Log inventory usage activity
+        try:
+            # Get consumable name for audit log
+            consumable_info = DatabaseManager.execute_query(
+                "SELECT name FROM consumables WHERE id = %s",
+                (consumable_id,),
+                fetch=True,
+            )
+            consumable_name = consumable_info[0]['name'] if consumable_info else f"Consumable ID {consumable_id}"
+            
+            log_query = """
+            INSERT INTO audit_log (user_id, table_name, action, new_values, created_at)
+            VALUES (%s, 'inventory_usage', 'INSERT', %s, %s)
+            """
+            new_values = json.dumps({
+                'consumable_id': consumable_id,
+                'consumable_name': consumable_name,
+                'quantity_used': quantity_used,
+                'visit_id': visit_id,
+                'location': location,
+                'batches_affected': len(usage_records)
+            })
+            DatabaseManager.execute_query(log_query, (
+                request.current_user['id'],
+                new_values,
+                datetime.utcnow()
+            ))
+        except Exception as log_error:
+            logger.warning(f"Failed to log inventory usage: {log_error}")
+
         return jsonify({
             'success': True,
             'message': 'Inventory usage recorded successfully',
@@ -4003,6 +4177,8 @@ def get_dashboard_stats():
         raw_role = (request.current_user or {}).get('role_name', '')
         user_role = str(raw_role).strip().lower().replace(' ', '_')
         user_id = request.current_user.get('id')
+        
+        logger.info(f"Dashboard stats for user_id={user_id}, raw_role='{raw_role}', normalized_role='{user_role}'")
 
         # Base stats structure
         stats = {
@@ -4021,7 +4197,7 @@ def get_dashboard_stats():
 
         # Role-specific metrics with proper queries
         if user_role == 'clerk':
-            # Clerk: Track registrations and appointment bookings
+            # Clerk: Track patient registrations and visit scheduling
             reg_stats = DatabaseManager.execute_query(
                 """
                 SELECT 
@@ -4035,33 +4211,35 @@ def get_dashboard_stats():
                 fetch=True,
             )
             
-            booking_stats = DatabaseManager.execute_query(
+            visit_stats = DatabaseManager.execute_query(
                 """
                 SELECT 
-                    COUNT(CASE WHEN DATE(a.booked_at) = CURDATE() AND a.status = 'Booked' THEN 1 END) AS today_bookings,
-                    COUNT(CASE WHEN DATE(a.booked_at) >= CURDATE() - INTERVAL 7 DAY AND a.status = 'Booked' THEN 1 END) AS week_bookings,
-                    COUNT(CASE WHEN DATE(a.booked_at) >= CURDATE() - INTERVAL 30 DAY AND a.status = 'Booked' THEN 1 END) AS month_bookings
-                FROM appointments a
+                    COUNT(CASE WHEN DATE(pv.created_at) = CURDATE() THEN 1 END) AS today_visits,
+                    COUNT(CASE WHEN DATE(pv.created_at) >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS week_visits,
+                    COUNT(CASE WHEN pv.is_completed = 0 THEN 1 END) AS pending_visits
+                FROM patient_visits pv
+                WHERE pv.created_by = %s
                 """,
+                (user_id,),
                 fetch=True,
             )
             
             reg_data = reg_stats[0] if reg_stats else {}
-            booking_data = booking_stats[0] if booking_stats else {}
+            visit_data = visit_stats[0] if visit_stats else {}
             
             stats['todayPatients'] = int(reg_data.get('today_registrations', 0))
             stats['weeklyPatients'] = int(reg_data.get('week_registrations', 0))
             stats['monthlyPatients'] = int(reg_data.get('month_registrations', 0))
             
             stats['roleSpecificMetrics'] = {
-                'todayBookings': int(booking_data.get('today_bookings', 0)),
-                'weekBookings': int(booking_data.get('week_bookings', 0)),
+                'todayBookings': int(visit_data.get('today_visits', 0)),
+                'weekBookings': int(visit_data.get('week_visits', 0)),
                 'monthBookings': int(booking_data.get('month_bookings', 0)),
                 'metricType': 'registrations'
             }
 
         elif user_role == 'nurse':
-            # Nurse: Track vital signs and nursing assessments
+            # Nurse: Track vital signs and patient assessments
             vitals_stats = DatabaseManager.execute_query(
                 """
                 SELECT 
@@ -4075,53 +4253,25 @@ def get_dashboard_stats():
                 fetch=True,
             )
             
-            assessment_stats = DatabaseManager.execute_query(
+            # Alternative: Use visits created by nurse if no vitals
+            visit_stats = DatabaseManager.execute_query(
                 """
                 SELECT 
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) = CURDATE() THEN cn.visit_id END) AS today_assessments,
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 7 DAY THEN cn.visit_id END) AS week_assessments,
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 30 DAY THEN cn.visit_id END) AS month_assessments
-                FROM clinical_notes cn
-                WHERE cn.created_by = %s AND cn.note_type = 'Assessment'
+                    COUNT(CASE WHEN DATE(pv.created_at) = CURDATE() THEN 1 END) AS today_visits,
+                    COUNT(CASE WHEN DATE(pv.created_at) >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS week_visits,
+                    COUNT(CASE WHEN DATE(pv.created_at) >= CURDATE() - INTERVAL 30 DAY THEN 1 END) AS month_visits
+                FROM patient_visits pv
+                WHERE pv.created_by = %s
                 """,
                 (user_id,),
                 fetch=True,
             )
             
-            vitals_data = vitals_stats[0] if vitals_stats else {}
-            assessment_data = assessment_stats[0] if assessment_stats else {}
-            
-            stats['todayPatients'] = int(vitals_data.get('today_vitals', 0))
-            stats['weeklyPatients'] = int(vitals_data.get('week_vitals', 0))
-            stats['monthlyPatients'] = int(vitals_data.get('month_vitals', 0))
-            
-            stats['roleSpecificMetrics'] = {
-                'todayAssessments': int(assessment_data.get('today_assessments', 0)),
-                'weekAssessments': int(assessment_data.get('week_assessments', 0)),
-                'monthAssessments': int(assessment_data.get('month_assessments', 0)),
-                'metricType': 'vitals'
-            }
-
-        elif user_role == 'doctor':
-            # Doctor: Track diagnoses and treatments
-            clinical_stats = DatabaseManager.execute_query(
+            notes_stats = DatabaseManager.execute_query(
                 """
                 SELECT 
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) = CURDATE() THEN cn.visit_id END) AS today_clinical,
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 7 DAY THEN cn.visit_id END) AS week_clinical,
-                    COUNT(DISTINCT CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 30 DAY THEN cn.visit_id END) AS month_clinical
-                FROM clinical_notes cn
-                WHERE cn.created_by = %s AND cn.note_type IN ('Diagnosis', 'Treatment')
-                """,
-                (user_id,),
-                fetch=True,
-            )
-            
-            diagnosis_stats = DatabaseManager.execute_query(
-                """
-                SELECT 
-                    COUNT(CASE WHEN DATE(cn.created_at) = CURDATE() AND cn.note_type = 'Diagnosis' THEN 1 END) AS today_diagnosis,
-                    COUNT(CASE WHEN DATE(cn.created_at) = CURDATE() AND cn.note_type = 'Treatment' THEN 1 END) AS today_treatment
+                    COUNT(CASE WHEN cn.note_type = 'Assessment' AND DATE(cn.created_at) = CURDATE() THEN 1 END) AS today_assessments,
+                    COUNT(CASE WHEN cn.note_type = 'Assessment' AND DATE(cn.created_at) >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS week_assessments
                 FROM clinical_notes cn
                 WHERE cn.created_by = %s
                 """,
@@ -4129,16 +4279,75 @@ def get_dashboard_stats():
                 fetch=True,
             )
             
-            clinical_data = clinical_stats[0] if clinical_stats else {}
-            diagnosis_data = diagnosis_stats[0] if diagnosis_stats else {}
+            vitals_data = vitals_stats[0] if vitals_stats else {}
+            visit_data = visit_stats[0] if visit_stats else {}
+            notes_data = notes_stats[0] if notes_stats else {}
             
-            stats['todayPatients'] = int(clinical_data.get('today_clinical', 0))
-            stats['weeklyPatients'] = int(clinical_data.get('week_clinical', 0))
-            stats['monthlyPatients'] = int(clinical_data.get('month_clinical', 0))
+            # Use vitals as primary, fall back to visits
+            today_patients = int(vitals_data.get('today_vitals', 0))
+            if today_patients == 0:
+                today_patients = int(visit_data.get('today_visits', 0))
+            
+            stats['todayPatients'] = today_patients
+            stats['weeklyPatients'] = int(vitals_data.get('week_vitals', visit_data.get('week_visits', 0)))
+            stats['monthlyPatients'] = int(vitals_data.get('month_vitals', visit_data.get('month_visits', 0)))
             
             stats['roleSpecificMetrics'] = {
-                'todayDiagnoses': int(diagnosis_data.get('today_diagnosis', 0)),
-                'todayTreatments': int(diagnosis_data.get('today_treatment', 0)),
+                'todayAssessments': int(notes_data.get('today_assessments', 0)),
+                'weekAssessments': int(notes_data.get('week_assessments', 0)),
+                'todayVitals': int(vitals_data.get('today_vitals', 0)),
+                'metricType': 'vitals'
+            }
+
+        elif user_role == 'doctor':
+            # Doctor: Track patient visits, clinical notes, and activities
+            
+            # Get patient visits created/managed by doctor
+            visit_stats = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(CASE WHEN DATE(pv.created_at) = CURDATE() THEN 1 END) AS today_visits,
+                    COUNT(CASE WHEN DATE(pv.created_at) >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS week_visits,
+                    COUNT(CASE WHEN DATE(pv.created_at) >= CURDATE() - INTERVAL 30 DAY THEN 1 END) AS month_visits,
+                    COUNT(CASE WHEN pv.is_completed = 1 AND DATE(pv.completed_at) = CURDATE() THEN 1 END) AS today_completed
+                FROM patient_visits pv
+                WHERE pv.created_by = %s
+                """,
+                (user_id,),
+                fetch=True,
+            )
+            
+            # Get clinical notes by doctor
+            notes_stats = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(CASE WHEN DATE(cn.created_at) = CURDATE() THEN 1 END) AS today_notes,
+                    COUNT(CASE WHEN DATE(cn.created_at) >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS week_notes,
+                    COUNT(CASE WHEN cn.note_type = 'Diagnosis' AND DATE(cn.created_at) = CURDATE() THEN 1 END) AS today_diagnosis,
+                    COUNT(CASE WHEN cn.note_type = 'Treatment' AND DATE(cn.created_at) = CURDATE() THEN 1 END) AS today_treatment
+                FROM clinical_notes cn
+                WHERE cn.created_by = %s
+                """,
+                (user_id,),
+                fetch=True,
+            )
+            
+            visit_data = visit_stats[0] if visit_stats else {}
+            notes_data = notes_stats[0] if notes_stats else {}
+            
+            # Use visits as primary metric, fall back to notes if no visits
+            today_patients = int(visit_data.get('today_visits', 0))
+            if today_patients == 0:
+                today_patients = int(notes_data.get('today_notes', 0))
+                
+            stats['todayPatients'] = today_patients
+            stats['weeklyPatients'] = int(visit_data.get('week_visits', notes_data.get('week_notes', 0)))
+            stats['monthlyPatients'] = int(visit_data.get('month_visits', 0))
+            
+            stats['roleSpecificMetrics'] = {
+                'todayDiagnoses': int(notes_data.get('today_diagnosis', 0)),
+                'todayTreatments': int(notes_data.get('today_treatment', 0)),
+                'todayCompleted': int(visit_data.get('today_completed', 0)),
                 'metricType': 'clinical'
             }
 
@@ -4184,39 +4393,56 @@ def get_dashboard_stats():
 
         else:
             # Administrator or unknown role: Overall system metrics
+            logger.info(f"Using admin/default dashboard for role: {user_role}")
+            
             system_stats = DatabaseManager.execute_query(
                 """
                 SELECT 
-                    COUNT(CASE WHEN visit_date = CURDATE() THEN 1 END) AS visits_today,
-                    COUNT(CASE WHEN visit_date >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS visits_7d,
-                    COUNT(CASE WHEN visit_date >= CURDATE() - INTERVAL 30 DAY THEN 1 END) AS visits_30d
-                FROM patient_visits
+                    COUNT(CASE WHEN DATE(pv.created_at) = CURDATE() THEN 1 END) AS visits_today,
+                    COUNT(CASE WHEN DATE(pv.created_at) >= CURDATE() - INTERVAL 7 DAY THEN 1 END) AS visits_7d,
+                    COUNT(CASE WHEN DATE(pv.created_at) >= CURDATE() - INTERVAL 30 DAY THEN 1 END) AS visits_30d,
+                    COUNT(CASE WHEN pv.is_completed = 1 THEN 1 END) AS completed_visits
+                FROM patient_visits pv
+                """,
+                fetch=True,
+            )
+            
+            user_stats = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(CASE WHEN DATE(u.created_at) = CURDATE() THEN 1 END) AS today_users,
+                    COUNT(CASE WHEN u.is_active = 1 THEN 1 END) AS active_users
+                FROM users u
                 """,
                 fetch=True,
             )
             
             system_data = system_stats[0] if system_stats else {}
+            user_data = user_stats[0] if user_stats else {}
+            
             stats['todayPatients'] = int(system_data.get('visits_today', 0))
             stats['weeklyPatients'] = int(system_data.get('visits_7d', 0))
             stats['monthlyPatients'] = int(system_data.get('visits_30d', 0))
             
             stats['roleSpecificMetrics'] = {
+                'completedVisits': int(system_data.get('completed_visits', 0)),
+                'activeUsers': int(user_data.get('active_users', 0)),
+                'newUsersToday': int(user_data.get('today_users', 0)),
                 'metricType': 'system_overview'
             }
 
         # Common metrics for all roles
         
-        # Pending appointments for today
-        pending_appointments = DatabaseManager.execute_query(
+        # Pending visits for today (no appointments table exists)
+        pending_visits = DatabaseManager.execute_query(
             """
             SELECT COUNT(*) AS pending
-            FROM appointments a
-            JOIN route_locations rl ON a.route_location_id = rl.id
-            WHERE rl.visit_date = CURDATE() AND a.status = 'Booked'
+            FROM patient_visits pv
+            WHERE DATE(pv.visit_date) = CURDATE() AND pv.is_completed = 0
             """,
             fetch=True,
         )
-        stats['pendingAppointments'] = int((pending_appointments or [{}])[0].get('pending') or 0)
+        stats['pendingAppointments'] = int((pending_visits or [{}])[0].get('pending') or 0)
 
         # Completed workflows (user-specific for non-admins)
         if user_role != 'administrator':
@@ -4325,6 +4551,231 @@ def get_dashboard_stats():
         logger.error(f"Dashboard stats error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'
         ''}), 500
+
+
+@app.route('/api/activity/recent', methods=['GET'])
+@token_required
+def get_recent_activity():
+    """Get comprehensive recent activity from multiple data sources"""
+    try:
+        current_user = g.current_user
+        user_id = current_user['id']
+        user_role = current_user.get('role_name', '').lower().replace(' ', '_')
+        
+        # Get query parameters
+        limit = min(int(request.args.get('limit', 50)), 100)  # Max 100 items
+        days = min(int(request.args.get('days', 7)), 30)  # Max 30 days
+        
+        activities = []
+        
+        # 1. Audit Log Activities (login, data changes, etc.)
+        audit_activities = DatabaseManager.execute_query(
+            """
+            SELECT 
+                al.id,
+                al.action,
+                al.table_name,
+                al.created_at,
+                u.first_name,
+                u.last_name,
+                CASE 
+                    WHEN al.table_name = 'patients' THEN 'patient'
+                    WHEN al.table_name = 'patient_visits' THEN 'visit'
+                    WHEN al.table_name = 'inventory_usage' THEN 'inventory'
+                    WHEN al.table_name = 'routes' THEN 'route'
+                    WHEN al.table_name = 'users' AND al.action = 'LOGIN' THEN 'login'
+                    ELSE 'system'
+                END AS activity_type,
+                CASE 
+                    WHEN al.action = 'INSERT' AND al.table_name = 'patients' THEN 'Registered new patient'
+                    WHEN al.action = 'INSERT' AND al.table_name = 'patient_visits' THEN 'Created new patient visit'
+                    WHEN al.action = 'UPDATE' AND al.table_name = 'patients' THEN 'Updated patient information'
+                    WHEN al.action = 'UPDATE' AND al.table_name = 'patient_visits' THEN 'Updated visit record'
+                    WHEN al.action = 'LOGIN' THEN 'Logged into system'
+                    WHEN al.action = 'INSERT' THEN CONCAT('Created new ', REPLACE(al.table_name, '_', ' '), ' record')
+                    WHEN al.action = 'UPDATE' THEN CONCAT('Updated ', REPLACE(al.table_name, '_', ' '), ' record')
+                    ELSE CONCAT(al.action, ' ', REPLACE(al.table_name, '_', ' '))
+                END AS description
+            FROM audit_log al
+            LEFT JOIN users u ON al.user_id = u.id
+            WHERE al.user_id = %s
+            AND al.created_at >= NOW() - INTERVAL %s DAY
+            ORDER BY al.created_at DESC
+            LIMIT %s
+            """,
+            (user_id, days, limit),
+            fetch=True,
+        )
+        
+        for activity in audit_activities or []:
+            activities.append({
+                'id': f"audit_{activity['id']}",
+                'type': activity['activity_type'],
+                'description': activity['description'],
+                'timestamp': activity['created_at'].isoformat() if activity['created_at'] else '',
+                'status': 'completed',
+                'source': 'audit_log',
+                'user': f"{activity['first_name'] or ''} {activity['last_name'] or ''}".strip() or 'System'
+            })
+        
+        # 2. Patient Visit Activities (for medical staff)
+        if user_role in ['doctor', 'nurse', 'social_worker']:
+            visit_activities = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    pv.id,
+                    pv.visit_date,
+                    pv.visit_time,
+                    pv.created_at,
+                    pv.updated_at,
+                    pv.chief_complaint,
+                    pv.is_completed,
+                    p.first_name as patient_first,
+                    p.last_name as patient_last,
+                    p.id_number as patient_id_number,
+                    CASE 
+                        WHEN pv.is_completed = 1 THEN 'completed'
+                        WHEN pv.created_at = pv.updated_at THEN 'created'
+                        ELSE 'updated'
+                    END AS visit_status
+                FROM patient_visits pv
+                JOIN patients p ON pv.patient_id = p.id
+                WHERE pv.created_by = %s
+                AND (pv.created_at >= NOW() - INTERVAL %s DAY OR pv.updated_at >= NOW() - INTERVAL %s DAY)
+                ORDER BY GREATEST(pv.created_at, pv.updated_at) DESC
+                LIMIT %s
+                """,
+                (user_id, days, days, limit),
+                fetch=True,
+            )
+            
+            for visit in visit_activities or []:
+                patient_name = f"{visit['patient_first'] or ''} {visit['patient_last'] or ''}".strip()
+                visit_date_str = visit['visit_date'].strftime('%Y-%m-%d') if visit['visit_date'] else 'Unknown'
+                
+                if visit['visit_status'] == 'created':
+                    description = f"Scheduled visit for {patient_name} on {visit_date_str}"
+                    timestamp = visit['created_at']
+                elif visit['visit_status'] == 'completed':
+                    description = f"Completed visit for {patient_name}"
+                    timestamp = visit['updated_at']
+                else:
+                    description = f"Updated visit for {patient_name}"
+                    timestamp = visit['updated_at']
+                
+                activities.append({
+                    'id': f"visit_{visit['id']}",
+                    'type': 'visit',
+                    'description': description,
+                    'timestamp': timestamp.isoformat() if timestamp else '',
+                    'status': visit['visit_status'],
+                    'source': 'patient_visits',
+                    'patient': patient_name,
+                    'complaint': visit['chief_complaint'] or 'No complaint specified'
+                })
+        
+        # 3. User Session Activities (login tracking)
+        session_activities = DatabaseManager.execute_query(
+            """
+            SELECT 
+                us.created_at,
+                us.ip_address,
+                us.device_info,
+                'session_start' as activity_type
+            FROM user_sessions us
+            WHERE us.user_id = %s
+            AND us.created_at >= NOW() - INTERVAL %s DAY
+            ORDER BY us.created_at DESC
+            LIMIT %s
+            """,
+            (user_id, days, limit),
+            fetch=True,
+        )
+        
+        for session in session_activities or []:
+            device_info = ''
+            if session['device_info']:
+                try:
+                    device_data = json.loads(session['device_info']) if isinstance(session['device_info'], str) else session['device_info']
+                    device_info = f" from {device_data.get('browser', 'Unknown browser')}"
+                except:
+                    device_info = ''
+            
+            activities.append({
+                'id': f"session_{session['created_at']}",
+                'type': 'login',
+                'description': f"Started new session{device_info}",
+                'timestamp': session['created_at'].isoformat() if session['created_at'] else '',
+                'status': 'completed',
+                'source': 'user_sessions',
+                'ip_address': session['ip_address']
+            })
+        
+        # 4. Role-specific activities
+        if user_role == 'administrator':
+            # System administration activities
+            admin_activities = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    al.created_at,
+                    al.action,
+                    al.table_name,
+                    COUNT(*) as activity_count
+                FROM audit_log al
+                WHERE al.user_id = %s
+                AND al.table_name IN ('users', 'user_roles', 'routes', 'locations')
+                AND al.created_at >= NOW() - INTERVAL %s DAY
+                GROUP BY DATE(al.created_at), al.table_name, al.action
+                ORDER BY al.created_at DESC
+                LIMIT %s
+                """,
+                (user_id, days, limit // 2),
+                fetch=True,
+            )
+            
+            for admin in admin_activities or []:
+                activities.append({
+                    'id': f"admin_{admin['created_at']}_{admin['table_name']}",
+                    'type': 'administration',
+                    'description': f"System management: {admin['action']} {admin['activity_count']} {admin['table_name']} record(s)",
+                    'timestamp': admin['created_at'].isoformat() if admin['created_at'] else '',
+                    'status': 'completed',
+                    'source': 'admin_activities'
+                })
+        
+        # Sort all activities by timestamp
+        activities.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        # Limit final results
+        activities = activities[:limit]
+        
+        # Add summary statistics
+        activity_summary = {
+            'total_activities': len(activities),
+            'date_range': {
+                'start': (datetime.now() - timedelta(days=days)).isoformat(),
+                'end': datetime.now().isoformat(),
+                'days': days
+            },
+            'activity_types': {}
+        }
+        
+        # Count activities by type
+        for activity in activities:
+            activity_type = activity['type']
+            activity_summary['activity_types'][activity_type] = activity_summary['activity_types'].get(activity_type, 0) + 1
+        
+        return jsonify({
+            'success': True, 
+            'data': {
+                'activities': activities,
+                'summary': activity_summary
+            }
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Recent activity error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
     
 # ============================================================================
 # MEDSCHEME INTEGRATION ENDPOINTS

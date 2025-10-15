@@ -3,8 +3,6 @@
 import type React from "react"
 import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
-import { Analytics } from "@vercel/analytics/next"
-import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Suspense, useEffect, useState } from "react"
 import { offlineManager } from "@/lib/offline-manager"
 import "./globals.css"
@@ -94,8 +92,6 @@ export default function ClientLayout({
       <Suspense fallback={<LoadingFallback />}>
         {children}
       </Suspense>
-      <Analytics />
-      <SpeedInsights />
     </body>
   )
 }
