@@ -40,7 +40,7 @@ CREATE TABLE `patients` (
   `chronic_conditions` json DEFAULT NULL,
   `allergies` json DEFAULT NULL,
   `current_medications` json DEFAULT NULL,
-  `created_by` int NOT NULL,
+  `created_by` int DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -53,7 +53,7 @@ CREATE TABLE `patients` (
   KEY `idx_patients_member_status` (`is_palmed_member`,`member_type`,`created_at`),
   KEY `idx_patients_search` (`last_name`,`first_name`,`medical_aid_number`),
   KEY `idx_patients_created_by_date` (`created_by`,`created_at`),
-  CONSTRAINT `patients_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
+  CONSTRAINT `patients_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;

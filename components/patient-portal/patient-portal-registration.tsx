@@ -219,10 +219,15 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
         date_of_birth: formData.date_of_birth,
         gender: formData.gender,
         email: formData.email.trim().toLowerCase(),
-        mobile_number: formData.mobile_number.trim(),  // Changed from phone_number
+        mobile_number: formData.mobile_number.replace(/\s/g, ""),  // Normalize format
         polmed_number: formData.polmed_number.trim() || "", // Always optional - empty string if not provided
         password: formData.password,
         is_private_patient: registerWithoutPolmed || !formData.polmed_number.trim(), // Private patient if no POLMED number
+        terms_accepted: formData.terms_accepted,
+        privacy_accepted: formData.privacy_accepted,
+        marketing_consent: formData.marketing_consent,
+        terms_version: "2025-portal-v1",
+        privacy_version: "2025-portal-v1",
       }
 
       await onRegistrationComplete(registrationData)

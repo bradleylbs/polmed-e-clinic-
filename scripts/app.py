@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 import mysql.connector
-from mysql.connector import Error
+from mysql.connector import Error, errorcode
 import jwt
 from datetime import date, datetime, timedelta, timezone
 from functools import wraps
@@ -457,121 +457,335 @@ def register_patient_portal():
     """Register a new patient through the patient portal (public endpoint)"""
     try:
         data = request.get_json() or {}
-        
+
         # Required fields
         required_fields = ['first_name', 'last_name', 'email', 'password', 'mobile_number', 'date_of_birth', 'gender']
         for field in required_fields:
             if not data.get(field):
                 return jsonify({'success': False, 'error': f'{field} is required'}), 400
-        
-        # Validate email format
-        import re
+
+    # Validate email format and normalise to lowercase
+        email = data['email'].strip().lower()
         email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        if not re.match(email_pattern, data['email']):
+        if not re.match(email_pattern, email):
             return jsonify({'success': False, 'error': 'Invalid email format'}), 400
-            
-        # Check if email already exists
+
+        # Validate password strength (mirrors frontend rules)
+        password = data['password']
+        if len(password) < 8 or not re.search(r'[a-z]', password) or not re.search(r'[A-Z]', password) or not re.search(r'\d', password):
+            return jsonify({'success': False, 'error': 'Password must include upper, lower case letters and a number'}), 400
+
+        # Validate mobile number (South African format)
+        mobile_number = re.sub(r'\s+', '', data['mobile_number'])
+        if not re.match(r'^(\+27|0)[0-9]{9}$', mobile_number):
+            return jsonify({'success': False, 'error': 'Please provide a valid South African mobile number'}), 400
+
+        # Ensure key fields are unique before attempting transaction
         existing_patient = DatabaseManager.execute_query(
             "SELECT id FROM patients WHERE email = %s",
-            (data['email'],),
+            (email,),
             fetch=True,
         )
-        
         if existing_patient:
-            return jsonify({'success': False, 'error': 'Email already registered'}), 400
-        
-        # TODO: Implement proper patient authentication system
-        # For now, we just register the patient data without password storage
-        # A separate patient_users table with password_hash should be created for authentication
-        
-        # Prepare patient data
+            return jsonify({'success': False, 'error': 'A patient with this email already exists'}), 400
+
+        existing_auth_email = DatabaseManager.execute_query(
+            "SELECT id FROM patient_authentication WHERE email = %s",
+            (email,),
+            fetch=True,
+        )
+        if existing_auth_email:
+            return jsonify({'success': False, 'error': 'Patient portal access already exists for this email'}), 400
+
+        polmed_number_raw = (data.get('polmed_number') or '').strip().upper()
+        polmed_number = polmed_number_raw or None
+        is_private_patient = bool(data.get('is_private_patient')) or not polmed_number
+
+        if polmed_number:
+            existing_polmed_patient = DatabaseManager.execute_query(
+                "SELECT id FROM patients WHERE medical_aid_number = %s",
+                (polmed_number,),
+                fetch=True,
+            )
+            if existing_polmed_patient:
+                return jsonify({'success': False, 'error': 'A patient with this POLMED number already exists'}), 400
+
+            existing_auth_polmed = DatabaseManager.execute_query(
+                "SELECT id FROM patient_authentication WHERE polmed_number = %s",
+                (polmed_number,),
+                fetch=True,
+            )
+            if existing_auth_polmed:
+                return jsonify({'success': False, 'error': 'Patient portal access already exists for this POLMED number'}), 400
+
+        # Consent tracking (checkboxes required in UI)
+        terms_accepted = bool(data.get('terms_accepted'))
+        privacy_accepted = bool(data.get('privacy_accepted'))
+        marketing_consent = bool(data.get('marketing_consent'))
+
+        if not terms_accepted or not privacy_accepted:
+            return jsonify({'success': False, 'error': 'Terms and privacy policy must be accepted to continue'}), 400
+
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+
         chronic_conditions = json.dumps([])
         allergies = json.dumps([])
         current_medications = json.dumps([])
-        
-        # Use existing admin user ID for self-registrations (system requirement)
-        admin_user_id = 1  # Use the existing admin user for created_by constraint
-        
-        # Use the same insert logic as the working admin endpoint
-        insert_query = """
-        INSERT INTO patients (medical_aid_number, first_name, last_name, date_of_birth,
-                             gender, id_number, phone_number, email, physical_address,
-                             emergency_contact_name, emergency_contact_phone, is_palmed_member,
-                             member_type, chronic_conditions, allergies, current_medications,
-                             created_by, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        
         try:
-            result = DatabaseManager.execute_query(insert_query, (
-                data.get('polmed_number'),  # medical_aid_number
-                data['first_name'],
-                data['last_name'],
-                data['date_of_birth'],
-                data['gender'],
-                None,  # id_number (not provided in self-registration)
-                data['mobile_number'],  # phone_number
-                data.get('email'),
-                None,  # physical_address (not provided in self-registration)
-                None,  # emergency_contact_name
-                None,  # emergency_contact_phone
-                not data.get('is_private_patient', False),  # is_palmed_member
-                'Non-member' if data.get('is_private_patient', False) else 'Principal',
-                chronic_conditions,
-                allergies,
-                current_medications,
-                admin_user_id,  # created_by
-                datetime.utcnow()
-            ))
-        except Exception as db_error:
-            logger.error(f"Patient registration database error: {db_error}")
-            return jsonify({'success': False, 'error': f'Database error: {str(db_error)}'}), 500
-        
-        if not result:
-            logger.error("Patient registration failed: Database insert returned False")
-            return jsonify({'success': False, 'error': 'Failed to create patient account'}), 500
-        
-        # Get the new patient ID
-        new_patient = DatabaseManager.execute_query(
-            "SELECT id FROM patients WHERE email = %s",
-            (data['email'],),
-            fetch=True,
-        )
-        
-        patient_id = new_patient[0]['id'] if new_patient else None
-        
-        # Log patient registration
-        try:
-            log_query = """
-            INSERT INTO audit_log (table_name, record_id, action, new_values, created_at)
-            VALUES ('patients', %s, 'INSERT', %s, %s)
+            cursor = connection.cursor(dictionary=True)
+            now_utc = datetime.utcnow()
+
+            insert_patient_query = """
+                INSERT INTO patients (
+                    medical_aid_number,
+                    first_name,
+                    last_name,
+                    date_of_birth,
+                    gender,
+                    id_number,
+                    phone_number,
+                    email,
+                    physical_address,
+                    emergency_contact_name,
+                    emergency_contact_phone,
+                    is_palmed_member,
+                    member_type,
+                    chronic_conditions,
+                    allergies,
+                    current_medications,
+                    created_by,
+                    created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
-            new_values = json.dumps({
-                'first_name': data['first_name'],
-                'last_name': data['last_name'],
-                'email': data['email'],
-                'registration_source': 'patient_portal'
-            })
-            DatabaseManager.execute_query(log_query, (
-                patient_id,
-                new_values,
-                datetime.utcnow()
-            ))
-        except Exception as log_error:
-            logger.warning(f"Failed to log patient registration: {log_error}")
-        
+
+            cursor.execute(
+                insert_patient_query,
+                (
+                    polmed_number,
+                    data['first_name'].strip(),
+                    data['last_name'].strip(),
+                    data['date_of_birth'],
+                    data['gender'],
+                    None,
+                    mobile_number,
+                    email,
+                    None,
+                    None,
+                    None,
+                    not is_private_patient,
+                    'Non-member' if is_private_patient else 'Principal',
+                    chronic_conditions,
+                    allergies,
+                    current_medications,
+                    None,
+                    now_utc,
+                ),
+            )
+
+            patient_id = cursor.lastrowid
+            if not patient_id:
+                raise Error("Failed to retrieve patient ID after insert")
+
+            auth_polmed_number = polmed_number if polmed_number else f"PRIVATE-{patient_id}"
+
+            auth_insert_query = """
+                INSERT INTO patient_authentication (
+                    patient_id,
+                    polmed_number,
+                    email,
+                    password_hash,
+                    mobile_number,
+                    is_verified,
+                    verification_token,
+                    verification_expires,
+                    login_attempts,
+                    locked_until,
+                    last_login,
+                    created_at,
+                    updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+
+            cursor.execute(
+                auth_insert_query,
+                (
+                    patient_id,
+                    auth_polmed_number,
+                    email,
+                    generate_password_hash(password),
+                    mobile_number,
+                    0,
+                    None,
+                    None,
+                    0,
+                    None,
+                    None,
+                    now_utc,
+                    now_utc,
+                ),
+            )
+
+            audit_insert_query = """
+                INSERT INTO audit_log (table_name, record_id, action, new_values, created_at)
+                VALUES ('patients', %s, 'INSERT', %s, %s)
+            """
+            cursor.execute(
+                audit_insert_query,
+                (
+                    patient_id,
+                    json.dumps({
+                        'first_name': data['first_name'].strip(),
+                        'last_name': data['last_name'].strip(),
+                        'email': email,
+                        'registration_source': 'patient_portal'
+                    }),
+                    now_utc,
+                ),
+            )
+
+            connection.commit()
+
+        except Error as db_error:
+            connection.rollback()
+            logger.error(f"Patient portal registration error: {db_error}")
+
+            if getattr(db_error, 'errno', None) == errorcode.ER_DUP_ENTRY:
+                error_message = str(db_error)
+                if 'patients.medical_aid_number' in error_message:
+                    friendly = 'A patient with this POLMED number already exists'
+                elif 'patient_authentication.polmed_number' in error_message:
+                    friendly = 'Portal access already exists for this POLMED number'
+                elif 'patient_authentication.email' in error_message or 'patients.email' in error_message:
+                    friendly = 'Portal access already exists for this email'
+                else:
+                    friendly = 'Duplicate record detected for patient'
+                return jsonify({'success': False, 'error': friendly}), 400
+
+            return jsonify({'success': False, 'error': 'Failed to create patient account'}), 500
+
+        finally:
+            if 'cursor' in locals() and cursor:
+                cursor.close()
+            connection.close()
+
         return jsonify({
             'success': True,
-            'message': 'Patient registration submitted successfully. Authentication system coming soon.',
+            'message': 'Patient registration completed successfully.',
             'data': {
                 'patient_id': patient_id,
                 'requires_verification': False,
-                'note': 'Patient data registered. Full authentication system will be implemented in next update.'
+                'note': 'Patient profile and authentication record created.'
             }
         }), 201
-        
+
     except Exception as e:
         logger.error(f"Patient registration error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/login', methods=['POST'])
+def patient_portal_login():
+    """Authenticate a patient portal user."""
+    try:
+        data = request.get_json() or {}
+        email = str(data.get('email', '')).strip().lower()
+        password = data.get('password', '')
+
+        if not email or not password:
+            return jsonify({'success': False, 'error': 'Email and password are required'}), 400
+
+        auth_rows = DatabaseManager.execute_query(
+            """
+            SELECT pa.*, p.first_name, p.last_name, p.medical_aid_number,
+                   p.is_palmed_member, p.member_type, p.phone_number, p.email AS patient_email
+            FROM patient_authentication pa
+            JOIN patients p ON pa.patient_id = p.id
+            WHERE pa.email = %s
+            """,
+            (email,),
+            fetch=True,
+        )
+
+        if not auth_rows:
+            return jsonify({'success': False, 'error': 'Invalid email or password'}), 401
+
+        auth_record = auth_rows[0]
+
+        locked_until = auth_record.get('locked_until')
+        if locked_until and locked_until > datetime.utcnow():
+            return jsonify({'success': False, 'error': 'Account temporarily locked. Please try again later.'}), 403
+
+        try:
+            password_valid = check_password_hash(auth_record['password_hash'], password)
+        except Exception:
+            password_valid = False
+
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+
+        try:
+            cursor = connection.cursor()
+            if not password_valid:
+                new_attempts = int(auth_record.get('login_attempts') or 0) + 1
+                lock_until = None
+                if new_attempts >= 5:
+                    lock_until = datetime.utcnow() + timedelta(minutes=15)
+                    new_attempts = 0
+
+                cursor.execute(
+                    "UPDATE patient_authentication SET login_attempts = %s, locked_until = %s WHERE id = %s",
+                    (new_attempts, lock_until, auth_record['id'])
+                )
+                connection.commit()
+                return jsonify({'success': False, 'error': 'Invalid email or password'}), 401
+
+            # Successful login: reset attempts, update last_login
+            cursor.execute(
+                "UPDATE patient_authentication SET login_attempts = %s, locked_until = NULL, last_login = %s, updated_at = %s WHERE id = %s",
+                (0, datetime.utcnow(), datetime.utcnow(), auth_record['id'])
+            )
+            connection.commit()
+        finally:
+            cursor.close()
+            connection.close()
+
+        payload = {
+            'patient_id': auth_record['patient_id'],
+            'email': email,
+            'type': 'patient_portal',
+            'exp': datetime.now(timezone.utc) + timedelta(hours=12),
+            'iat': datetime.now(timezone.utc)
+        }
+        token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
+
+        patient_full_name = f"{auth_record.get('first_name', '').strip()} {auth_record.get('last_name', '').strip()}".strip()
+
+        response_payload = {
+            'success': True,
+            'data': {
+                'token': token,
+                'patient_data': {
+                    'id': auth_record['patient_id'],
+                    'full_name': patient_full_name,
+                    'medical_aid_number': auth_record.get('medical_aid_number'),
+                    'is_palmed_member': bool(auth_record.get('is_palmed_member')),
+                    'member_type': auth_record.get('member_type'),
+                    'phone_number': auth_record.get('phone_number') or auth_record.get('mobile_number'),
+                    'email': auth_record.get('patient_email') or auth_record.get('email')
+                }
+            }
+        }
+
+        # flag to indicate whether portal email verified
+        response_payload['data']['patient_data']['is_verified'] = bool(auth_record.get('is_verified'))
+
+        return jsonify(response_payload), 200
+
+    except Exception as e:
+        logger.error(f"Patient portal login error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 # ============================================================================

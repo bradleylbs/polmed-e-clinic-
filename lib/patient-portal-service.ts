@@ -127,6 +127,11 @@ class PatientPortalService {
     date_of_birth: string
     gender: string
     is_private_patient?: boolean // Flag for non-POLMED users
+    terms_accepted: boolean
+    privacy_accepted: boolean
+    marketing_consent?: boolean
+    terms_version?: string
+    privacy_version?: string
   }): Promise<ApiResponse<{ patient_id: number; requires_verification: boolean }>> {
     return apiService["request"]("/patient/auth/register", {
       method: "POST",
