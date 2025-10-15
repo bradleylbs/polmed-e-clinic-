@@ -489,57 +489,42 @@ def register_patient_portal():
         allergies = json.dumps([])
         current_medications = json.dumps([])
         
-        # Since patients are self-registering, we need to handle created_by differently
-        # Try to find or create a "system" user for self-registrations
-        system_user = DatabaseManager.execute_query(
-            "SELECT id FROM users WHERE username = 'system' OR email = 'system@polmed.co.za' LIMIT 1",
-            fetch=True,
-        )
+        # Use admin user ID for self-registrations (simpler approach)
+        admin_user_id = 41  # Known admin user ID from earlier checks
         
-        if not system_user:
-            # Use the first admin user as fallback for self-registrations
-            admin_user = DatabaseManager.execute_query(
-                "SELECT id FROM users WHERE role_id = (SELECT id FROM user_roles WHERE role_name = 'Administrator') LIMIT 1",
-                fetch=True,
-            )
-            system_user_id = admin_user[0]['id'] if admin_user else 41  # Fallback to known admin ID
-        else:
-            system_user_id = system_user[0]['id']
-
-        # Insert patient record (self-registration through patient portal)
+        # Use the same insert logic as the working admin endpoint
         insert_query = """
-        INSERT INTO patients (
-            first_name, last_name, date_of_birth, gender, phone_number, email,
-            medical_aid_number, is_palmed_member, member_type, chronic_conditions,
-            allergies, current_medications, created_by, created_at
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO patients (medical_aid_number, first_name, last_name, date_of_birth,
+                             gender, id_number, phone_number, email, physical_address,
+                             emergency_contact_name, emergency_contact_phone, is_palmed_member,
+                             member_type, chronic_conditions, allergies, current_medications,
+                             created_by, created_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         
-        try:
-            result = DatabaseManager.execute_query(insert_query, (
-                data['first_name'],
-                data['last_name'],
-                data['date_of_birth'],
-                data['gender'],
-                data['mobile_number'],
-                data['email'],
-                data.get('polmed_number'),
-                not data.get('is_private_patient', False),  # If private patient, not POLMED member
-                'Private Patient' if data.get('is_private_patient', False) else 'POLMED Member',
-                chronic_conditions,
-                allergies,
-                current_medications,
-                system_user_id,
-                datetime.utcnow()
-            ))
-            
-            if not result:
-                logger.error("Failed to insert patient record - database returned no result")
-                return jsonify({'success': False, 'error': 'Failed to create patient account'}), 500
-                
-        except Exception as db_error:
-            logger.error(f"Database error during patient insertion: {db_error}")
-            return jsonify({'success': False, 'error': f'Database error: {str(db_error)}'}), 500
+        result = DatabaseManager.execute_query(insert_query, (
+            data.get('polmed_number'),  # medical_aid_number
+            data['first_name'],
+            data['last_name'],
+            data['date_of_birth'],
+            data['gender'],
+            None,  # id_number (not provided in self-registration)
+            data['mobile_number'],  # phone_number
+            data.get('email'),
+            None,  # physical_address (not provided in self-registration)
+            None,  # emergency_contact_name
+            None,  # emergency_contact_phone
+            not data.get('is_private_patient', False),  # is_palmed_member
+            'Private Patient' if data.get('is_private_patient', False) else 'POLMED Member',
+            chronic_conditions,
+            allergies,
+            current_medications,
+            admin_user_id,  # created_by
+            datetime.utcnow()
+        ))
+        
+        if not result:
+            return jsonify({'success': False, 'error': 'Failed to create patient account'}), 500
         
         # Get the new patient ID
         new_patient = DatabaseManager.execute_query(
