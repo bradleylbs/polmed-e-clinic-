@@ -4946,6 +4946,102 @@ def is_admin_or_authorized(user):
     return 'administrator' in role or 'admin' in role
 
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Basic health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'service': 'palmed-clinic-erp'
+    }), 200
+
+
+@app.route('/api/health', methods=['GET'])
+def api_health_check():
+    """API health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'service': 'palmed-clinic-erp-api',
+        'version': '1.0.0'
+    }), 200
+
+
+@app.route('/api/appointments', methods=['GET'])
+@token_required
+def get_appointments():
+    """Get all appointments with filtering and pagination"""
+    try:
+        # Get query parameters
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 20))
+        status_filter = request.args.get('status', '').strip()
+        route_id = request.args.get('route_id', '').strip()
+        
+        # Calculate offset
+        offset = (page - 1) * limit
+        
+        # Build query
+        query = """
+        SELECT 
+            id,
+            route_location_id,
+            appointment_date,
+            appointment_time,
+            booked_by_name,
+            booked_by_phone,
+            status,
+            special_requirements,
+            created_at
+        FROM appointments 
+        WHERE 1=1
+        """
+        
+        params = []
+        
+        # Add filters
+        if status_filter:
+            query += " AND status = %s"
+            params.append(status_filter)
+        
+        if route_id:
+            query += " AND route_location_id = %s"
+            params.append(int(route_id))
+        
+        # Add ordering
+        query += " ORDER BY appointment_date DESC, appointment_time DESC"
+        
+        # Get total count
+        count_query = f"SELECT COUNT(*) as total FROM ({query}) as counted"
+        count_result = DatabaseManager.execute_query(count_query, tuple(params), fetch=True)
+        total = count_result[0]['total'] if count_result else 0
+        
+        # Add pagination
+        query += " LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+        
+        # Execute query
+        appointments = DatabaseManager.execute_query(query, tuple(params), fetch=True)
+        
+        if appointments is None:
+            return jsonify({'success': False, 'error': 'Database query failed'}), 500
+        
+        return jsonify({
+            'success': True,
+            'data': _to_jsonable(appointments) or [],
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total,
+                'pages': (total + limit - 1) // limit if total > 0 else 0
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get appointments error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
 if __name__ == '__main__':
     # Disable the reloader to avoid SystemExit in debuggers (parent process exit).
     app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
