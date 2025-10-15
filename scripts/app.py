@@ -726,6 +726,9 @@ def patient_portal_login():
         if not connection:
             return jsonify({'success': False, 'error': 'Database connection failed'}), 500
 
+        session_token = None
+        session_expires_at = None
+        session_payload = None
         try:
             cursor = connection.cursor()
             if not password_valid:
@@ -743,10 +746,40 @@ def patient_portal_login():
                 return jsonify({'success': False, 'error': 'Invalid email or password'}), 401
 
             # Successful login: reset attempts, update last_login
+            now_utc = datetime.utcnow()
             cursor.execute(
                 "UPDATE patient_authentication SET login_attempts = %s, locked_until = NULL, last_login = %s, updated_at = %s WHERE id = %s",
-                (0, datetime.utcnow(), datetime.utcnow(), auth_record['id'])
+                (0, now_utc, now_utc, auth_record['id'])
             )
+
+            # Create session entry to align with patient_sessions schema
+            session_token = str(uuid.uuid4())
+            session_expires_at = now_utc + timedelta(hours=12)
+            ip_address = request.headers.get('X-Forwarded-For', request.remote_addr)
+            device_info = {
+                'user_agent': request.headers.get('User-Agent'),
+                'origin': request.headers.get('Origin'),
+            }
+            session_payload = {
+                'authenticated_at': now_utc.isoformat(),
+                'patient_email': auth_record.get('patient_email') or auth_record.get('email'),
+            }
+
+            cursor.execute(
+                """
+                INSERT INTO patient_sessions (patient_id, session_token, device_info, ip_address, location_data, expires_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    auth_record['patient_id'],
+                    session_token,
+                    json.dumps(device_info),
+                    ip_address,
+                    json.dumps(session_payload),
+                    session_expires_at,
+                )
+            )
+
             connection.commit()
         finally:
             cursor.close()
@@ -778,6 +811,12 @@ def patient_portal_login():
                 }
             }
         }
+
+        if session_token and session_expires_at:
+            response_payload['data']['session'] = {
+                'token': session_token,
+                'expires_at': session_expires_at.isoformat(),
+            }
 
         # flag to indicate whether portal email verified
         response_payload['data']['patient_data']['is_verified'] = bool(auth_record.get('is_verified'))
