@@ -4319,7 +4319,7 @@ def get_dashboard_stats():
             for activity in (recent_activity or [])
         ]
 
-        return jsonify({'success': True, 'stats': stats}), 200
+        return jsonify({'success': True, 'data': stats}), 200
 
     except Exception as e:
         logger.error(f"Dashboard stats error: {e}")
