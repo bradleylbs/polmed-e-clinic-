@@ -489,8 +489,8 @@ def register_patient_portal():
         allergies = json.dumps([])
         current_medications = json.dumps([])
         
-        # Use admin user ID for self-registrations (simpler approach)
-        admin_user_id = 41  # Known admin user ID from earlier checks
+        # Use existing admin user ID for self-registrations (system requirement)
+        admin_user_id = 1  # Use the existing admin user for created_by constraint
         
         # Use the same insert logic as the working admin endpoint
         insert_query = """
@@ -502,28 +502,33 @@ def register_patient_portal():
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         
-        result = DatabaseManager.execute_query(insert_query, (
-            data.get('polmed_number'),  # medical_aid_number
-            data['first_name'],
-            data['last_name'],
-            data['date_of_birth'],
-            data['gender'],
-            None,  # id_number (not provided in self-registration)
-            data['mobile_number'],  # phone_number
-            data.get('email'),
-            None,  # physical_address (not provided in self-registration)
-            None,  # emergency_contact_name
-            None,  # emergency_contact_phone
-            not data.get('is_private_patient', False),  # is_palmed_member
-            'Private Patient' if data.get('is_private_patient', False) else 'POLMED Member',
-            chronic_conditions,
-            allergies,
-            current_medications,
-            admin_user_id,  # created_by
-            datetime.utcnow()
-        ))
+        try:
+            result = DatabaseManager.execute_query(insert_query, (
+                data.get('polmed_number'),  # medical_aid_number
+                data['first_name'],
+                data['last_name'],
+                data['date_of_birth'],
+                data['gender'],
+                None,  # id_number (not provided in self-registration)
+                data['mobile_number'],  # phone_number
+                data.get('email'),
+                None,  # physical_address (not provided in self-registration)
+                None,  # emergency_contact_name
+                None,  # emergency_contact_phone
+                not data.get('is_private_patient', False),  # is_palmed_member
+                'Non-member' if data.get('is_private_patient', False) else 'Principal',
+                chronic_conditions,
+                allergies,
+                current_medications,
+                admin_user_id,  # created_by
+                datetime.utcnow()
+            ))
+        except Exception as db_error:
+            logger.error(f"Patient registration database error: {db_error}")
+            return jsonify({'success': False, 'error': f'Database error: {str(db_error)}'}), 500
         
         if not result:
+            logger.error("Patient registration failed: Database insert returned False")
             return jsonify({'success': False, 'error': 'Failed to create patient account'}), 500
         
         # Get the new patient ID
