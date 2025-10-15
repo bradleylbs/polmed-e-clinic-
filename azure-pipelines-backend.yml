@@ -1,5 +1,12 @@
 trigger:
-- master   # Updated to use master branch
+  branches:
+    include:
+    - master
+    - main
+  paths:
+    include:
+    - scripts/*
+    - azure-pipelines-backend.yml
 
 pool:
   vmImage: ubuntu-latest
@@ -13,10 +20,39 @@ steps:
 
 # 2. Install dependencies
 - script: |
+    echo "Current directory: $(pwd)"
+    echo "Listing files in current directory:"
+    ls -la
     cd scripts
+    echo "Changed to scripts directory: $(pwd)"
+    echo "Listing files in scripts directory:"
+    ls -la
     python -m pip install --upgrade pip
     pip install -r requirements.txt
+    echo "Dependencies installed successfully"
   displayName: 'Install dependencies'
+
+# 2.5. Validate Flask application
+- script: |
+    cd scripts
+    echo "Validating Flask application..."
+    python -c "import app; print('Flask app loaded successfully')"
+    echo "Checking for required endpoints..."
+    python -c "
+from app import app
+with app.test_client() as client:
+    # Test health endpoints
+    health = client.get('/health')
+    api_health = client.get('/api/health')
+    print(f'Health endpoint: {health.status_code}')
+    print(f'API health endpoint: {api_health.status_code}')
+    if health.status_code == 200 and api_health.status_code == 200:
+        print('✅ Health endpoints working')
+    else:
+        print('❌ Health endpoints failed')
+        exit(1)
+"
+  displayName: 'Validate Flask Application'
 
 # 3. Archive backend files for deployment
 - task: ArchiveFiles@2
@@ -34,4 +70,17 @@ steps:
     appName: 'app-polmed-backend'                  # Your App Service name
     package: '$(Build.ArtifactStagingDirectory)/backend.zip'
     runtimeStack: 'PYTHON|3.10'
+    startUpCommand: 'python app.py'               # Explicit startup command
+    appSettings: |
+      -WEBSITES_PORT 5000
+      -SCM_DO_BUILD_DURING_DEPLOYMENT true
+      -ENABLE_ORYX_BUILD true
   displayName: 'Deploy Flask Backend'
+
+# 5. Post-deployment validation
+- task: AzureAppServiceManage@0
+  inputs:
+    azureSubscription: 'polmed-azure-connection'
+    action: 'Restart Azure App Service'
+    webAppName: 'app-polmed-backend'
+  displayName: 'Restart App Service'
