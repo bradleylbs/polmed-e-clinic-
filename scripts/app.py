@@ -489,7 +489,24 @@ def register_patient_portal():
         allergies = json.dumps([])
         current_medications = json.dumps([])
         
-        # Insert patient record (without password for now - will need separate auth system)
+        # Since patients are self-registering, we need to handle created_by differently
+        # Try to find or create a "system" user for self-registrations
+        system_user = DatabaseManager.execute_query(
+            "SELECT id FROM users WHERE username = 'system' OR email = 'system@polmed.co.za' LIMIT 1",
+            fetch=True,
+        )
+        
+        if not system_user:
+            # Use the first admin user as fallback for self-registrations
+            admin_user = DatabaseManager.execute_query(
+                "SELECT id FROM users WHERE role_id = (SELECT id FROM user_roles WHERE role_name = 'Administrator') LIMIT 1",
+                fetch=True,
+            )
+            system_user_id = admin_user[0]['id'] if admin_user else 41  # Fallback to known admin ID
+        else:
+            system_user_id = system_user[0]['id']
+
+        # Insert patient record (self-registration through patient portal)
         insert_query = """
         INSERT INTO patients (
             first_name, last_name, date_of_birth, gender, phone_number, email,
@@ -498,28 +515,31 @@ def register_patient_portal():
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         
-        # For now, use a system user ID (1) as created_by since this is self-registration
-        system_user_id = 1
-        
-        result = DatabaseManager.execute_query(insert_query, (
-            data['first_name'],
-            data['last_name'],
-            data['date_of_birth'],
-            data['gender'],
-            data['mobile_number'],
-            data['email'],
-            data.get('polmed_number'),
-            not data.get('is_private_patient', False),  # If private patient, not POLMED member
-            'Private Patient' if data.get('is_private_patient', False) else 'POLMED Member',
-            chronic_conditions,
-            allergies,
-            current_medications,
-            system_user_id,
-            datetime.utcnow()
-        ))
-        
-        if not result:
-            return jsonify({'success': False, 'error': 'Failed to create patient account'}), 500
+        try:
+            result = DatabaseManager.execute_query(insert_query, (
+                data['first_name'],
+                data['last_name'],
+                data['date_of_birth'],
+                data['gender'],
+                data['mobile_number'],
+                data['email'],
+                data.get('polmed_number'),
+                not data.get('is_private_patient', False),  # If private patient, not POLMED member
+                'Private Patient' if data.get('is_private_patient', False) else 'POLMED Member',
+                chronic_conditions,
+                allergies,
+                current_medications,
+                system_user_id,
+                datetime.utcnow()
+            ))
+            
+            if not result:
+                logger.error("Failed to insert patient record - database returned no result")
+                return jsonify({'success': False, 'error': 'Failed to create patient account'}), 500
+                
+        except Exception as db_error:
+            logger.error(f"Database error during patient insertion: {db_error}")
+            return jsonify({'success': False, 'error': f'Database error: {str(db_error)}'}), 500
         
         # Get the new patient ID
         new_patient = DatabaseManager.execute_query(
