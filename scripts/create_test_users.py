@@ -24,18 +24,21 @@ DB_CONFIG = {
     'port': int(os.environ.get('DB_PORT', 3306)),
     'autocommit': False,
     'use_unicode': True,
-    'charset': 'utf8mb4'
+    'charset': 'utf8mb4',
+    'ssl_disabled': False,
+    'ssl_verify_cert': False,
+    'ssl_verify_identity': False
 }
 
 # Test users data - using exact role names from your data
 TEST_USERS = [
     {
         'username': 'admin_test',
-        'email': 'admin.test@palmed.co.za',
+        'email': 'admin.test@polmed.co.za',
         'password': 'admin123',
         'first_name': 'Test',
         'last_name': 'Administrator',
-        'role_name': 'Administrator',
+        'role_name': 'administrator',
         'phone_number': '+27123456789',
         'geographic_restrictions': '["National"]',
         'mp_number': None,
@@ -44,11 +47,11 @@ TEST_USERS = [
     },
     {
         'username': 'doctor_test',
-        'email': 'doctor.test@palmed.co.za',
+        'email': 'doctor.test@polmed.co.za',
         'password': 'doctor123',
         'first_name': 'Dr. John',
         'last_name': 'Smith',
-        'role_name': 'Doctor',
+        'role_name': 'doctor',
         'phone_number': '+27123456790',
         'geographic_restrictions': '["KwaZulu-Natal"]',
         'mp_number': 'MP123456',
@@ -57,11 +60,11 @@ TEST_USERS = [
     },
     {
         'username': 'nurse_test',
-        'email': 'nurse.test@palmed.co.za',
+        'email': 'nurse.test@polmed.co.za',
         'password': 'nurse123',
         'first_name': 'Mary',
         'last_name': 'Johnson',
-        'role_name': 'Nurse',
+        'role_name': 'nurse',
         'phone_number': '+27123456791',
         'geographic_restrictions': '["KwaZulu-Natal"]',
         'mp_number': None,
@@ -70,11 +73,11 @@ TEST_USERS = [
     },
     {
         'username': 'clerk_test',
-        'email': 'clerk.test@palmed.co.za',
+        'email': 'clerk.test@polmed.co.za',
         'password': 'clerk123',
         'first_name': 'Sarah',
         'last_name': 'Williams',
-        'role_name': 'Clerk',
+        'role_name': 'clerk',
         'phone_number': '+27123456792',
         'geographic_restrictions': '["KwaZulu-Natal"]',
         'mp_number': None,
@@ -83,11 +86,11 @@ TEST_USERS = [
     },
     {
         'username': 'social_test',
-        'email': 'social.test@palmed.co.za',
+        'email': 'social.test@polmed.co.za',
         'password': 'social123',
         'first_name': 'David',
         'last_name': 'Brown',
-        'role_name': 'Social Worker',
+        'role_name': 'social worker',
         'phone_number': '+27123456793',
         'geographic_restrictions': '["KwaZulu-Natal"]',
         'mp_number': None,
@@ -96,11 +99,11 @@ TEST_USERS = [
     },
     {
         'username': 'doctor_pending',
-        'email': 'doctor.pending@palmed.co.za',
+        'email': 'doctor.pending@polmed.co.za',
         'password': 'testdoc123',
         'first_name': 'Dr. Jane',
         'last_name': 'Doe',
-        'role_name': 'Doctor',
+        'role_name': 'doctor',
         'phone_number': '+27123456794',
         'geographic_restrictions': '["Gauteng"]',
         'mp_number': 'MP789012',
@@ -270,7 +273,7 @@ def display_existing_users():
 def main():
     """Main function to create test users"""
     print("=" * 60)
-    print("PALMED Mobile Clinic - Test User Creation Script")
+    print("POLMED Mobile Clinic - Test User Creation Script")
     print("Using existing database roles and structure")
     print("=" * 60)
     
@@ -327,7 +330,7 @@ def main():
         
         print("\nTo approve pending users, update the database:")
         print("UPDATE users SET is_active = TRUE, requires_approval = FALSE")
-        print("WHERE email = 'doctor.pending@palmed.co.za';")
+        print("WHERE email = 'doctor.pending@polmed.co.za';")
 
 if __name__ == "__main__":
     main()

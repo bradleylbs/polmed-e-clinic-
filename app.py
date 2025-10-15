@@ -11,7 +11,11 @@ import os
 import logging
 from typing import Dict, List, Set
 import uuid
-import json 
+import json
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -4713,7 +4717,114 @@ def list_chronic_disease_enrollments(patient_id: int):
     except Exception as e:
         logger.error(f"List chronic disease enrollments error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
-    
+
+
+# ==================== SYSTEM INITIALIZATION ====================
+
+@app.route('/api/system/initialize', methods=['POST'])
+def initialize_system():
+    """Initialize system with default admin user - only works if no users exist"""
+    try:
+        # Check if any users already exist
+        existing_users = DatabaseManager.execute_query(
+            "SELECT COUNT(*) as user_count FROM users",
+            fetch=True
+        )
+        
+        if existing_users and existing_users[0]['user_count'] > 0:
+            return jsonify({
+                'success': False,
+                'error': 'System already initialized. Users already exist.'
+            }), 400
+        
+        # Create default admin user
+        admin_password = generate_password_hash('Admin123!')
+        admin_data = {
+            'username': 'admin',
+            'email': 'admin@polmed.co.za',
+            'password_hash': admin_password,
+            'role': 'administrator',
+            'first_name': 'System',
+            'last_name': 'Administrator',
+            'province': 'All',
+            'is_approved': True,
+            'created_at': datetime.now(),
+            'updated_at': datetime.now()
+        }
+        
+        # Insert admin user
+        insert_query = """
+            INSERT INTO users 
+            (username, email, password_hash, role, first_name, last_name, 
+             province, is_approved, created_at, updated_at) 
+            VALUES (%(username)s, %(email)s, %(password_hash)s, %(role)s, 
+                    %(first_name)s, %(last_name)s, %(province)s, %(is_approved)s, 
+                    %(created_at)s, %(updated_at)s)
+        """
+        
+        result = DatabaseManager.execute_query(insert_query, admin_data)
+        
+        if result:
+            logger.info("System initialized with default admin user")
+            return jsonify({
+                'success': True,
+                'message': 'System initialized successfully',
+                'admin_credentials': {
+                    'username': 'admin',
+                    'email': 'admin@polmed.co.za',
+                    'password': 'Admin123!'
+                }
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to create admin user'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"System initialization error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/system/status', methods=['GET'])
+def system_status():
+    """Check system initialization status"""
+    try:
+        # Check if users exist
+        user_count = DatabaseManager.execute_query(
+            "SELECT COUNT(*) as count FROM users",
+            fetch=True
+        )
+        
+        # Check if patients exist  
+        patient_count = DatabaseManager.execute_query(
+            "SELECT COUNT(*) as count FROM patients",
+            fetch=True
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'initialized': user_count[0]['count'] > 0 if user_count else False,
+                'user_count': user_count[0]['count'] if user_count else 0,
+                'patient_count': patient_count[0]['count'] if patient_count else 0,
+                'database_connected': True
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"System status check error: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': 'Database connection failed',
+            'data': {
+                'initialized': False,
+                'user_count': 0,
+                'patient_count': 0,
+                'database_connected': False
+            }
+        }), 200
+
 
 if __name__ == '__main__':
     # Disable the reloader to avoid SystemExit in debuggers (parent process exit).
