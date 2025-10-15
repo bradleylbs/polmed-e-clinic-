@@ -10,6 +10,7 @@ import { ClinicalWorkflow } from "@/components/patients/clinical-workflow"
 import { RouteList } from "@/components/routes/route-list"
 import { RoutePlanner } from "@/components/routes/route-planner"
 import { AppointmentBooking } from "@/components/routes/appointment-booking"
+import { AppointmentList } from "@/components/appointments/appointment-list"
 import { InventoryDashboard } from "@/components/inventory/inventory-dashboard"
 import { RoleDashboard } from "@/components/dashboard/role-dashboard"
 import { UserManagement } from "@/components/admin/user-management"
@@ -104,6 +105,7 @@ type ViewMode =
   | "routes"
   | "route-planner"
   | "appointment-booking"
+  | "appointments"
   | "inventory"
   | "user-management"
   | "sync-manager"
@@ -246,7 +248,7 @@ export default function StaffHomePage() {
 
           if (viewParam) {
             const viewMap: Record<string, ViewMode> = {
-              appointments: "routes",
+              appointments: "appointments",
               routes: "routes",
               "route-planner": "route-planner",
               patients: "patients",
@@ -348,7 +350,7 @@ export default function StaffHomePage() {
             setSelectedRoute(null)
           },
           appointments: () => {
-            setViewMode("routes")
+            setViewMode("appointments")
           },
           inventory: () => {
             setViewMode("inventory")
@@ -830,6 +832,7 @@ export default function StaffHomePage() {
             actionLabel="Go to Routes"
           />
         ),
+        appointments: <AppointmentList userRole={user!.role} />,
         inventory: <InventoryDashboard userRole={user!.role} />,
         "user-management":
           user!.role === "administrator" ? (
