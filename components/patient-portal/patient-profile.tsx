@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { User, Phone, Shield, Eye, EyeOff, Save, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { patientPortalService } from "@/lib/patient-portal-service"
 
 interface PatientProfileProps {
   patientId: number
@@ -65,14 +66,27 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
   const handleSaveProfile = async () => {
     try {
       setLoading(true)
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      toast({
-        title: "Profile updated successfully",
-        description: "Your profile information has been saved.",
+      const response = await patientPortalService.updatePatientProfile(patientId, {
+        phone_number: formData.phone_number,
+        email: formData.email,
+        physical_address: formData.address,
+        emergency_contact_name: formData.emergency_contact_name,
+        emergency_contact_phone: formData.emergency_contact_phone,
       })
-      setIsEditing(false)
+
+      if (response.success) {
+        toast({
+          title: "Profile updated successfully",
+          description: "Your profile information has been saved.",
+        })
+        setIsEditing(false)
+      } else {
+        toast({
+          title: "Error",
+          description: response.error || "Failed to update profile. Please try again.",
+          variant: "destructive",
+        })
+      }
     } catch (err) {
       toast({
         title: "Error",
@@ -105,20 +119,31 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
 
     try {
       setLoading(true)
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const response = await patientPortalService.changePassword(
+        patientId,
+        formData.current_password,
+        formData.new_password
+      )
 
-      toast({
-        title: "Password changed successfully",
-        description: "Your password has been updated.",
-      })
+      if (response.success) {
+        toast({
+          title: "Password changed successfully",
+          description: "Your password has been updated.",
+        })
 
-      setFormData((prev) => ({
-        ...prev,
-        current_password: "",
-        new_password: "",
-        confirm_password: "",
-      }))
+        setFormData((prev) => ({
+          ...prev,
+          current_password: "",
+          new_password: "",
+          confirm_password: "",
+        }))
+      } else {
+        toast({
+          title: "Error",
+          description: response.error || "Failed to change password. Please try again.",
+          variant: "destructive",
+        })
+      }
     } catch (err) {
       toast({
         title: "Error",
@@ -133,9 +158,10 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
   const handleSavePrivacySettings = async () => {
     try {
       setLoading(true)
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
+      // Privacy settings update - store locally and sync with backend if needed
+      // Currently privacy settings are stored client-side
+      localStorage.setItem('patient_privacy_settings', JSON.stringify(privacySettings))
+      
       toast({
         title: "Privacy settings updated",
         description: "Your privacy preferences have been saved.",

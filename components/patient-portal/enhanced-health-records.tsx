@@ -12,22 +12,35 @@ import { useToast } from "@/hooks/use-toast"
 
 interface LabResult {
   id: number
-  date: string
-  testName: string
-  value: string
-  normalRange?: string
-  status: "normal" | "high" | "low" | "critical"
-  orderedBy: string
+  test_code: string
+  test_name: string
+  test_date: string
+  result_value: string
+  unit?: string
+  reference_range?: string
+  abnormal_flag?: boolean
+  lab_name?: string
   notes?: string
+  ordered_by?: string
+  visit_id?: number
+  created_at?: string
+  updated_at?: string
 }
 
 interface MedicalRecord {
   id: number
-  date: string
-  type: string
-  title: string
+  visit_id?: number
+  record_type: string
   description?: string
-  provider: string
+  icd10_code?: string
+  provider?: string
+  status?: string
+  clinical_notes?: string
+  severity?: string
+  onset_date?: string
+  resolution_date?: string
+  created_at?: string
+  updated_at?: string
 }
 
 interface EnhancedHealthRecordsProps {
@@ -84,36 +97,6 @@ export function EnhancedHealthRecords({ patientId }: EnhancedHealthRecordsProps)
     }
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "normal":
-        return "bg-green-100 text-green-800"
-      case "high":
-        return "bg-orange-100 text-orange-800"
-      case "low":
-        return "bg-blue-100 text-blue-800"
-      case "critical":
-        return "bg-red-100 text-red-800"
-      default:
-        return "bg-gray-100 text-gray-800"
-    }
-  }
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "normal":
-        return "✓"
-      case "high":
-        return "↑"
-      case "low":
-        return "↓"
-      case "critical":
-        return "!"
-      default:
-        return "○"
-    }
-  }
-
   if (isLoading) {
     return (
       <Card>
@@ -161,14 +144,16 @@ export function EnhancedHealthRecords({ patientId }: EnhancedHealthRecordsProps)
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
                         <div className="flex items-center space-x-2">
-                          <h3 className="text-lg font-semibold">{result.testName}</h3>
-                          <Badge className={getStatusColor(result.status)}>
-                            {getStatusIcon(result.status)} {result.status.toUpperCase()}
-                          </Badge>
+                          <h3 className="text-lg font-semibold">{result.test_name || result.test_code}</h3>
+                          {result.abnormal_flag && (
+                            <Badge className="bg-orange-100 text-orange-800">
+                              ⚠️ Abnormal
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-gray-600 mt-1">
                           <Calendar className="w-4 h-4 inline mr-1" />
-                          {new Date(result.date).toLocaleDateString()}
+                          {new Date(result.test_date || result.created_at || '').toLocaleDateString()}
                         </p>
                       </div>
                     </div>
@@ -176,21 +161,29 @@ export function EnhancedHealthRecords({ patientId }: EnhancedHealthRecordsProps)
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <p className="text-sm font-medium text-gray-700">Result</p>
-                        <p className="text-lg font-semibold text-gray-900 mt-1">{result.value}</p>
+                        <p className="text-lg font-semibold text-gray-900 mt-1">
+                          {result.result_value} {result.unit ? `${result.unit}` : ''}
+                        </p>
                       </div>
 
-                      {result.normalRange && (
+                      {result.reference_range && (
                         <div>
                           <p className="text-sm font-medium text-gray-700">Normal Range</p>
-                          <p className="text-sm text-gray-600 mt-1">{result.normalRange}</p>
+                          <p className="text-sm text-gray-600 mt-1">{result.reference_range}</p>
                         </div>
                       )}
 
                       <div>
                         <p className="text-sm font-medium text-gray-700">Ordered By</p>
-                        <p className="text-sm text-gray-600 mt-1">{result.orderedBy}</p>
+                        <p className="text-sm text-gray-600 mt-1">{result.ordered_by || 'N/A'}</p>
                       </div>
                     </div>
+
+                    {result.lab_name && (
+                      <div className="mt-3 text-sm text-gray-600">
+                        <p>Lab: {result.lab_name}</p>
+                      </div>
+                    )}
 
                     {result.notes && (
                       <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
@@ -221,28 +214,33 @@ export function EnhancedHealthRecords({ patientId }: EnhancedHealthRecordsProps)
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <h3 className="text-lg font-semibold">{record.title}</h3>
+                        <h3 className="text-lg font-semibold">{record.record_type || 'Medical Record'}</h3>
                         <p className="text-sm text-gray-600 mt-1">
                           <Calendar className="w-4 h-4 inline mr-1" />
-                          {new Date(record.date).toLocaleDateString()}
+                          {new Date(record.onset_date || record.created_at || '').toLocaleDateString()}
                         </p>
-                        <p className="text-sm text-gray-600 mt-1">Type: {record.type}</p>
-                        <p className="text-sm text-gray-600">Provider: {record.provider}</p>
+                        {record.icd10_code && (
+                          <p className="text-sm text-gray-600 mt-1">Code: {record.icd10_code}</p>
+                        )}
+                        {record.provider && (
+                          <p className="text-sm text-gray-600">Provider: {record.provider}</p>
+                        )}
+                        {record.status && (
+                          <p className="text-sm font-medium mt-1">
+                            Status: <Badge variant="outline">{record.status}</Badge>
+                          </p>
+                        )}
 
                         {record.description && (
                           <p className="text-sm text-gray-700 mt-3">{record.description}</p>
                         )}
-                      </div>
 
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline">
-                          <Eye className="w-4 h-4 mr-1" />
-                          View
-                        </Button>
-                        <Button size="sm" variant="outline">
-                          <Download className="w-4 h-4 mr-1" />
-                          Download
-                        </Button>
+                        {record.clinical_notes && (
+                          <div className="mt-3 p-2 bg-gray-50 rounded text-sm text-gray-700">
+                            <p className="font-medium">Clinical Notes:</p>
+                            <p>{record.clinical_notes}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </CardContent>

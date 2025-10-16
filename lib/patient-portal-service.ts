@@ -420,7 +420,29 @@ class PatientPortalService {
     >
   > {
     try {
-      return await this.makeAuthenticatedRequest(`/patient-portal/documents/${patientId}`)
+      const response = await this.makeAuthenticatedRequest(`/patient-portal/documents/${patientId}`) as any
+      
+      if (response?.success && response?.data && Array.isArray(response.data)) {
+        return {
+          success: true,
+          data: response.data.map((doc: any) => ({
+            id: doc.id,
+            visit_id: doc.visit_id,
+            document_name: doc.file_name || doc.document_name,
+            file_name: doc.file_name,
+            document_type: doc.document_type,
+            mime_type: doc.mime_type,
+            size: doc.size,
+            upload_date: doc.created_at || doc.upload_date,
+            created_at: doc.created_at,
+            updated_at: doc.updated_at,
+            download_url: doc.download_url,
+            storage_path: doc.storage_path,
+            uploader: doc.uploader
+          }))
+        }
+      }
+      return response || { success: false, error: "No data returned" }
     } catch (error) {
       return {
         success: false,
@@ -520,15 +542,110 @@ class PatientPortalService {
   }
 
   async getMedicalRecords(patientId: number): Promise<ApiResponse<any[]>> {
-    return apiService["request"](`/patient-portal/medical-records/${patientId}`)
+    try {
+      const response = await apiService["request"](`/patient-portal/medical-records/${patientId}`) as any
+      
+      if (response?.success && response?.data && Array.isArray(response.data)) {
+        return {
+          success: true,
+          data: response.data.map((record: any) => ({
+            id: record.id,
+            visit_id: record.visit_id,
+            record_type: record.record_type,
+            description: record.description,
+            icd10_code: record.icd10_code,
+            provider: record.provider,
+            status: record.status || 'active',
+            clinical_notes: record.clinical_notes,
+            severity: record.severity,
+            onset_date: record.onset_date,
+            resolution_date: record.resolution_date,
+            created_at: record.created_at,
+            updated_at: record.updated_at
+          }))
+        }
+      }
+      return response || { success: false, error: "No data returned" }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch medical records"
+      }
+    }
   }
 
   async getPrescriptions(patientId: number): Promise<ApiResponse<any[]>> {
-    return apiService["request"](`/patient-portal/prescriptions/${patientId}`)
+    try {
+      const response = await apiService["request"](`/patient-portal/prescriptions/${patientId}`) as any
+      
+      if (response?.success && response?.data && Array.isArray(response.data)) {
+        return {
+          success: true,
+          data: response.data.map((rx: any) => ({
+            id: rx.id,
+            name: rx.medication_name || rx.name,
+            medication_name: rx.medication_name,
+            generic_name: rx.generic_name,
+            dosage: rx.dosage,
+            frequency: rx.frequency,
+            duration: rx.duration,
+            prescribed_by: rx.prescriber || rx.prescribed_by,
+            prescriber: rx.prescriber,
+            start_date: rx.start_date,
+            end_date: rx.end_date,
+            instructions: rx.instructions,
+            side_effects: [],
+            is_active: rx.is_active,
+            adherence_rate: 0,
+            strength: rx.strength,
+            dosage_form: rx.dosage_form,
+            therapeutic_class: rx.therapeutic_class,
+            created_at: rx.created_at,
+            updated_at: rx.updated_at
+          }))
+        }
+      }
+      return response || { success: false, error: "No data returned" }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch prescriptions"
+      }
+    }
   }
 
   async getTestResults(patientId: number): Promise<ApiResponse<any[]>> {
-    return apiService["request"](`/patient-portal/test-results/${patientId}`)
+    try {
+      const response = await apiService["request"](`/patient-portal/test-results/${patientId}`) as any
+      
+      if (response?.success && response?.data && Array.isArray(response.data)) {
+        return {
+          success: true,
+          data: response.data.map((result: any) => ({
+            id: result.id,
+            visit_id: result.visit_id,
+            test_code: result.test_code,
+            test_name: result.test_name,
+            result_value: result.result_value,
+            unit: result.unit,
+            reference_range: result.reference_range,
+            abnormal_flag: result.abnormal_flag,
+            test_date: result.test_date,
+            lab_name: result.lab_name,
+            notes: result.lab_name ? `Tested at ${result.lab_name}` : '',
+            ordered_by: result.ordered_by,
+            created_at: result.created_at,
+            updated_at: result.updated_at
+          }))
+        }
+      }
+      return response || { success: false, error: "No data returned" }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch test results"
+      }
+    }
   }
 
   async getInvoices(patientId: number): Promise<ApiResponse<any[]>> {
@@ -573,6 +690,39 @@ class PatientPortalService {
   }): Promise<ApiResponse<any[]>> {
     const queryString = params ? `?${new URLSearchParams(params as Record<string, string>)}` : ""
     return apiService["request"](`/patient-portal/locations${queryString}`)
+  }
+
+  async getPatientDiagnoses(patientId: number): Promise<ApiResponse<any[]>> {
+    try {
+      const response = await apiService["request"](`/patient-portal/diagnoses/${patientId}`) as any
+      
+      if (response?.success && response?.data && Array.isArray(response.data)) {
+        return {
+          success: true,
+          data: response.data.map((dx: any) => ({
+            id: dx.id,
+            patient_id: dx.patient_id,
+            visit_id: dx.visit_id,
+            diagnosis_text: dx.diagnosis_text,
+            icd10_code: dx.icd10_code,
+            severity: dx.severity,
+            status: dx.status || 'active',
+            onset_date: dx.onset_date,
+            resolution_date: dx.resolution_date,
+            clinical_notes: dx.clinical_notes,
+            confirmed_by: dx.confirmed_by,
+            created_at: dx.created_at,
+            updated_at: dx.updated_at
+          }))
+        }
+      }
+      return response || { success: false, error: "No data returned" }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch diagnoses"
+      }
+    }
   }
 }
 
