@@ -89,6 +89,52 @@ export interface PatientFeedback {
 }
 
 class PatientPortalService {
+  // Get patient portal token from localStorage
+  private getPatientToken(): string | null {
+    if (typeof window === "undefined") return null
+    
+    try {
+      const sessionData = localStorage.getItem("patient_portal_session")
+      if (sessionData) {
+        const parsed = JSON.parse(sessionData)
+        return parsed.token || null
+      }
+    } catch (error) {
+      console.warn("Failed to parse patient portal session:", error)
+    }
+    
+    return null
+  }
+
+  // Make authenticated request with patient portal token
+  private async makeAuthenticatedRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const token = this.getPatientToken()
+    
+    if (!token) {
+      throw new Error("No patient authentication token found")
+    }
+
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+      ...((options.headers as Record<string, string>) || {}),
+    }
+
+    const url = `${this.baseUrl}${endpoint}`
+    
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: response.statusText }))
+      throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    return response.json()
+  }
+
   // Medical Aid Validation for Registration (new endpoint)
   async validateMedicalAid(medicalAidNumber: string): Promise<
     ApiResponse<{
@@ -170,7 +216,14 @@ class PatientPortalService {
 
   // Patient Dashboard
   async getPatientDashboard(patientId: number): Promise<ApiResponse<PatientDashboardData>> {
-    return apiService["request"](`/patient-portal/dashboard/${patientId}`)
+    try {
+      return await this.makeAuthenticatedRequest(`/patient-portal/dashboard/${patientId}`)
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch dashboard data",
+      }
+    }
   }
 
   // Patient Appointments
@@ -184,15 +237,22 @@ class PatientPortalService {
       max_distance_km?: number
     },
   ): Promise<ApiResponse<any[]>> {
-    const params = new URLSearchParams()
-    if (filters?.province) params.set("province", filters.province)
-    if (filters?.city) params.set("city", filters.city)
-    if (filters?.date_from) params.set("date_from", filters.date_from)
-    if (filters?.date_to) params.set("date_to", filters.date_to)
-    if (filters?.max_distance_km) params.set("max_distance_km", filters.max_distance_km.toString())
+    try {
+      const params = new URLSearchParams()
+      if (filters?.province) params.set("province", filters.province)
+      if (filters?.city) params.set("city", filters.city)
+      if (filters?.date_from) params.set("date_from", filters.date_from)
+      if (filters?.date_to) params.set("date_to", filters.date_to)
+      if (filters?.max_distance_km) params.set("max_distance_km", filters.max_distance_km.toString())
 
-    const queryString = params.toString() ? `?${params.toString()}` : ""
-    return apiService["request"](`/patient-portal/appointments/available/${patientId}${queryString}`)
+      const queryString = params.toString() ? `?${params.toString()}` : ""
+      return await this.makeAuthenticatedRequest(`/patient-portal/appointments/available/${patientId}${queryString}`)
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch appointments",
+      }
+    }
   }
 
   async bookAppointmentViaPortal(
@@ -200,43 +260,78 @@ class PatientPortalService {
     appointmentId: number,
     notes?: string,
   ): Promise<ApiResponse<{ booking_reference: string; confirmation_sent: boolean }>> {
-    return apiService["request"](`/patient-portal/appointments/${appointmentId}/book`, {
-      method: "POST",
-      body: JSON.stringify({
-        patient_id: patientId,
-        patient_notes: notes,
-      }),
-    })
+    try {
+      return await this.makeAuthenticatedRequest(`/patient-portal/appointments/${appointmentId}/book`, {
+        method: "POST",
+        body: JSON.stringify({
+          patient_id: patientId,
+          patient_notes: notes,
+        }),
+      })
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to book appointment",
+      }
+    }
   }
 
   async cancelAppointmentViaPortal(
     appointmentId: number,
     reason: string,
   ): Promise<ApiResponse<{ cancelled: boolean }>> {
-    return apiService["request"](`/patient-portal/appointments/${appointmentId}/cancel`, {
-      method: "POST",
-      body: JSON.stringify({ cancellation_reason: reason }),
-    })
+    try {
+      return await this.makeAuthenticatedRequest(`/patient-portal/appointments/${appointmentId}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ cancellation_reason: reason }),
+      })
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to cancel appointment",
+      }
+    }
   }
 
   // Patient Preferences
   async getPatientPreferences(patientId: number): Promise<ApiResponse<PatientAppointmentPreferences>> {
-    return apiService["request"](`/patient-portal/preferences/${patientId}`)
+    try {
+      return await this.makeAuthenticatedRequest(`/patient-portal/preferences/${patientId}`)
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch preferences",
+      }
+    }
   }
 
   async updatePatientPreferences(
     patientId: number,
     preferences: Partial<PatientAppointmentPreferences>,
   ): Promise<ApiResponse<PatientAppointmentPreferences>> {
-    return apiService["request"](`/patient-portal/preferences/${patientId}`, {
-      method: "PUT",
-      body: JSON.stringify(preferences),
-    })
+    try {
+      return await this.makeAuthenticatedRequest(`/patient-portal/preferences/${patientId}`, {
+        method: "PUT",
+        body: JSON.stringify(preferences),
+      })
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to update preferences",
+      }
+    }
   }
 
   // Patient Health Records
   async getPatientVisitHistory(patientId: number): Promise<ApiResponse<PatientDashboardData["recent_visits"]>> {
-    return apiService["request"](`/patient-portal/visits/${patientId}`)
+    try {
+      return await this.makeAuthenticatedRequest(`/patient-portal/visits/${patientId}`)
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch visit history",
+      }
+    }
   }
 
   async getVisitDetails(visitId: number): Promise<
@@ -248,7 +343,14 @@ class PatientPortalService {
       prescriptions: any[]
     }>
   > {
-    return apiService["request"](`/patient-portal/visits/details/${visitId}`)
+    try {
+      return await this.makeAuthenticatedRequest(`/patient-portal/visits/details/${visitId}`)
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch visit details",
+      }
+    }
   }
 
   // Patient Feedback
@@ -256,25 +358,53 @@ class PatientPortalService {
     patientId: number,
     feedback: Omit<PatientFeedback, "id" | "patient_id">,
   ): Promise<ApiResponse<PatientFeedback>> {
-    return apiService["request"](`/patient-portal/feedback/${patientId}`, {
-      method: "POST",
-      body: JSON.stringify(feedback),
-    })
+    try {
+      return await this.makeAuthenticatedRequest(`/patient-portal/feedback/${patientId}`, {
+        method: "POST",
+        body: JSON.stringify(feedback),
+      })
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to submit feedback",
+      }
+    }
   }
 
   async getPatientFeedbackHistory(patientId: number): Promise<ApiResponse<PatientFeedback[]>> {
-    return apiService["request"](`/patient-portal/feedback/${patientId}`)
+    try {
+      return await this.makeAuthenticatedRequest(`/patient-portal/feedback/${patientId}`)
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch feedback history",
+      }
+    }
   }
 
   // Patient Communications
   async getPatientNotifications(patientId: number): Promise<ApiResponse<PatientDashboardData["notifications"]>> {
-    return apiService["request"](`/patient-portal/notifications/${patientId}`)
+    try {
+      return await this.makeAuthenticatedRequest(`/patient-portal/notifications/${patientId}`)
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch notifications",
+      }
+    }
   }
 
   async markNotificationAsRead(notificationId: number): Promise<ApiResponse<{ marked: boolean }>> {
-    return apiService["request"](`/patient-portal/notifications/${notificationId}/read`, {
-      method: "POST",
-    })
+    try {
+      return await this.makeAuthenticatedRequest(`/patient-portal/notifications/${notificationId}/read`, {
+        method: "POST",
+      })
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to mark notification as read",
+      }
+    }
   }
 
   // Patient Documents
@@ -289,11 +419,25 @@ class PatientPortalService {
       }>
     >
   > {
-    return apiService["request"](`/patient-portal/documents/${patientId}`)
+    try {
+      return await this.makeAuthenticatedRequest(`/patient-portal/documents/${patientId}`)
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch documents",
+      }
+    }
   }
 
   async downloadPatientDocument(documentId: number): Promise<ApiResponse<{ download_url: string }>> {
-    return apiService["request"](`/patient-portal/documents/download/${documentId}`)
+    try {
+      return await this.makeAuthenticatedRequest(`/patient-portal/documents/download/${documentId}`)
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to download document",
+      }
+    }
   }
 
   // POLMED Membership Validation
