@@ -30,6 +30,7 @@ import {
   Pill,
   Sparkles,
   X,
+  XCircle,
   ChevronRight,
   Zap,
   Target,
@@ -1973,10 +1974,27 @@ export function ClinicalWorkflow({
                     { ok: hasCounseling, label: "Counseling session completed" },
                   ]
                   return (
-                    <ul className="list-disc ml-5">
+                    <ul className="space-y-2">
                       {items.map((it, idx) => (
-                        <li key={idx} className={it.ok ? "text-green-700" : "text-red-700"}>
-                          {it.label} {it.ok ? "Yes" : "No"}
+                        <li
+                          key={idx}
+                          className="flex items-center gap-3 rounded-lg border border-border/40 bg-background/60 px-3 py-2"
+                        >
+                          {it.ok ? (
+                            <CheckCircle className="w-4 h-4 text-emerald-600" aria-hidden="true" />
+                          ) : (
+                            <XCircle className="w-4 h-4 text-rose-600" aria-hidden="true" />
+                          )}
+                          <span className="flex-1 text-sm font-medium text-foreground">{it.label}</span>
+                          <span
+                            className={`text-xs font-semibold px-2 py-1 rounded-full border ${
+                              it.ok
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : "border-rose-200 bg-rose-50 text-rose-700"
+                            }`}
+                          >
+                            {it.ok ? "Complete" : "Pending"}
+                          </span>
                         </li>
                       ))}
                     </ul>
