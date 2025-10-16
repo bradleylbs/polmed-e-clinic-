@@ -827,6 +827,153 @@ def patient_portal_login():
         logger.error(f"Patient portal login error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
+def patient_portal_token_required(f):
+    """JWT token authentication decorator for patient portal endpoints"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'Token is missing'}), 401
+        
+        try:
+            if token.startswith('Bearer '):
+                token = token[7:]
+            
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            
+            # Validate patient portal token type
+            if data.get('type') != 'patient_portal':
+                return jsonify({'success': False, 'error': 'Invalid token type'}), 401
+            
+            patient_id = data.get('patient_id')
+            if not patient_id:
+                return jsonify({'success': False, 'error': 'Invalid token'}), 401
+            
+            # Optional: Verify patient still exists and is active
+            patient = DatabaseManager.execute_query(
+                "SELECT id FROM patients WHERE id = %s",
+                (patient_id,),
+                fetch=True
+            )
+            
+            if not patient:
+                return jsonify({'success': False, 'error': 'Invalid token'}), 401
+            
+            request.patient_id = patient_id
+            
+        except jwt.ExpiredSignatureError:
+            return jsonify({'success': False, 'error': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'success': False, 'error': 'Invalid token'}), 401
+        
+        return f(*args, **kwargs)
+    
+    return decorated
+
+@app.route('/api/patient-portal/dashboard/<int:patient_id>', methods=['GET'])
+@patient_portal_token_required
+def patient_portal_dashboard(patient_id: int):
+    """Get patient dashboard data (patient portal endpoint)"""
+    try:
+        # Verify token matches requested patient ID
+        if request.patient_id != patient_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # Get patient info
+        patient_query = """
+        SELECT id, CONCAT(first_name, ' ', last_name) as full_name, medical_aid_number,
+               is_palmed_member, member_type, phone_number, email
+        FROM patients WHERE id = %s
+        """
+        patient_info = DatabaseManager.execute_query(patient_query, (patient_id,), fetch=True)
+        
+        if not patient_info:
+            return jsonify({'success': False, 'error': 'Patient not found'}), 404
+        
+        patient_data = patient_info[0]
+        
+        # Get upcoming appointments (if appointments table exists)
+        upcoming_appointments = []
+        try:
+            appointments_query = """
+            SELECT a.id, a.booking_reference, rl.visit_date as appointment_date, 
+                   a.appointment_time, l.location_name, l.city, l.province, a.status
+            FROM appointments a
+            JOIN route_locations rl ON a.route_location_id = rl.id
+            JOIN locations l ON rl.location_id = l.id
+            WHERE a.patient_id = %s AND rl.visit_date >= CURDATE()
+            ORDER BY rl.visit_date, a.appointment_time
+            LIMIT 5
+            """
+            upcoming_appointments = DatabaseManager.execute_query(appointments_query, (patient_id,), fetch=True) or []
+        except Exception as e:
+            logger.warning(f"Could not fetch appointments: {e}")
+            upcoming_appointments = []
+        
+        # Get recent visits
+        recent_visits_query = """
+        SELECT pv.id as visit_id, pv.visit_date, l.location_name, pv.chief_complaint,
+               pv.is_completed, 
+               (SELECT COUNT(*) FROM visit_workflow_progress vwp WHERE vwp.visit_id = pv.id AND vwp.completed_at IS NOT NULL) as completed_stages,
+               (SELECT COUNT(*) FROM workflow_stages) as total_stages
+        FROM patient_visits pv
+        LEFT JOIN locations l ON pv.location_id = l.id
+        WHERE pv.patient_id = %s
+        ORDER BY pv.visit_date DESC
+        LIMIT 5
+        """
+        recent_visits = DatabaseManager.execute_query(recent_visits_query, (patient_id,), fetch=True) or []
+        
+        # Get health summary
+        health_summary = {
+            'total_visits': len(recent_visits) if recent_visits else 0,
+            'chronic_conditions': [],
+            'allergies': [],
+            'current_medications': [],
+            'last_visit_date': recent_visits[0]['visit_date'].isoformat() if recent_visits else None,
+            'recent_diagnoses': []
+        }
+        
+        # Parse JSON fields from patient record
+        try:
+            if patient_data.get('chronic_conditions'):
+                health_summary['chronic_conditions'] = json.loads(patient_data['chronic_conditions'])
+            if patient_data.get('allergies'):
+                health_summary['allergies'] = json.loads(patient_data['allergies'])
+            if patient_data.get('current_medications'):
+                health_summary['current_medications'] = json.loads(patient_data['current_medications'])
+        except (json.JSONDecodeError, TypeError):
+            pass
+        
+        # Get notifications (placeholder - implement based on your notifications system)
+        notifications = []
+        
+        dashboard_data = {
+            'patient_info': {
+                'id': patient_data['id'],
+                'full_name': patient_data['full_name'],
+                'medical_aid_number': patient_data['medical_aid_number'],
+                'is_palmed_member': bool(patient_data['is_palmed_member']),
+                'member_type': patient_data['member_type'],
+                'phone_number': patient_data['phone_number'],
+                'email': patient_data['email']
+            },
+            'upcoming_appointments': [_to_jsonable(appt) for appt in upcoming_appointments],
+            'recent_visits': [_to_jsonable(visit) for visit in recent_visits],
+            'health_summary': health_summary,
+            'notifications': notifications
+        }
+        
+        return jsonify({
+            'success': True,
+            'data': dashboard_data
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Patient portal dashboard error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 # ============================================================================
 # PATIENT MANAGEMENT ENDPOINTS
 # ============================================================================
