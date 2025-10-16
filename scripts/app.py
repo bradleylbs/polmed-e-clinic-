@@ -4648,7 +4648,7 @@ def get_dashboard_stats():
             stats['roleSpecificMetrics'] = {
                 'todayBookings': int(visit_data.get('today_visits', 0)),
                 'weekBookings': int(visit_data.get('week_visits', 0)),
-                'monthBookings': int(booking_data.get('month_bookings', 0)),
+                'monthBookings': int(visit_data.get('week_visits', 0)),
                 'metricType': 'registrations'
             }
 
