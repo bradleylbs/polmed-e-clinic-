@@ -1916,33 +1916,33 @@ export function ClinicalWorkflow({
                   <span className="ml-2">
                     {vitalSigns.bloodPressureSystolic && vitalSigns.bloodPressureDiastolic
                       ? `${vitalSigns.bloodPressureSystolic}/${vitalSigns.bloodPressureDiastolic}`
-                      : "â€”"}
+                      : "None"}
                   </span>
                 </div>
                 <div>
                   <span className="font-medium">Pulse:</span>
-                  <span className="ml-2">{vitalSigns.pulse || "â€”"} bpm</span>
+                  <span className="ml-2">{vitalSigns.pulse || "None"} bpm</span>
                 </div>
                 <div>
                   <span className="font-medium">Temp:</span>
-                  <span className="ml-2">{vitalSigns.temperature || "â€”"} Â°C</span>
+                  <span className="ml-2">{vitalSigns.temperature || "None"}°C</span>
                 </div>
               </div>
 
               {/* Key clinical summary */}
               <div className="mt-4 space-y-1">
                 <div className="text-sm">
-                  <span className="font-medium">Nursing:</span> {clinicalNotes.nursingAssessment || "â€”"}
+                  <span className="font-medium">Nursing:</span> {clinicalNotes.nursingAssessment || "None"}
                 </div>
                 <div className="text-sm">
-                  <span className="font-medium">Diagnosis:</span> {clinicalNotes.doctorDiagnosis || "â€”"}
+                  <span className="font-medium">Diagnosis:</span> {clinicalNotes.doctorDiagnosis || "None"}
                 </div>
                 <div className="text-sm">
                   <span className="font-medium">Medications:</span>{" "}
-                  {medications.length > 0 ? medications.map((m) => m.name).join(", ") : "â€”"}
+                  {medications.length > 0 ? medications.map((m) => m.name).join(", ") : "None"}
                 </div>
                 <div className="text-sm">
-                  <span className="font-medium">Counseling:</span> {clinicalNotes.counselingNotes || "â€”"}
+                  <span className="font-medium">Counseling:</span> {clinicalNotes.counselingNotes || "None"}
                 </div>
               </div>
 
@@ -1954,7 +1954,7 @@ export function ClinicalWorkflow({
                     {clinicalSummary.referrals.map((r: any) => (
                       <li key={r.id}>
                         {r.referral_type} - {r.reason} ({r.status})
-                        {r.appointment_date ? ` â€¢ ${r.appointment_date}` : ""}
+                        {r.appointment_date ? ` - ${r.appointment_date}` : ""}
                       </li>
                     ))}
                   </ul>
@@ -1976,7 +1976,7 @@ export function ClinicalWorkflow({
                     <ul className="list-disc ml-5">
                       {items.map((it, idx) => (
                         <li key={idx} className={it.ok ? "text-green-700" : "text-red-700"}>
-                          {it.label} {it.ok ? "âœ“" : "âœ—"}
+                          {it.label} {it.ok ? "Yes" : "No"}
                         </li>
                       ))}
                     </ul>
