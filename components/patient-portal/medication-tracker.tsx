@@ -1,321 +1,208 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Pill, AlertTriangle, CheckCircle, Plus, Calendar } from "lucide-react"
+import { Pill, AlertTriangle, CheckCircle, Plus, Calendar, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Switch } from "@/components/ui/switch"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { patientPortalService } from "@/lib/patient-portal-service"
+import { useToast } from "@/hooks/use-toast"
 
 interface Medication {
-  id: string
+  id: number
   name: string
   dosage: string
   frequency: string
-  prescribedBy: string
-  startDate: string
-  endDate?: string
+  prescribed_by: string
+  start_date: string
+  end_date?: string
   instructions: string
-  sideEffects?: string[]
-  isActive: boolean
-  adherenceRate: number
+  side_effects?: string[]
+  is_active: boolean
+  adherence_rate?: number
 }
 
-interface MedicationLog {
-  id: string
-  medicationId: string
-  takenAt: Date
-  dosage: string
-  notes?: string
-  skipped: boolean
+interface MedicationTrackerProps {
+  patientId: number
 }
 
-export function MedicationTracker() {
+export function MedicationTracker({ patientId }: MedicationTrackerProps) {
+  const { toast } = useToast()
   const [medications, setMedications] = useState<Medication[]>([])
-  const [medicationLogs, setMedicationLogs] = useState<MedicationLog[]>([])
-  const [showAddMedication, setShowAddMedication] = useState(false)
-  const [selectedMedication, setSelectedMedication] = useState<string>("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Load medications
-    const mockMedications: Medication[] = [
-      {
-        id: "1",
-        name: "Lisinopril",
-        dosage: "10mg",
-        frequency: "Once daily",
-        prescribedBy: "Dr. Sarah Johnson",
-        startDate: "2024-01-01",
-        instructions: "Take with food in the morning",
-        sideEffects: ["Dizziness", "Dry cough"],
-        isActive: true,
-        adherenceRate: 85,
-      },
-      {
-        id: "2",
-        name: "Metformin",
-        dosage: "500mg",
-        frequency: "Twice daily",
-        prescribedBy: "Dr. Michael Chen",
-        startDate: "2023-12-15",
-        instructions: "Take with meals",
-        sideEffects: ["Nausea", "Stomach upset"],
-        isActive: true,
-        adherenceRate: 92,
-      },
-      {
-        id: "3",
-        name: "Vitamin D3",
-        dosage: "1000 IU",
-        frequency: "Once daily",
-        prescribedBy: "Dr. Sarah Johnson",
-        startDate: "2023-11-01",
-        instructions: "Take with fat-containing meal",
-        isActive: true,
-        adherenceRate: 78,
-      },
-    ]
-    setMedications(mockMedications)
+    loadMedications()
+  }, [patientId])
 
-    // Load medication logs
-    const mockLogs: MedicationLog[] = [
-      {
-        id: "1",
-        medicationId: "1",
-        takenAt: new Date(),
-        dosage: "10mg",
-        skipped: false,
-      },
-      {
-        id: "2",
-        medicationId: "2",
-        takenAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-        dosage: "500mg",
-        skipped: false,
-      },
-    ]
-    setMedicationLogs(mockLogs)
-  }, [])
-
-  const getTodaysDoses = () => {
-    const today = new Date().toDateString()
-    return medications
-      .filter((med) => med.isActive)
-      .map((medication) => {
-        const todaysLogs = medicationLogs.filter(
-          (log) => log.medicationId === medication.id && log.takenAt.toDateString() === today,
-        )
-
-        const frequencyMap: { [key: string]: number } = {
-          "Once daily": 1,
-          "Twice daily": 2,
-          "Three times daily": 3,
-          "Four times daily": 4,
-        }
-
-        const expectedDoses = frequencyMap[medication.frequency] || 1
-        const takenDoses = todaysLogs.filter((log) => !log.skipped).length
-
-        return {
-          ...medication,
-          expectedDoses,
-          takenDoses,
-          isComplete: takenDoses >= expectedDoses,
-          nextDue: getNextDueTime(medication, todaysLogs),
-        }
+  const loadMedications = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const response = await patientPortalService.getPrescriptions(patientId)
+      if (response.success && response.data) {
+        setMedications(response.data)
+      } else {
+        setError(response.error || "Failed to load medications")
+        toast({
+          title: "Error",
+          description: response.error || "Failed to load medications",
+          variant: "destructive",
+        })
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Failed to load medications"
+      setError(errorMsg)
+      toast({
+        title: "Error",
+        description: errorMsg,
+        variant: "destructive",
       })
-  }
-
-  const getNextDueTime = (medication: Medication, todaysLogs: MedicationLog[]) => {
-    // Simplified logic - in real app, this would be more sophisticated
-    const now = new Date()
-    const hour = now.getHours()
-
-    if (medication.frequency === "Once daily") {
-      return todaysLogs.length === 0 ? "9:00 AM" : "Completed"
-    } else if (medication.frequency === "Twice daily") {
-      if (todaysLogs.length === 0) return "9:00 AM"
-      if (todaysLogs.length === 1) return "6:00 PM"
-      return "Completed"
+    } finally {
+      setIsLoading(false)
     }
-    return "Check schedule"
   }
 
-  const markAsTaken = (medicationId: string) => {
-    const newLog: MedicationLog = {
-      id: Date.now().toString(),
-      medicationId,
-      takenAt: new Date(),
-      dosage: medications.find((m) => m.id === medicationId)?.dosage || "",
-      skipped: false,
-    }
-    setMedicationLogs((prev) => [...prev, newLog])
+  const getFrequencyBadgeColor = (frequency: string) => {
+    const lower = frequency.toLowerCase()
+    if (lower.includes("daily")) return "bg-blue-100 text-blue-800"
+    if (lower.includes("twice")) return "bg-purple-100 text-purple-800"
+    if (lower.includes("three")) return "bg-orange-100 text-orange-800"
+    return "bg-gray-100 text-gray-800"
   }
 
-  const markAsSkipped = (medicationId: string) => {
-    const newLog: MedicationLog = {
-      id: Date.now().toString(),
-      medicationId,
-      takenAt: new Date(),
-      dosage: medications.find((m) => m.id === medicationId)?.dosage || "",
-      skipped: true,
-    }
-    setMedicationLogs((prev) => [...prev, newLog])
+  const getStatusColor = (isActive: boolean) => {
+    return isActive ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
   }
 
-  const getAdherenceColor = (rate: number) => {
-    if (rate >= 90) return "text-green-600"
-    if (rate >= 75) return "text-yellow-600"
-    return "text-red-600"
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="text-center py-8">
+          <div className="text-gray-500">Loading medications...</div>
+        </CardContent>
+      </Card>
+    )
   }
-
-  const todaysDoses = getTodaysDoses()
-  const completedToday = todaysDoses.filter((dose) => dose.isComplete).length
-  const totalToday = todaysDoses.length
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Medication Tracker</h2>
-          <p className="text-gray-600">Manage your medications and track adherence</p>
+          <h2 className="text-2xl font-bold">Medications</h2>
+          <p className="text-gray-600">Track your current prescriptions and medications</p>
         </div>
-        <Button onClick={() => setShowAddMedication(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Medication
-        </Button>
       </div>
 
-      {/* Today's Overview */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Calendar className="w-5 h-5 mr-2" />
-            Today's Medications
-          </CardTitle>
-          <CardDescription>
-            {completedToday} of {totalToday} doses completed today
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <Progress value={(completedToday / totalToday) * 100} className="w-full" />
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-            <div className="grid gap-3">
-              {todaysDoses.map((dose) => (
-                <div key={dose.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-3 h-3 rounded-full ${dose.isComplete ? "bg-green-500" : "bg-yellow-500"}`} />
-                    <div>
-                      <p className="font-medium">{dose.name}</p>
-                      <p className="text-sm text-gray-600">
-                        {dose.dosage} - {dose.frequency}
-                      </p>
-                      <p className="text-xs text-gray-500">Next due: {dose.nextDue}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Badge variant={dose.isComplete ? "default" : "secondary"}>
-                      {dose.takenDoses}/{dose.expectedDoses}
-                    </Badge>
-                    {!dose.isComplete && (
-                      <div className="flex space-x-1">
-                        <Button
-                          size="sm"
-                          onClick={() => markAsTaken(dose.id)}
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => markAsSkipped(dose.id)}>
-                          Skip
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* All Medications */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">All Medications</h3>
-        <div className="grid gap-4">
+      {medications.length === 0 ? (
+        <Card>
+          <CardContent className="text-center py-8">
+            <Pill className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+            <p className="text-gray-500">No medications found</p>
+            <p className="text-sm text-gray-400 mt-2">
+              Your medications will appear here once added by your healthcare provider
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
           {medications.map((medication) => (
             <Card key={medication.id}>
-              <CardContent className="p-4">
-                <div className="flex justify-between items-start">
-                  <div className="space-y-2 flex-1">
-                    <div className="flex items-center space-x-2">
-                      <Pill className="w-5 h-5 text-blue-600" />
-                      <h4 className="font-semibold">{medication.name}</h4>
-                      <Badge variant={medication.isActive ? "default" : "secondary"}>
-                        {medication.isActive ? "Active" : "Inactive"}
-                      </Badge>
+              <CardContent className="p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-start space-x-4 flex-1">
+                    <div className="bg-blue-100 p-3 rounded-lg mt-1">
+                      <Pill className="w-6 h-6 text-blue-600" />
                     </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <p className="text-gray-500">Dosage</p>
-                        <p className="font-medium">{medication.dosage}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500">Frequency</p>
-                        <p className="font-medium">{medication.frequency}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500">Prescribed by</p>
-                        <p className="font-medium">{medication.prescribedBy}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500">Adherence Rate</p>
-                        <p className={`font-medium ${getAdherenceColor(medication.adherenceRate)}`}>
-                          {medication.adherenceRate}%
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold">{medication.name}</h3>
                       <p className="text-sm text-gray-600">
-                        <strong>Instructions:</strong> {medication.instructions}
+                        {medication.dosage} • {medication.frequency}
                       </p>
-                      {medication.sideEffects && medication.sideEffects.length > 0 && (
-                        <div className="flex items-start space-x-2">
-                          <AlertTriangle className="w-4 h-4 text-yellow-500 mt-0.5" />
-                          <div>
-                            <p className="text-sm text-gray-600">
-                              <strong>Possible side effects:</strong>
-                            </p>
-                            <p className="text-sm text-gray-500">{medication.sideEffects.join(", ")}</p>
-                          </div>
-                        </div>
-                      )}
+                      <div className="flex items-center space-x-2 mt-2">
+                        <Badge variant="outline" className={getStatusColor(medication.is_active)}>
+                          {medication.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                        <Badge variant="outline" className={getFrequencyBadgeColor(medication.frequency)}>
+                          {medication.frequency}
+                        </Badge>
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="flex flex-col items-end space-y-2 ml-4">
-                    <Switch
-                      checked={medication.isActive}
-                      onCheckedChange={(checked) => {
-                        setMedications((prev) =>
-                          prev.map((med) => (med.id === medication.id ? { ...med, isActive: checked } : med)),
-                        )
-                      }}
-                    />
-                    <Button size="sm" variant="outline">
-                      Edit
-                    </Button>
                   </div>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Instructions</p>
+                    <p className="text-sm text-gray-600 mt-1">{medication.instructions}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Prescribed by</p>
+                    <p className="text-sm text-gray-600 mt-1">{medication.prescribed_by}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Start Date</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {new Date(medication.start_date).toLocaleDateString()}
+                    </p>
+                  </div>
+
+                  {medication.end_date && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">End Date</p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {new Date(medication.end_date).toLocaleDateString()}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {medication.side_effects && medication.side_effects.length > 0 && (
+                  <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                    <div className="flex items-start space-x-2">
+                      <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-yellow-800">Possible Side Effects</p>
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {medication.side_effects.map((effect, idx) => (
+                            <Badge key={idx} variant="outline" className="bg-yellow-100 text-yellow-800">
+                              {effect}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {medication.adherence_rate !== undefined && (
+                  <div className="mt-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <p className="text-sm font-medium text-gray-700">Adherence Rate</p>
+                      <span className="text-sm font-semibold text-gray-900">{medication.adherence_rate}%</span>
+                    </div>
+                    <Progress value={medication.adherence_rate} className="h-2" />
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
         </div>
-      </div>
+      )}
     </div>
   )
 }
