@@ -6807,6 +6807,399 @@ def cancel_appointment_via_portal(booking_id: int):
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 
+@app.route('/api/patient-portal/profile/<int:patient_id>', methods=['PUT'])
+@patient_portal_token_required
+def update_patient_profile(patient_id: int):
+    """Update patient profile information"""
+    try:
+        # Verify token matches requested patient ID
+        if request.patient_id != patient_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        data = request.get_json() or {}
+        
+        # Build update query dynamically based on provided fields
+        allowed_fields = ['phone_number', 'email', 'physical_address', 'emergency_contact_name', 'emergency_contact_phone']
+        update_fields = []
+        params = []
+        
+        for field in allowed_fields:
+            if field in data:
+                update_fields.append(f"{field} = %s")
+                params.append(data[field])
+        
+        if not update_fields:
+            return jsonify({'success': False, 'error': 'No fields to update'}), 400
+        
+        params.append(patient_id)
+        
+        query = f"""
+        UPDATE patients 
+        SET {', '.join(update_fields)}, updated_at = NOW()
+        WHERE id = %s
+        """
+        
+        DatabaseManager.execute_query(query, params)
+        
+        return jsonify({
+            'success': True,
+            'data': {'updated': True}
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Update profile error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/password/change', methods=['POST'])
+@patient_portal_token_required
+def change_patient_password():
+    """Change patient password"""
+    try:
+        data = request.get_json() or {}
+        patient_id = request.patient_id
+        
+        # Validate required fields
+        if not data.get('current_password') or not data.get('new_password'):
+            return jsonify({'success': False, 'error': 'Current and new password are required'}), 400
+        
+        # Get patient user record
+        query = """
+        SELECT pu.id, pu.password_hash
+        FROM patient_users pu
+        WHERE pu.patient_id = %s
+        """
+        
+        users = DatabaseManager.execute_query(query, (patient_id,), fetch=True)
+        if not users or len(users) == 0:
+            return jsonify({'success': False, 'error': 'Patient account not found'}), 404
+        
+        user = users[0]
+        
+        # Verify current password
+        from werkzeug.security import check_password_hash, generate_password_hash
+        if not check_password_hash(user['password_hash'], data.get('current_password', '')):
+            return jsonify({'success': False, 'error': 'Current password is incorrect'}), 401
+        
+        # Validate new password strength
+        if len(data.get('new_password', '')) < 8:
+            return jsonify({'success': False, 'error': 'New password must be at least 8 characters'}), 400
+        
+        # Update password
+        new_hash = generate_password_hash(data['new_password'])
+        update_query = """
+        UPDATE patient_users 
+        SET password_hash = %s, updated_at = NOW()
+        WHERE patient_id = %s
+        """
+        
+        DatabaseManager.execute_query(update_query, (new_hash, patient_id))
+        
+        return jsonify({
+            'success': True,
+            'data': {'changed': True}
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Change password error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/password/forgot', methods=['POST'])
+def forgot_patient_password():
+    """Request password reset for patient"""
+    try:
+        data = request.get_json() or {}
+        email = data.get('email', '').strip().lower()
+        
+        if not email:
+            return jsonify({'success': False, 'error': 'Email is required'}), 400
+        
+        # Find patient user with this email
+        query = """
+        SELECT pu.id, pu.patient_id, p.email
+        FROM patient_users pu
+        JOIN patients p ON pu.patient_id = p.id
+        WHERE p.email = %s
+        """
+        
+        users = DatabaseManager.execute_query(query, (email,), fetch=True)
+        if not users or len(users) == 0:
+            # Don't reveal if email exists (security best practice)
+            return jsonify({
+                'success': True,
+                'data': {'reset_sent': True, 'message': 'If email exists, reset link will be sent'}
+            }), 200
+        
+        user = users[0]
+        
+        # Generate reset token (valid for 24 hours)
+        import secrets
+        reset_token = secrets.token_urlsafe(32)
+        token_expiry = datetime.now() + timedelta(hours=24)
+        
+        # Store token in database
+        insert_query = """
+        INSERT INTO password_reset_tokens (patient_user_id, token, expires_at, created_at)
+        VALUES (%s, %s, %s, NOW())
+        """
+        
+        DatabaseManager.execute_query(insert_query, (user['id'], reset_token, token_expiry))
+        
+        # In production, send email with reset link
+        # email_service.send_password_reset_email(email, reset_token)
+        
+        logger.info(f"Password reset requested for patient user {user['id']}")
+        
+        return jsonify({
+            'success': True,
+            'data': {'reset_sent': True}
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Forgot password error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/password/reset', methods=['POST'])
+def reset_patient_password():
+    """Reset patient password using reset token"""
+    try:
+        data = request.get_json() or {}
+        reset_token = data.get('reset_token', '').strip()
+        new_password = data.get('new_password', '')
+        
+        if not reset_token or not new_password:
+            return jsonify({'success': False, 'error': 'Reset token and new password are required'}), 400
+        
+        if len(new_password) < 8:
+            return jsonify({'success': False, 'error': 'Password must be at least 8 characters'}), 400
+        
+        # Find valid reset token
+        query = """
+        SELECT id, patient_user_id, expires_at
+        FROM password_reset_tokens
+        WHERE token = %s AND expires_at > NOW() AND used_at IS NULL
+        """
+        
+        tokens = DatabaseManager.execute_query(query, (reset_token,), fetch=True)
+        if not tokens or len(tokens) == 0:
+            return jsonify({'success': False, 'error': 'Invalid or expired reset token'}), 401
+        
+        token_record = tokens[0]
+        
+        # Update password
+        from werkzeug.security import generate_password_hash
+        new_hash = generate_password_hash(new_password)
+        
+        update_query = """
+        UPDATE patient_users 
+        SET password_hash = %s, updated_at = NOW()
+        WHERE id = %s
+        """
+        
+        DatabaseManager.execute_query(update_query, (new_hash, token_record['patient_user_id']))
+        
+        # Mark token as used
+        mark_used_query = """
+        UPDATE password_reset_tokens 
+        SET used_at = NOW()
+        WHERE id = %s
+        """
+        
+        DatabaseManager.execute_query(mark_used_query, (token_record['id'],))
+        
+        return jsonify({
+            'success': True,
+            'data': {'reset': True}
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Reset password error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/verify-email', methods=['POST'])
+def verify_patient_email():
+    """Verify patient email address"""
+    try:
+        data = request.get_json() or {}
+        verification_token = data.get('verification_token', '').strip()
+        
+        if not verification_token:
+            return jsonify({'success': False, 'error': 'Verification token is required'}), 400
+        
+        # Find patient user with this verification token
+        query = """
+        SELECT pu.id, pu.patient_id
+        FROM patient_users pu
+        WHERE pu.verification_token = %s AND pu.is_verified = 0
+        """
+        
+        users = DatabaseManager.execute_query(query, (verification_token,), fetch=True)
+        if not users or len(users) == 0:
+            return jsonify({'success': False, 'error': 'Invalid or already verified token'}), 401
+        
+        user = users[0]
+        
+        # Mark as verified
+        update_query = """
+        UPDATE patient_users 
+        SET is_verified = 1, verified_at = NOW(), updated_at = NOW()
+        WHERE id = %s
+        """
+        
+        DatabaseManager.execute_query(update_query, (user['id'],))
+        
+        return jsonify({
+            'success': True,
+            'data': {'verified': True}
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Verify email error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/validate-membership', methods=['POST'])
+def validate_polmed_membership():
+    """Validate POLMED membership"""
+    try:
+        data = request.get_json() or {}
+        polmed_number = data.get('polmed_number', '').strip() if data.get('polmed_number') else None
+        medical_aid_number = data.get('medical_aid_number', '').strip() if data.get('medical_aid_number') else None
+        
+        if not polmed_number and not medical_aid_number:
+            return jsonify({'success': False, 'error': 'POLMED number or medical aid number is required'}), 400
+        
+        # Check against POLMED members (in production, this would call external POLMED API)
+        query = """
+        SELECT id, first_name, last_name, date_of_birth, email, member_type
+        FROM polmed_members
+        WHERE (polmed_member_number = %s OR medical_aid_number = %s)
+        LIMIT 1
+        """
+        
+        search_value = polmed_number or medical_aid_number
+        members = DatabaseManager.execute_query(query, (polmed_number, medical_aid_number), fetch=True)
+        
+        if members and len(members) > 0:
+            member = members[0]
+            return jsonify({
+                'success': True,
+                'data': {
+                    'is_valid': True,
+                    'member_type': member.get('member_type', 'active'),
+                    'first_name': member.get('first_name'),
+                    'last_name': member.get('last_name'),
+                    'validation_message': 'Member found in POLMED database'
+                }
+            }), 200
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'is_valid': False,
+                'validation_message': 'Member not found - may be private patient'
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Validate membership error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient/auth/register', methods=['POST'])
+def register_patient_via_portal():
+    """Register new patient via patient portal"""
+    try:
+        data = request.get_json() or {}
+        
+        # Validate required fields
+        required_fields = ['email', 'password', 'first_name', 'last_name', 'mobile_number', 'date_of_birth']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'success': False, 'error': f'{field} is required'}), 400
+        
+        email = data.get('email', '').strip().lower()
+        
+        # Check if email already exists
+        check_query = """
+        SELECT id FROM patient_users WHERE email = %s
+        """
+        
+        existing = DatabaseManager.execute_query(check_query, (email,), fetch=True)
+        if existing and len(existing) > 0:
+            return jsonify({'success': False, 'error': 'Email already registered'}), 409
+        
+        # Create patient record
+        from werkzeug.security import generate_password_hash
+        import secrets
+        
+        password_hash = generate_password_hash(data['password'])
+        verification_token = secrets.token_urlsafe(32)
+        
+        # First, create patient in patients table
+        patient_query = """
+        INSERT INTO patients (
+            first_name, last_name, date_of_birth, gender, phone_number, email,
+            is_palmed_member, medical_aid_number, member_type, status, created_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', NOW())
+        """
+        
+        patient_params = (
+            data['first_name'],
+            data['last_name'],
+            data.get('date_of_birth'),
+            data.get('gender', 'Not specified'),
+            data['mobile_number'],
+            email,
+            bool(data.get('polmed_number')),
+            data.get('polmed_number') or data.get('medical_aid_number'),
+            data.get('member_type', 'individual')
+        )
+        
+        result = DatabaseManager.execute_query(patient_query, patient_params)
+        
+        # Get the inserted patient ID
+        get_id_query = "SELECT id FROM patients WHERE email = %s ORDER BY id DESC LIMIT 1"
+        patients = DatabaseManager.execute_query(get_id_query, (email,), fetch=True)
+        
+        if not patients or len(patients) == 0:
+            return jsonify({'success': False, 'error': 'Failed to create patient record'}), 500
+        
+        patient_id = patients[0]['id']
+        
+        # Create patient user record
+        user_query = """
+        INSERT INTO patient_users (
+            patient_id, email, password_hash, verification_token,
+            is_verified, last_login, created_at
+        ) VALUES (%s, %s, %s, %s, 0, NULL, NOW())
+        """
+        
+        user_params = (patient_id, email, password_hash, verification_token)
+        DatabaseManager.execute_query(user_query, user_params)
+        
+        # In production, send verification email with token
+        # email_service.send_verification_email(email, verification_token)
+        
+        logger.info(f"New patient registered: {patient_id} ({email})")
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'patient_id': patient_id,
+                'requires_verification': True,
+                'message': 'Registration successful. Please verify your email.'
+            }
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Patient registration error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
 if __name__ == '__main__':
     # Disable the reloader to avoid SystemExit in debuggers (parent process exit).
     app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)# Force deployment 10/15/2025 16:58:42
