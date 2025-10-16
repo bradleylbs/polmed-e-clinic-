@@ -18,7 +18,7 @@ DB_CONFIG = {
 }
 
 print("\n" + "="*70)
-print("🚀 PALMED CLINIC ERP - SQL CRITICAL FIXES")
+print("🚀 POLMED CLINIC ERP - SQL CRITICAL FIXES")
 print("="*70)
 
 try:

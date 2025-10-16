@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to create test user accounts for PALMED Mobile Clinic ERP
+Script to create test user accounts for POLMED Mobile Clinic ERP
 Uses existing roles and data structure from the database
 """
 

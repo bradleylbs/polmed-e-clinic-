@@ -17,9 +17,10 @@ import { patientPortalService } from "@/lib/patient-portal-service"
 interface PatientProfileProps {
   patientId: number
   patientData: {
+    id?: number
     full_name: string
-    email: string
-    phone_number: string
+    email?: string
+    phone_number?: string
     medical_aid_number: string
     is_palmed_member: boolean
     member_type?: string
@@ -34,9 +35,9 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
 
   // Form state
   const [formData, setFormData] = useState({
-    full_name: patientData.full_name,
-    email: patientData.email,
-    phone_number: patientData.phone_number,
+    full_name: patientData.full_name || "",
+    email: patientData.email || "",
+    phone_number: patientData.phone_number || "",
     address: "123 Main Street, Johannesburg, 2000",
     emergency_contact_name: "Jane Doe",
     emergency_contact_phone: "+27 82 123 4567",

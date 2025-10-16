@@ -1,4 +1,4 @@
-# ⚡ QUICK START - Appointment Booking System
+# ⚡ QUICK START - POLMED Appointment Booking System
 
 ## 🚀 What Just Happened?
 

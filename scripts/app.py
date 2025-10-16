@@ -897,20 +897,43 @@ def patient_portal_dashboard(patient_id: int):
         # Get upcoming appointments (if appointments table exists)
         upcoming_appointments = []
         try:
+            # Try to get appointments with location info if available
             appointments_query = """
-            SELECT a.id, a.booking_reference, rl.visit_date as appointment_date, 
-                   a.appointment_time, l.location_name, l.city, l.province, a.status
+            SELECT a.id, a.booking_reference, 
+                   DATE(a.booked_at) as appointment_date,
+                   a.appointment_time, 
+                   COALESCE(l.location_name, rl.location_id) as location_name,
+                   COALESCE(l.city, '') as city,
+                   COALESCE(l.province, '') as province,
+                   a.status, a.duration_minutes
             FROM appointments a
-            JOIN route_locations rl ON a.route_location_id = rl.id
-            JOIN locations l ON rl.location_id = l.id
-            WHERE a.patient_id = %s AND rl.visit_date >= CURDATE()
-            ORDER BY rl.visit_date, a.appointment_time
+            LEFT JOIN route_locations rl ON a.route_location_id = rl.id
+            LEFT JOIN locations l ON rl.location_id = l.id
+            WHERE a.patient_id = %s AND a.status IN ('confirmed', 'pending')
+            ORDER BY a.booked_at DESC
             LIMIT 5
             """
             upcoming_appointments = DatabaseManager.execute_query(appointments_query, (patient_id,), fetch=True) or []
         except Exception as e:
-            logger.warning(f"Could not fetch appointments: {e}")
-            upcoming_appointments = []
+            logger.warning(f"Could not fetch appointments: {str(e)}")
+            # Fallback query with just basic appointment info
+            try:
+                fallback_query = """
+                SELECT id, booking_reference, 
+                       DATE(booked_at) as appointment_date,
+                       appointment_time, 
+                       'Mobile Clinic' as location_name,
+                       '' as city, '' as province,
+                       status, duration_minutes
+                FROM appointments
+                WHERE patient_id = %s AND status IN ('confirmed', 'pending')
+                ORDER BY booked_at DESC
+                LIMIT 5
+                """
+                upcoming_appointments = DatabaseManager.execute_query(fallback_query, (patient_id,), fetch=True) or []
+            except Exception as fallback_e:
+                logger.warning(f"Fallback appointment query also failed: {str(fallback_e)}")
+                upcoming_appointments = []
         
         # Get recent visits
         recent_visits_query = """

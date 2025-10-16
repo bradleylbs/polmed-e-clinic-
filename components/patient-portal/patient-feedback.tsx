@@ -338,7 +338,7 @@ export function PatientFeedback({ patientId }: PatientFeedbackProps) {
                     <Alert>
                       <CheckCircle className="h-4 w-4" />
                       <AlertDescription>
-                        <strong>Response from PALMED Team:</strong>
+                        <strong>Response from POLMED Team:</strong>
                         <br />
                         {feedback.response}
                       </AlertDescription>
