@@ -6273,10 +6273,13 @@ def get_patient_feedback_history(patient_id: int):
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 
-@app.route('/api/patient-portal/appointments/available/<int:patient_id>', methods=['GET'], endpoint='patient_available_appointments')
+@app.route('/api/patient-portal/appointments/available/<int:patient_id>', methods=['GET'], endpoint='patient_available_appointments_v2')
 @patient_portal_token_required
-def get_patient_available_appointments(patient_id: int):
-    """Get available appointment slots for patient"""
+def get_available_appointments_v2(patient_id: int):
+    """
+    Get available appointment slots for a patient from route_locations.
+    Frontend endpoint for appointment scheduler.
+    """
     try:
         # Verify token matches requested patient ID
         if request.patient_id != patient_id:
@@ -6287,21 +6290,22 @@ def get_patient_available_appointments(patient_id: int):
         date_to = request.args.get('date_to')
         location_id = request.args.get('location_id')
         
-        # Get available appointment slots from route_locations
+        # Query route_locations with capacity and appointment counts
         query = """
         SELECT rl.id, rl.route_id, rl.location_id, rl.visit_date, 
                rl.start_time, rl.end_time, rl.max_appointments, rl.appointment_duration,
                l.location_name, l.city, l.province, l.address,
                r.route_name, r.route_type,
-               COALESCE(app_count.booked_count, 0) as booked_count,
-               (rl.max_appointments - COALESCE(app_count.booked_count, 0)) as available_slots
+               COALESCE(app_count.booked_count, 0) AS booked_count,
+               GREATEST(rl.max_appointments - COALESCE(app_count.booked_count, 0), 0) AS available_slots
         FROM route_locations rl
         JOIN locations l ON rl.location_id = l.id
         JOIN routes r ON rl.route_id = r.id
         LEFT JOIN (
-            SELECT route_location_id, COUNT(*) as booked_count 
-            FROM appointments 
-            WHERE status NOT IN ('cancelled', 'no-show')
+            SELECT route_location_id, COUNT(*) AS booked_count
+            FROM appointments
+            WHERE status IS NOT NULL
+              AND LOWER(status) NOT IN ('cancelled', 'no-show', 'available')
             GROUP BY route_location_id
         ) app_count ON rl.id = app_count.route_location_id
         WHERE rl.visit_date >= CURDATE()
@@ -6320,9 +6324,9 @@ def get_patient_available_appointments(patient_id: int):
         
         query += " ORDER BY rl.visit_date, rl.start_time"
         
-        available_slots = DatabaseManager.execute_query(query, params, fetch=True) or []
+        available_slots = DatabaseManager.execute_query(query, tuple(params) if params else None, fetch=True) or []
         
-        # Generate time slots for each available route location
+        # Format response for frontend
         appointments_data = []
         for slot in available_slots:
             if slot['available_slots'] > 0:
@@ -6351,12 +6355,81 @@ def get_patient_available_appointments(patient_id: int):
             'success': True,
             'data': appointments_data
         }), 200
-        
+            
     except Exception as e:
-        logger.error(f"Get available appointments error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+    finally:
+        connection.close()
 
-
+@app.route('/api/patient-portal/appointments/book', methods=['POST'])
+def book_appointment_patient_portal():
+    """
+    Book an appointment for a patient.
+    Now correctly uses appointment_id from the appointments table
+    """
+    try:
+        data = request.get_json()
+        patient_id = data.get('patient_id')
+        appointment_id = data.get('appointment_id')  # Now expects appointment_id
+        reason = data.get('reason', '')
+        
+        if not patient_id or not appointment_id:
+            return jsonify({
+                'success': False,
+                'error': 'Patient ID and Appointment ID are required'
+            }), 400
+        
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            # Check if appointment is still available
+            cursor.execute("""
+                SELECT status FROM appointments 
+                WHERE appointment_id = %s
+            """, (appointment_id,))
+            
+            appointment = cursor.fetchone()
+            
+            if not appointment:
+                return jsonify({
+                    'success': False,
+                    'error': 'Appointment not found'
+                }), 404
+            
+            if appointment['status'] != 'Available':
+                return jsonify({
+                    'success': False,
+                    'error': 'Appointment is no longer available'
+                }), 400
+            
+            cursor.execute("""
+                UPDATE appointments 
+                SET patient_id = %s,
+                    status = 'Scheduled',
+                    reason = %s,
+                    updated_at = NOW()
+                WHERE appointment_id = %s
+            """, (patient_id, reason, appointment_id))
+            
+            connection.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Appointment booked successfully',
+                'appointment_id': appointment_id
+            }), 200
+            
+    except Exception as e:
+        connection.rollback()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+    finally:
+        connection.close()
+    
 @app.route('/api/patient-portal/visits/<int:patient_id>', methods=['GET'])
 @patient_portal_token_required
 def get_patient_visit_history(patient_id: int):
