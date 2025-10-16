@@ -6193,6 +6193,620 @@ def get_patient_visit_history(patient_id: int):
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 
+# ============================================================================
+# MISSING PATIENT PORTAL ENDPOINTS - Phase 1: Critical Features
+# ============================================================================
+
+@app.route('/api/patient-portal/prescriptions/<int:patient_id>', methods=['GET'])
+@patient_portal_token_required
+def get_patient_prescriptions(patient_id: int):
+    """Get patient prescriptions with medication details"""
+    try:
+        # Verify token matches requested patient ID
+        if request.patient_id != patient_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # Query prescriptions with medication details
+        query = """
+        SELECT 
+            p.id, p.medication_id, p.dosage, p.frequency, p.duration, p.instructions,
+            p.start_date, p.end_date, p.is_active, p.created_at, p.updated_at,
+            m.medication_name, m.generic_name, m.dosage_form, m.strength, m.therapeutic_class,
+            pv.visit_date, u.first_name as prescriber_first_name, u.last_name as prescriber_last_name
+        FROM prescriptions p
+        LEFT JOIN medications m ON p.medication_id = m.id
+        LEFT JOIN patient_visits pv ON p.visit_id = pv.id
+        LEFT JOIN users u ON p.prescribed_by = u.id
+        WHERE p.patient_id = %s
+        ORDER BY p.start_date DESC
+        LIMIT 100
+        """
+        
+        prescriptions = DatabaseManager.execute_query(query, (patient_id,), fetch=True) or []
+        
+        prescriptions_data = []
+        for rx in prescriptions:
+            prescriptions_data.append({
+                'id': rx['id'],
+                'medication_id': rx['medication_id'],
+                'medication_name': rx['medication_name'],
+                'generic_name': rx['generic_name'],
+                'dosage_form': rx['dosage_form'],
+                'strength': rx['strength'],
+                'therapeutic_class': rx['therapeutic_class'],
+                'dosage': rx['dosage'],
+                'frequency': rx['frequency'],
+                'duration': rx['duration'],
+                'instructions': rx['instructions'],
+                'start_date': rx['start_date'].isoformat() if rx['start_date'] else None,
+                'end_date': rx['end_date'].isoformat() if rx['end_date'] else None,
+                'is_active': bool(rx['is_active']),
+                'visit_date': rx['visit_date'].isoformat() if rx['visit_date'] else None,
+                'prescriber': f"{rx['prescriber_first_name']} {rx['prescriber_last_name']}" if rx['prescriber_first_name'] else None,
+                'created_at': rx['created_at'].isoformat() if rx['created_at'] else None,
+                'updated_at': rx['updated_at'].isoformat() if rx['updated_at'] else None
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': prescriptions_data,
+            'count': len(prescriptions_data)
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get prescriptions error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/test-results/<int:patient_id>', methods=['GET'])
+@patient_portal_token_required
+def get_patient_test_results(patient_id: int):
+    """Get patient laboratory test results"""
+    try:
+        # Verify token matches requested patient ID
+        if request.patient_id != patient_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # Query test results
+        query = """
+        SELECT 
+            tr.id, tr.visit_id, tr.test_code, tr.test_name, tr.result_value, tr.unit,
+            tr.reference_range, tr.abnormal_flag, tr.test_date, tr.lab_name,
+            tr.created_at, tr.updated_at,
+            pv.visit_date, u.first_name as ordered_by_first, u.last_name as ordered_by_last
+        FROM test_results tr
+        LEFT JOIN patient_visits pv ON tr.visit_id = pv.id
+        LEFT JOIN users u ON tr.ordered_by = u.id
+        WHERE tr.patient_id = %s
+        ORDER BY tr.test_date DESC
+        LIMIT 200
+        """
+        
+        test_results = DatabaseManager.execute_query(query, (patient_id,), fetch=True) or []
+        
+        results_data = []
+        for result in test_results:
+            results_data.append({
+                'id': result['id'],
+                'visit_id': result['visit_id'],
+                'test_code': result['test_code'],
+                'test_name': result['test_name'],
+                'result_value': result['result_value'],
+                'unit': result['unit'],
+                'reference_range': result['reference_range'],
+                'abnormal_flag': result['abnormal_flag'],  # L=Low, H=High, C=Critical, N=Normal
+                'test_date': result['test_date'].isoformat() if result['test_date'] else None,
+                'lab_name': result['lab_name'],
+                'visit_date': result['visit_date'].isoformat() if result['visit_date'] else None,
+                'ordered_by': f"{result['ordered_by_first']} {result['ordered_by_last']}" if result['ordered_by_first'] else None,
+                'created_at': result['created_at'].isoformat() if result['created_at'] else None,
+                'updated_at': result['updated_at'].isoformat() if result['updated_at'] else None
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': results_data,
+            'count': len(results_data)
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get test results error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/medical-records/<int:patient_id>', methods=['GET'])
+@patient_portal_token_required
+def get_patient_medical_records(patient_id: int):
+    """Get patient medical records and history"""
+    try:
+        # Verify token matches requested patient ID
+        if request.patient_id != patient_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # Query medical records
+        query = """
+        SELECT 
+            mr.id, mr.visit_id, mr.record_type, mr.record_date, mr.description,
+            mr.icd10_code, mr.severity, mr.status, mr.created_at, mr.updated_at,
+            pv.visit_date, pv.chief_complaint,
+            u.first_name as provider_first, u.last_name as provider_last,
+            l.location_name, l.city, l.province
+        FROM medical_records mr
+        LEFT JOIN patient_visits pv ON mr.visit_id = pv.id
+        LEFT JOIN users u ON mr.provider_id = u.id
+        LEFT JOIN locations l ON pv.location_id = l.id
+        WHERE mr.patient_id = %s
+        ORDER BY mr.record_date DESC
+        LIMIT 200
+        """
+        
+        medical_records = DatabaseManager.execute_query(query, (patient_id,), fetch=True) or []
+        
+        records_data = []
+        for record in medical_records:
+            records_data.append({
+                'id': record['id'],
+                'visit_id': record['visit_id'],
+                'record_type': record['record_type'],  # diagnosis, procedure, allergy, condition, etc
+                'record_date': record['record_date'].isoformat() if record['record_date'] else None,
+                'description': record['description'],
+                'icd10_code': record['icd10_code'],
+                'severity': record['severity'],  # mild, moderate, severe
+                'status': record['status'],  # active, resolved, archived
+                'visit_date': record['visit_date'].isoformat() if record['visit_date'] else None,
+                'chief_complaint': record['chief_complaint'],
+                'provider': f"{record['provider_first']} {record['provider_last']}" if record['provider_first'] else None,
+                'location': {
+                    'name': record['location_name'],
+                    'city': record['city'],
+                    'province': record['province']
+                } if record['location_name'] else None,
+                'created_at': record['created_at'].isoformat() if record['created_at'] else None,
+                'updated_at': record['updated_at'].isoformat() if record['updated_at'] else None
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': records_data,
+            'count': len(records_data)
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get medical records error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/documents/<int:patient_id>', methods=['GET'])
+@patient_portal_token_required
+def get_patient_documents(patient_id: int):
+    """Get patient documents and uploaded files"""
+    try:
+        # Verify token matches requested patient ID
+        if request.patient_id != patient_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # Query documents
+        query = """
+        SELECT 
+            d.id, d.visit_id, d.document_type, d.file_name, d.file_size,
+            d.mime_type, d.is_confidential, d.download_count, d.created_at, d.updated_at,
+            pv.visit_date, u.first_name as uploader_first, u.last_name as uploader_last
+        FROM documents d
+        LEFT JOIN patient_visits pv ON d.visit_id = pv.id
+        LEFT JOIN users u ON d.uploaded_by = u.id
+        WHERE d.patient_id = %s
+        ORDER BY d.created_at DESC
+        LIMIT 200
+        """
+        
+        documents = DatabaseManager.execute_query(query, (patient_id,), fetch=True) or []
+        
+        documents_data = []
+        for doc in documents:
+            documents_data.append({
+                'id': doc['id'],
+                'visit_id': doc['visit_id'],
+                'document_type': doc['document_type'],  # prescription, report, certificate, referral, etc
+                'file_name': doc['file_name'],
+                'file_size': doc['file_size'],
+                'mime_type': doc['mime_type'],
+                'is_confidential': bool(doc['is_confidential']),
+                'download_count': doc['download_count'] or 0,
+                'visit_date': doc['visit_date'].isoformat() if doc['visit_date'] else None,
+                'uploaded_by': f"{doc['uploader_first']} {doc['uploader_last']}" if doc['uploader_first'] else None,
+                'created_at': doc['created_at'].isoformat() if doc['created_at'] else None,
+                'updated_at': doc['updated_at'].isoformat() if doc['updated_at'] else None,
+                'download_url': f'/api/patient-portal/documents/download/{doc["id"]}'
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': documents_data,
+            'count': len(documents_data)
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get documents error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/documents/download/<int:document_id>', methods=['GET'])
+@patient_portal_token_required
+def download_patient_document(document_id: int):
+    """Download a patient document file"""
+    try:
+        # Get document info
+        query = """
+        SELECT d.id, d.patient_id, d.file_path, d.file_name, d.mime_type, d.is_confidential
+        FROM documents d
+        WHERE d.id = %s
+        """
+        
+        doc = DatabaseManager.execute_query(query, (document_id,), fetch=True)
+        if not doc or len(doc) == 0:
+            return jsonify({'success': False, 'error': 'Document not found'}), 404
+        
+        doc = doc[0]
+        
+        # Verify access - patient can only download their own documents
+        if request.patient_id != doc['patient_id']:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # For now, return document metadata and URL
+        # In production, this would serve the actual file from storage
+        return jsonify({
+            'success': True,
+            'data': {
+                'id': doc['id'],
+                'file_name': doc['file_name'],
+                'mime_type': doc['mime_type'],
+                'file_path': doc['file_path'],
+                'is_confidential': bool(doc['is_confidential']),
+                'message': 'Download URL would be generated in production file storage integration'
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Download document error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/diagnoses/<int:patient_id>', methods=['GET'])
+@patient_portal_token_required
+def get_patient_diagnoses(patient_id: int):
+    """Get patient diagnoses"""
+    try:
+        # Verify token matches requested patient ID
+        if request.patient_id != patient_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # Query diagnoses
+        query = """
+        SELECT 
+            d.id, d.visit_id, d.icd10_code, d.diagnosis_text, d.primary_diagnosis,
+            d.certainty_level, d.severity, d.status, d.treatment_plan, d.created_at, d.updated_at,
+            pv.visit_date, u.first_name as recorded_by_first, u.last_name as recorded_by_last
+        FROM diagnoses d
+        LEFT JOIN patient_visits pv ON d.visit_id = pv.id
+        LEFT JOIN users u ON d.recorded_by = u.id
+        WHERE d.patient_id = %s
+        ORDER BY d.primary_diagnosis DESC, d.created_at DESC
+        LIMIT 100
+        """
+        
+        diagnoses = DatabaseManager.execute_query(query, (patient_id,), fetch=True) or []
+        
+        diagnoses_data = []
+        for diag in diagnoses:
+            diagnoses_data.append({
+                'id': diag['id'],
+                'visit_id': diag['visit_id'],
+                'icd10_code': diag['icd10_code'],
+                'diagnosis_text': diag['diagnosis_text'],
+                'primary_diagnosis': bool(diag['primary_diagnosis']),
+                'certainty_level': diag['certainty_level'],  # confirmed, probable, ruled_out
+                'severity': diag['severity'],  # mild, moderate, severe
+                'status': diag['status'],  # active, resolved, archived
+                'treatment_plan': diag['treatment_plan'],
+                'visit_date': diag['visit_date'].isoformat() if diag['visit_date'] else None,
+                'recorded_by': f"{diag['recorded_by_first']} {diag['recorded_by_last']}" if diag['recorded_by_first'] else None,
+                'created_at': diag['created_at'].isoformat() if diag['created_at'] else None,
+                'updated_at': diag['updated_at'].isoformat() if diag['updated_at'] else None
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': diagnoses_data,
+            'count': len(diagnoses_data)
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get diagnoses error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/visits/details/<int:visit_id>', methods=['GET'])
+@patient_portal_token_required
+def get_visit_details(visit_id: int):
+    """Get detailed information about a specific visit"""
+    try:
+        # First, get the visit and verify patient access
+        visit_query = """
+        SELECT pv.id, pv.patient_id, pv.visit_date, pv.chief_complaint, pv.is_completed,
+               pv.location_id, pv.created_at, pv.updated_at,
+               l.location_name, l.city, l.province, l.address
+        FROM patient_visits pv
+        LEFT JOIN locations l ON pv.location_id = l.id
+        WHERE pv.id = %s
+        """
+        
+        visits = DatabaseManager.execute_query(visit_query, (visit_id,), fetch=True)
+        if not visits or len(visits) == 0:
+            return jsonify({'success': False, 'error': 'Visit not found'}), 404
+        
+        visit = visits[0]
+        
+        # Verify patient access
+        if request.patient_id != visit['patient_id']:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # Get vital signs
+        vitals_query = """
+        SELECT id, temperature, blood_pressure_systolic, blood_pressure_diastolic,
+               heart_rate, respiratory_rate, oxygen_saturation, weight, height, created_at
+        FROM vital_signs
+        WHERE visit_id = %s
+        ORDER BY created_at DESC
+        LIMIT 1
+        """
+        vitals = DatabaseManager.execute_query(vitals_query, (visit_id,), fetch=True) or []
+        
+        # Get diagnoses
+        diagnoses_query = """
+        SELECT id, icd10_code, diagnosis_text, primary_diagnosis, severity, status, treatment_plan
+        FROM diagnoses
+        WHERE visit_id = %s
+        ORDER BY primary_diagnosis DESC
+        """
+        diagnoses = DatabaseManager.execute_query(diagnoses_query, (visit_id,), fetch=True) or []
+        
+        # Get test results
+        tests_query = """
+        SELECT id, test_code, test_name, result_value, unit, reference_range, abnormal_flag, test_date
+        FROM test_results
+        WHERE visit_id = %s
+        ORDER BY test_date DESC
+        """
+        tests = DatabaseManager.execute_query(tests_query, (visit_id,), fetch=True) or []
+        
+        # Get prescriptions
+        rx_query = """
+        SELECT p.id, p.medication_id, p.dosage, p.frequency, p.duration, p.instructions, p.start_date, p.end_date,
+               m.medication_name, m.strength, m.dosage_form
+        FROM prescriptions p
+        LEFT JOIN medications m ON p.medication_id = m.id
+        WHERE p.visit_id = %s
+        """
+        prescriptions = DatabaseManager.execute_query(rx_query, (visit_id,), fetch=True) or []
+        
+        # Get visit workflow stages
+        stages_query = """
+        SELECT stage_name, status, assigned_to, completed_at
+        FROM patient_visit_stages
+        WHERE visit_id = %s
+        ORDER BY created_at
+        """
+        stages = DatabaseManager.execute_query(stages_query, (visit_id,), fetch=True) or []
+        
+        # Compile response
+        visit_data = {
+            'id': visit['id'],
+            'patient_id': visit['patient_id'],
+            'visit_date': visit['visit_date'].isoformat() if visit['visit_date'] else None,
+            'chief_complaint': visit['chief_complaint'],
+            'is_completed': bool(visit['is_completed']),
+            'location': {
+                'name': visit['location_name'],
+                'city': visit['city'],
+                'province': visit['province'],
+                'address': visit['address']
+            } if visit['location_name'] else None,
+            'vital_signs': {
+                'temperature': vitals[0]['temperature'] if vitals else None,
+                'blood_pressure': f"{vitals[0]['blood_pressure_systolic']}/{vitals[0]['blood_pressure_diastolic']}" if vitals else None,
+                'heart_rate': vitals[0]['heart_rate'] if vitals else None,
+                'respiratory_rate': vitals[0]['respiratory_rate'] if vitals else None,
+                'oxygen_saturation': vitals[0]['oxygen_saturation'] if vitals else None,
+                'weight': vitals[0]['weight'] if vitals else None,
+                'height': vitals[0]['height'] if vitals else None,
+                'recorded_at': vitals[0]['created_at'].isoformat() if vitals and vitals[0]['created_at'] else None
+            },
+            'diagnoses': [
+                {
+                    'id': d['id'],
+                    'icd10_code': d['icd10_code'],
+                    'diagnosis_text': d['diagnosis_text'],
+                    'primary_diagnosis': bool(d['primary_diagnosis']),
+                    'severity': d['severity'],
+                    'status': d['status'],
+                    'treatment_plan': d['treatment_plan']
+                }
+                for d in diagnoses
+            ],
+            'test_results': [
+                {
+                    'id': t['id'],
+                    'test_code': t['test_code'],
+                    'test_name': t['test_name'],
+                    'result_value': t['result_value'],
+                    'unit': t['unit'],
+                    'reference_range': t['reference_range'],
+                    'abnormal_flag': t['abnormal_flag'],
+                    'test_date': t['test_date'].isoformat() if t['test_date'] else None
+                }
+                for t in tests
+            ],
+            'prescriptions': [
+                {
+                    'id': p['id'],
+                    'medication_name': p['medication_name'],
+                    'dosage': p['dosage'],
+                    'frequency': p['frequency'],
+                    'duration': p['duration'],
+                    'instructions': p['instructions'],
+                    'strength': p['strength'],
+                    'dosage_form': p['dosage_form'],
+                    'start_date': p['start_date'].isoformat() if p['start_date'] else None,
+                    'end_date': p['end_date'].isoformat() if p['end_date'] else None
+                }
+                for p in prescriptions
+            ],
+            'workflow_stages': [
+                {
+                    'stage_name': s['stage_name'],
+                    'status': s['status'],
+                    'completed_at': s['completed_at'].isoformat() if s['completed_at'] else None
+                }
+                for s in stages
+            ],
+            'created_at': visit['created_at'].isoformat() if visit['created_at'] else None,
+            'updated_at': visit['updated_at'].isoformat() if visit['updated_at'] else None
+        }
+        
+        return jsonify({
+            'success': True,
+            'data': visit_data
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get visit details error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/appointments/<int:appointment_id>/book', methods=['POST'])
+@patient_portal_token_required
+def book_appointment_via_portal(appointment_id: int):
+    """Book an available appointment for the patient"""
+    try:
+        data = request.get_json() or {}
+        patient_id = request.patient_id
+        
+        # Validate appointment exists and is available
+        apt_query = """
+        SELECT ra.id, ra.route_location_id, ra.available_slots, ra.appointment_duration,
+               rl.route_id, rl.location_id, rl.visit_date, rl.start_time, rl.end_time
+        FROM route_appointments ra
+        LEFT JOIN route_locations rl ON ra.route_location_id = rl.id
+        WHERE ra.id = %s AND ra.available_slots > 0
+        """
+        
+        appointments = DatabaseManager.execute_query(apt_query, (appointment_id,), fetch=True)
+        if not appointments or len(appointments) == 0:
+            return jsonify({'success': False, 'error': 'Appointment not available'}), 404
+        
+        apt = appointments[0]
+        
+        # Create booking
+        booking_id = str(uuid.uuid4())
+        booking_query = """
+        INSERT INTO bookings 
+        (patient_id, route_location_id, appointment_id, booking_reference, 
+         booking_status, notes, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
+        """
+        
+        params = (
+            patient_id,
+            apt['route_location_id'],
+            appointment_id,
+            booking_id,
+            'confirmed',
+            data.get('notes', '')
+        )
+        
+        result = DatabaseManager.execute_query(booking_query, params)
+        if not result:
+            return jsonify({'success': False, 'error': 'Failed to create booking'}), 400
+        
+        # Decrement available slots
+        update_query = "UPDATE route_appointments SET available_slots = available_slots - 1 WHERE id = %s"
+        DatabaseManager.execute_query(update_query, (appointment_id,))
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'booking_id': booking_id,
+                'appointment_id': appointment_id,
+                'visit_date': apt['visit_date'].isoformat() if apt['visit_date'] else None,
+                'start_time': apt['start_time'].strftime('%H:%M') if apt['start_time'] else None,
+                'end_time': apt['end_time'].strftime('%H:%M') if apt['end_time'] else None,
+                'status': 'confirmed',
+                'message': 'Appointment booked successfully'
+            }
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Book appointment error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/appointments/<int:booking_id>/cancel', methods=['POST'])
+@patient_portal_token_required
+def cancel_appointment_via_portal(booking_id: int):
+    """Cancel a booked appointment"""
+    try:
+        data = request.get_json() or {}
+        patient_id = request.patient_id
+        
+        # Verify booking exists and belongs to patient
+        booking_query = """
+        SELECT b.id, b.appointment_id, b.route_location_id, b.booking_status
+        FROM bookings b
+        WHERE b.id = %s AND b.patient_id = %s
+        """
+        
+        bookings = DatabaseManager.execute_query(booking_query, (booking_id, patient_id), fetch=True)
+        if not bookings or len(bookings) == 0:
+            return jsonify({'success': False, 'error': 'Booking not found'}), 404
+        
+        booking = bookings[0]
+        
+        if booking['booking_status'] == 'cancelled':
+            return jsonify({'success': False, 'error': 'Booking already cancelled'}), 400
+        
+        # Update booking status
+        update_query = """
+        UPDATE bookings 
+        SET booking_status = %s, cancellation_reason = %s, updated_at = NOW()
+        WHERE id = %s
+        """
+        
+        params = (
+            'cancelled',
+            data.get('reason', 'Patient cancelled'),
+            booking_id
+        )
+        
+        DatabaseManager.execute_query(update_query, params)
+        
+        # Increment available slots back
+        apt_update = "UPDATE route_appointments SET available_slots = available_slots + 1 WHERE id = %s"
+        DatabaseManager.execute_query(apt_update, (booking['appointment_id'],))
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'booking_id': booking_id,
+                'status': 'cancelled',
+                'message': 'Appointment cancelled successfully'
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Cancel appointment error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
 if __name__ == '__main__':
     # Disable the reloader to avoid SystemExit in debuggers (parent process exit).
     app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)# Force deployment 10/15/2025 16:58:42
