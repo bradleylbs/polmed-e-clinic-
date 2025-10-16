@@ -113,6 +113,7 @@ class DatabaseManager:
             logger.error("No database connection available")
             return None
         
+        cursor = None
         try:
             cursor = connection.cursor(dictionary=True)
             logger.info(f"Executing query: {query}")
@@ -2590,127 +2591,346 @@ def get_routes():
 @token_required
 @role_required(['administrator', 'doctor'])
 def create_route():
-    """Create a new route - IMPROVED ERROR HANDLING"""
+    """Create a new route with location schedules and appointment slots."""
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         logger.info(f"Creating route with data: {data}")
 
-        # Extract and validate required fields
+        # Extract core fields
         route_name = str(data.get('route_name') or data.get('name') or '').strip()
-        description = str(data.get('description', '')).strip() or None
-        start_date = data.get('start_date') or data.get('scheduled_date')
-        end_date = data.get('end_date')
-        province = str(data.get('province', '')).strip()
-        max_per_day = int(data.get('max_appointments_per_day') or data.get('max_appointments') or 100)
+        description = str(data.get('description') or '').strip() or None
+        start_date_raw = data.get('start_date') or data.get('scheduled_date')
+        end_date_raw = data.get('end_date')
+        province = str(data.get('province') or '').strip()
+        max_per_day_input = int(data.get('max_appointments_per_day') or data.get('max_appointments') or 0)
 
-        # Enhanced validation
-        missing = []
-        if not route_name: missing.append('route_name')
-        if not start_date: missing.append('start_date')
-        if not end_date: missing.append('end_date')
-        if not province: missing.append('province')
+        if not route_name:
+            return jsonify({'success': False, 'error': 'route_name is required'}), 400
+        if not start_date_raw or not end_date_raw:
+            return jsonify({'success': False, 'error': 'start_date and end_date are required'}), 400
+        if not province:
+            return jsonify({'success': False, 'error': 'province is required'}), 400
 
-        if missing:
-            logger.warning(f"Missing required fields: {missing}")
-            return jsonify({'success': False, 'error': f"Missing required fields: {', '.join(missing)}"}), 400
-
-        # Date validation
         try:
-            start_date_obj = datetime.fromisoformat(start_date.replace('Z', '+00:00')).date()
-            end_date_obj = datetime.fromisoformat(end_date.replace('Z', '+00:00')).date()
-            
-            if start_date_obj > end_date_obj:
-                return jsonify({'success': False, 'error': 'Start date cannot be after end date'}), 400
-                
-            if start_date_obj < date.today():
-                return jsonify({'success': False, 'error': 'Start date cannot be in the past'}), 400
-                
-        except (ValueError, AttributeError) as e:
-            logger.warning(f"Invalid date format: {e}")
+            start_date_obj = datetime.fromisoformat(str(start_date_raw).replace('Z', '+00:00')).date()
+            end_date_obj = datetime.fromisoformat(str(end_date_raw).replace('Z', '+00:00')).date()
+        except (ValueError, TypeError) as exc:
+            logger.warning(f"Invalid date format supplied: {exc}")
             return jsonify({'success': False, 'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
 
-        # Determine route type
-        route_type = data.get('route_type', 'Mixed')
-        location_type = data.get('location_type', '').strip().lower()
-        
-        if not route_type or route_type == 'Mixed':
-            if location_type == 'police_station':
+        if start_date_obj > end_date_obj:
+            return jsonify({'success': False, 'error': 'Start date cannot be after end date'}), 400
+
+        if start_date_obj < date.today():
+            logger.warning("Attempted to create route starting in the past")
+            return jsonify({'success': False, 'error': 'Start date cannot be in the past'}), 400
+
+        locations_payload = data.get('locations') or []
+        if not isinstance(locations_payload, list) or len(locations_payload) == 0:
+            return jsonify({'success': False, 'error': 'At least one location is required'}), 400
+
+        raw_slots = data.get('time_slots') or data.get('timeSlots') or []
+        sanitized_slots = []
+        for slot in raw_slots:
+            start_token = str(slot.get('start_time') or slot.get('startTime') or '').strip()
+            end_token = str(slot.get('end_time') or slot.get('endTime') or '').strip()
+            if not start_token or not end_token:
+                continue
+            try:
+                start_time_obj = datetime.strptime(start_token, '%H:%M').time()
+                end_time_obj = datetime.strptime(end_token, '%H:%M').time()
+                start_dt = datetime.combine(date.today(), start_time_obj)
+                end_dt = datetime.combine(date.today(), end_time_obj)
+                if end_dt <= start_dt:
+                    raise ValueError('End time must be after start time')
+                max_appts = int(slot.get('max_appointments') or slot.get('maxAppointments') or 0)
+                duration_minutes = max(int((end_dt - start_dt).total_seconds() // 60), 5)
+            except Exception as exc:
+                logger.warning(f"Skipping invalid time slot {slot}: {exc}")
+                continue
+
+            sanitized_slots.append({
+                'start_time': start_time_obj,
+                'end_time': end_time_obj,
+                'max_appointments': max_appts,
+                'duration_minutes': duration_minutes,
+            })
+
+        if not sanitized_slots:
+            # Provide sensible defaults if UI omitted slots
+            fallback_slots = [
+                ('08:00', '08:30', 10),
+                ('08:30', '09:00', 10),
+                ('09:00', '09:30', 10),
+                ('09:30', '10:00', 10),
+            ]
+            for start_token, end_token, capacity in fallback_slots:
+                start_time_obj = datetime.strptime(start_token, '%H:%M').time()
+                end_time_obj = datetime.strptime(end_token, '%H:%M').time()
+                duration_minutes = int((datetime.combine(date.today(), end_time_obj) - datetime.combine(date.today(), start_time_obj)).total_seconds() // 60)
+                sanitized_slots.append({
+                    'start_time': start_time_obj,
+                    'end_time': end_time_obj,
+                    'max_appointments': capacity,
+                    'duration_minutes': duration_minutes,
+                })
+
+        sanitized_slots.sort(key=lambda item: item['start_time'])
+        per_location_capacity = sum(max(0, slot['max_appointments']) for slot in sanitized_slots)
+        per_location_capacity = max(per_location_capacity, 1)
+        aggregated_start_time = sanitized_slots[0]['start_time']
+        aggregated_end_time = sanitized_slots[-1]['end_time']
+        default_duration = sanitized_slots[0]['duration_minutes']
+
+        computed_max_per_day = per_location_capacity * max(1, len(locations_payload))
+        max_appointments_per_day = max(max_per_day_input, computed_max_per_day)
+
+        route_type = data.get('route_type') or 'Mixed'
+        location_type_hint = str(data.get('location_type') or '').strip().lower()
+        if route_type == 'Mixed':
+            if location_type_hint == 'police_station':
                 route_type = 'Police Stations'
-            elif location_type == 'school':
+            elif location_type_hint == 'school':
                 route_type = 'Schools'
-            elif location_type == 'community_center':
+            elif location_type_hint == 'community_center':
                 route_type = 'Community Centers'
 
-        insert_sql = """
-            INSERT INTO routes (
-                route_name, description, start_date, end_date, province, 
-                route_type, max_appointments_per_day, created_by, is_active
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
-        """
         user_id = request.current_user.get('id')
-        
-        logger.info(f"Inserting route: {route_name}, {province}, {route_type}, {start_date} to {end_date}")
-        
-        result = DatabaseManager.execute_query(
-            insert_sql,
-            (route_name, description, start_date, end_date, province, route_type, max_per_day, user_id),
-            fetch=False,
-        )
 
-        logger.info(f"Insert routes rowcount: {result}")
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
 
-        if not result:
-            return jsonify({'success': False, 'error': 'Failed to create route'}), 500
+        route_locations_response = []
 
-        # Get the newly created route
-        new_route = DatabaseManager.execute_query(
+        def resolve_location_type_id(db_cursor, location_type_value: str):
+            lookup_map = {
+                'police_station': 'Police Station',
+                'police stations': 'Police Station',
+                'school': 'School',
+                'schools': 'School',
+                'community_center': 'Community Center',
+                'community centre': 'Community Center',
+                'community centers': 'Community Center',
+            }
+            normalized = str(location_type_value or '').strip().lower()
+            candidate = lookup_map.get(normalized, normalized.title())
+            db_cursor.execute(
+                "SELECT id, type_name FROM location_types WHERE LOWER(type_name) = %s LIMIT 1",
+                (candidate.lower(),)
+            )
+            match = db_cursor.fetchone()
+            if match:
+                return match['id'], match['type_name']
+
+            db_cursor.execute("SELECT id, type_name FROM location_types ORDER BY id ASC LIMIT 1")
+            fallback = db_cursor.fetchone()
+            return (fallback['id'], fallback['type_name']) if fallback else (None, None)
+
+        try:
+            cursor = connection.cursor(dictionary=True)
+
+            insert_route_sql = """
+                INSERT INTO routes (
+                    route_name, description, start_date, end_date, province,
+                    route_type, max_appointments_per_day, created_by, is_active
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
             """
-            SELECT 
-                id, route_name AS name, route_name, description, province, 
-                start_date AS scheduled_date, start_date, end_date,
-                route_type, max_appointments_per_day AS max_appointments,
-                max_appointments_per_day,
-                CASE 
-                    WHEN is_active = TRUE AND CURDATE() BETWEEN start_date AND end_date THEN 'active'
-                    WHEN is_active = TRUE AND CURDATE() < start_date THEN 'published'
-                    WHEN CURDATE() > end_date THEN 'completed'
-                    WHEN is_active = FALSE THEN 'draft'
-                    ELSE 'draft'
-                END AS status,
-                CASE 
-                    WHEN route_type = 'Police Stations' THEN 'police_station'
-                    WHEN route_type = 'Schools' THEN 'school'
-                    WHEN route_type = 'Community Centers' THEN 'community_center'
-                    ELSE 'mixed'
-                END AS location_type,
-                province AS location
-            FROM routes 
-            WHERE route_name = %s AND created_by = %s 
-            ORDER BY id DESC LIMIT 1
-            """,
-            (route_name, user_id),
-            fetch=True,
-        )
-        
-        if not new_route:
-            return jsonify({'success': False, 'error': 'Failed to retrieve created route'}), 500
-            
-        route_data = new_route[0]
-        
-        # Convert dates to strings
-        if route_data.get('scheduled_date'):
-            route_data['scheduled_date'] = route_data['scheduled_date'].isoformat()
-        if route_data.get('start_date'):
-            route_data['start_date'] = route_data['start_date'].isoformat()
-        if route_data.get('end_date'):
-            route_data['end_date'] = route_data['end_date'].isoformat()
 
-        logger.info(f"Route created successfully with id={route_data['id']}")
-        return jsonify({
-            'success': True, 
-            'data': route_data,
-            'message': 'Route created successfully'
-        }), 201
+            cursor.execute(
+                insert_route_sql,
+                (
+                    route_name,
+                    description,
+                    start_date_obj,
+                    end_date_obj,
+                    province,
+                    route_type,
+                    max_appointments_per_day,
+                    user_id,
+                ),
+            )
+
+            route_id = cursor.lastrowid
+            logger.info(f"Route inserted with id {route_id}")
+
+            insert_route_location_sql = """
+                INSERT INTO route_locations (
+                    route_id, location_id, visit_date, start_time, end_time,
+                    max_appointments, appointment_duration, notes
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """
+
+            for loc_payload in locations_payload:
+                location_name = str(loc_payload.get('name') or '').strip()
+                if not location_name:
+                    logger.warning(f"Skipping location without a name: {loc_payload}")
+                    continue
+
+                loc_province = str(loc_payload.get('province') or province)
+                loc_city = str(loc_payload.get('city') or loc_payload.get('address') or loc_province)
+                loc_address = str(loc_payload.get('address') or loc_city)
+                loc_capacity = int(loc_payload.get('capacity') or per_location_capacity)
+                contact_person = loc_payload.get('contact_person') or loc_payload.get('contactPerson')
+                contact_phone = loc_payload.get('contact_phone') or loc_payload.get('contactPhone')
+                loc_type_key = loc_payload.get('type') or location_type_hint or 'community_center'
+
+                cursor.execute(
+                    "SELECT id FROM locations WHERE location_name = %s AND province = %s LIMIT 1",
+                    (location_name, loc_province),
+                )
+                existing_location = cursor.fetchone()
+
+                if existing_location:
+                    location_id = existing_location['id']
+                else:
+                    location_type_id, canonical_type_name = resolve_location_type_id(cursor, loc_type_key)
+                    if not location_type_id:
+                        raise ValueError('Unable to resolve location_type_id')
+
+                    coordinates = loc_payload.get('coordinates') or {}
+                    lat = float(coordinates.get('lat') or 0)
+                    lng = float(coordinates.get('lng') or 0)
+                    wkt_point = f"POINT({lng} {lat})"
+
+                    insert_location_sql = """
+                        INSERT INTO locations (
+                            location_name, location_type_id, province, city, address,
+                            gps_coordinates, contact_person, contact_phone, is_active
+                        ) VALUES (%s, %s, %s, %s, %s, ST_GeomFromText(%s), %s, %s, TRUE)
+                    """
+
+                    cursor.execute(
+                        insert_location_sql,
+                        (
+                            location_name,
+                            location_type_id,
+                            loc_province,
+                            loc_city,
+                            loc_address,
+                            wkt_point,
+                            contact_person,
+                            contact_phone,
+                        ),
+                    )
+
+                    location_id = cursor.lastrowid
+                    logger.info(f"Created new location {location_id} for {location_name}")
+
+                current_date = start_date_obj
+                while current_date <= end_date_obj:
+                    cursor.execute(
+                        insert_route_location_sql,
+                        (
+                            route_id,
+                            location_id,
+                            current_date,
+                            aggregated_start_time.strftime('%H:%M:%S'),
+                            aggregated_end_time.strftime('%H:%M:%S'),
+                            max(loc_capacity, per_location_capacity),
+                            default_duration,
+                            description,
+                        ),
+                    )
+
+                    route_location_id = cursor.lastrowid
+                    logger.info(
+                        f"Route location {route_location_id} created for route {route_id} on {current_date}"
+                    )
+
+                    try:
+                        proc_cursor = connection.cursor()
+                        proc_cursor.callproc('sp_generate_appointment_slots', [route_location_id, None])
+                        proc_cursor.close()
+                    except Exception as proc_err:
+                        logger.warning(
+                            f"Failed to auto-generate appointment slots for route_location {route_location_id}: {proc_err}"
+                        )
+
+                    route_locations_response.append({
+                        'route_location_id': route_location_id,
+                        'location_id': location_id,
+                        'name': location_name,
+                        'type': str(loc_type_key or ''),
+                        'province': loc_province,
+                        'city': loc_city,
+                        'address': loc_address,
+                        'visit_date': current_date.isoformat(),
+                        'start_time': aggregated_start_time.strftime('%H:%M'),
+                        'end_time': aggregated_end_time.strftime('%H:%M'),
+                        'max_appointments': max(loc_capacity, per_location_capacity),
+                        'appointment_duration': default_duration,
+                        'contact_person': contact_person,
+                        'contact_phone': contact_phone,
+                    })
+
+                    current_date += timedelta(days=1)
+
+            connection.commit()
+
+            cursor.execute(
+                """
+                SELECT 
+                    id, route_name AS name, route_name, description, province,
+                    start_date AS scheduled_date, start_date, end_date,
+                    route_type, max_appointments_per_day AS max_appointments,
+                    max_appointments_per_day,
+                    CASE 
+                        WHEN is_active = TRUE AND CURDATE() BETWEEN start_date AND end_date THEN 'active'
+                        WHEN is_active = TRUE AND CURDATE() < start_date THEN 'published'
+                        WHEN CURDATE() > end_date THEN 'completed'
+                        WHEN is_active = FALSE THEN 'draft'
+                        ELSE 'draft'
+                    END AS status
+                FROM routes
+                WHERE id = %s
+                """,
+                (route_id,),
+            )
+            route_row = cursor.fetchone() or {}
+
+            for date_field in ('scheduled_date', 'start_date', 'end_date'):
+                if route_row.get(date_field):
+                    route_row[date_field] = route_row[date_field].isoformat()
+
+            response_time_slots = [
+                {
+                    'start_time': slot['start_time'].strftime('%H:%M'),
+                    'end_time': slot['end_time'].strftime('%H:%M'),
+                    'max_appointments': slot['max_appointments'],
+                    'appointment_duration': slot['duration_minutes'],
+                }
+                for slot in sanitized_slots
+            ]
+
+            logger.info(f"Route {route_id} created with {len(route_locations_response)} location entries")
+
+            return (
+                jsonify(
+                    {
+                        'success': True,
+                        'data': {
+                            **route_row,
+                            'locations': route_locations_response,
+                            'time_slots': response_time_slots,
+                        },
+                        'message': 'Route created successfully',
+                    }
+                ),
+                201,
+            )
+
+        except Exception as exc:
+            connection.rollback()
+            logger.error(f"Create route failed: {exc}", exc_info=True)
+            return jsonify({'success': False, 'error': 'Failed to create route'}), 500
+        finally:
+            try:
+                if cursor:
+                    cursor.close()
+            except Exception:
+                pass
+            connection.close()
 
     except Exception as e:
         logger.error(f"Create route error: {e}", exc_info=True)

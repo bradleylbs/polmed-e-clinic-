@@ -46,6 +46,7 @@ export interface CreatePatientRequest {
 
 export type RouteLocationDTO = {
   id?: number | string
+  route_location_id?: number
   name?: string
   type?: string
   city?: string
@@ -54,6 +55,15 @@ export type RouteLocationDTO = {
   contact_phone?: string
   province?: string
   capacity?: number
+  visit_date?: string
+  start_time?: string
+  end_time?: string
+  max_appointments?: number
+  appointment_duration?: number
+  coordinates?: {
+    lat: number
+    lng: number
+  }
 }
 
 // Updated Route interface to match backend
@@ -74,6 +84,11 @@ export interface Route {
   max_appointments_per_day?: number
   status?: string
   locations?: RouteLocationDTO[]
+  time_slots?: Array<{
+    start_time: string
+    end_time: string
+    max_appointments: number
+  }>
   created_by?: number
   is_active?: boolean
   route_type?: string
@@ -606,6 +621,7 @@ class ApiService {
     name?: string
     location?: string
     locations?: RouteLocationDTO[]
+    time_slots?: Array<{ start_time: string; end_time: string; max_appointments: number }>
   }): Promise<ApiResponse<Route>> {
     // Ensure required fields are present
     const routePayload = {
@@ -625,6 +641,30 @@ class ApiService {
               : "Mixed"),
       max_appointments_per_day: payload.max_appointments_per_day || payload.max_appointments || 100,
       ...(payload.status && { status: payload.status }),
+      ...(payload.locations && payload.locations.length
+        ? {
+            locations: payload.locations.map((loc) => ({
+              name: loc.name,
+              type: loc.type,
+              province: loc.province,
+              city: loc.city,
+              address: loc.address,
+              capacity: loc.capacity,
+              contact_person: loc.contact_person,
+              contact_phone: loc.contact_phone,
+              coordinates: loc.coordinates,
+            })),
+          }
+        : {}),
+      ...(payload.time_slots && payload.time_slots.length
+        ? {
+            time_slots: payload.time_slots.map((slot) => ({
+              start_time: slot.start_time,
+              end_time: slot.end_time,
+              max_appointments: slot.max_appointments,
+            })),
+          }
+        : {}),
     }
 
     console.log("📤 Creating route with payload:", routePayload)

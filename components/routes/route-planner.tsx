@@ -202,6 +202,24 @@ export function RoutePlanner({ userRole, onRouteCreated, routeToEdit, onRouteUpd
     const perLocationCapacity = timeSlots.reduce((sum, s) => sum + Number(s.maxAppointments || 0), 0)
     const maxPerDay = Math.max(1, perLocationCapacity * locations.length)
 
+    const sanitizedLocations = locations.map((loc) => ({
+      name: loc.name,
+      type: loc.type,
+      address: loc.address,
+      province: loc.province,
+      city: loc.address?.split(',')[0]?.trim() || loc.province,
+      capacity: loc.capacity,
+      contact_person: loc.contactPerson,
+      contact_phone: loc.contactPhone,
+      coordinates: loc.coordinates,
+    }))
+
+    const sanitizedSlots = timeSlots.map((slot) => ({
+      start_time: slot.startTime,
+      end_time: slot.endTime,
+      max_appointments: Number(slot.maxAppointments || 0),
+    }))
+
     const payload = {
       route_name: routeName,
       description: description || undefined,
@@ -210,6 +228,8 @@ export function RoutePlanner({ userRole, onRouteCreated, routeToEdit, onRouteUpd
       province: selectedProvince,
       route_type: routeType,
       max_appointments_per_day: maxPerDay,
+      locations: sanitizedLocations,
+      time_slots: sanitizedSlots,
     }
 
     if (!offlineManager.getConnectionStatus()) {
@@ -278,32 +298,62 @@ export function RoutePlanner({ userRole, onRouteCreated, routeToEdit, onRouteUpd
 
     const apiRoute: ApiRoute = resp.data
 
+    const apiLocations = Array.isArray(apiRoute.locations) ? apiRoute.locations : []
+    const nowToken = Date.now()
+    const groupedLocations = new Map<string, RouteLocation>()
+
+    apiLocations.forEach((loc: any) => {
+      const key = String(
+        loc.location_id ?? loc.route_location_id ?? loc.id ?? `loc-${nowToken}`,
+      )
+      if (!groupedLocations.has(key)) {
+        groupedLocations.set(key, {
+          id: key,
+          name: loc.name || loc.location_name || "Unknown Location",
+          type: (loc.type || loc.location_type || "community_center") as RouteLocation["type"],
+          address: loc.address || loc.city || selectedProvince,
+          province: loc.province || selectedProvince,
+          capacity: loc.max_appointments || loc.capacity || 50,
+          contactPerson: loc.contact_person || loc.contactPerson,
+          contactPhone: loc.contact_phone || loc.contactPhone,
+        })
+      }
+    })
+
+    const mappedLocations = groupedLocations.size > 0 ? Array.from(groupedLocations.values()) : locations
+
+    const apiTimeSlots = Array.isArray(apiRoute.time_slots) ? apiRoute.time_slots : []
+    const mappedTimeSlots: TimeSlot[] =
+      apiTimeSlots.length > 0 && mappedLocations.length > 0
+        ? mappedLocations.flatMap((location) =>
+            apiTimeSlots.map((slot, index) => ({
+              id: `slot-${nowToken}-${location.id}-${index}`,
+              startTime: slot.start_time,
+              endTime: slot.end_time,
+              maxAppointments: Number(slot.max_appointments ?? 0),
+              bookedAppointments: 0,
+              locationId: location.id,
+            })),
+          )
+        : timeSlots.flatMap((slot) =>
+            locations.map((location) => ({
+              ...slot,
+              id: `slot-${nowToken}-${location.id}`,
+              locationId: location.id,
+            })),
+          )
+
     // Convert API response to frontend RouteSchedule format
     const mapped: RouteSchedule = {
-      id: String(apiRoute.id ?? `route-${Date.now()}`),
+      id: String(apiRoute.id ?? `route-${nowToken}`),
       routeName: apiRoute.name || apiRoute.route_name || routeName,
       description: apiRoute.description || `${selectedProvince} route`,
-      locations: (apiRoute.locations || []).map((loc: any) => ({
-        id: String(loc.id || `loc-${Date.now()}`),
-        name: loc.name || loc.location_name || 'Unknown Location',
-        type: (loc.type || loc.location_type || 'community_center') as RouteLocation["type"],
-        address: loc.address || loc.city || selectedProvince,
-        province: loc.province || selectedProvince,
-        capacity: loc.capacity || 50,
-        contactPerson: loc.contact_person,
-        contactPhone: loc.contact_phone,
-      })),
+      locations: mappedLocations,
       startDate: new Date(apiRoute.scheduled_date || apiRoute.start_date || startDate),
       endDate: new Date(apiRoute.end_date || apiRoute.scheduled_date || endDate),
-      timeSlots: timeSlots.flatMap((slot) =>
-        locations.map((location) => ({
-          ...slot,
-          id: `slot-${Date.now()}-${location.id}`,
-          locationId: location.id,
-        })),
-      ),
-      status: (['draft','published','active','completed'] as const).includes(apiRoute.status as any) 
-        ? (apiRoute.status as any) 
+      timeSlots: mappedTimeSlots,
+      status: (['draft','published','active','completed'] as const).includes(apiRoute.status as any)
+        ? (apiRoute.status as any)
         : 'draft',
       createdBy: 'system',
       createdAt: new Date(),

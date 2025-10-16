@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Calendar, Clock, MapPin, Plus, AlertCircle, CheckCircle } from "lucide-react"
+import { useState, useEffect, useMemo } from "react"
+import { Calendar, Clock, MapPin, Plus, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -92,6 +92,17 @@ export function AppointmentScheduler({ patientId }: AppointmentSchedulerProps) {
       setIsLoadingAppointments(false)
     }
   }
+
+  const slotsByLocation = useMemo(() => {
+    return availableSlots.reduce<Record<string, { summary: TimeSlot; slots: TimeSlot[] }>>((acc, slot) => {
+      const key = `${slot.location.id}-${slot.date}`
+      if (!acc[key]) {
+        acc[key] = { summary: slot, slots: [] }
+      }
+      acc[key].slots.push(slot)
+      return acc
+    }, {})
+  }, [availableSlots])
 
   const loadAvailableSlots = async () => {
     if (!selectedDate) {
@@ -290,6 +301,48 @@ export function AppointmentScheduler({ patientId }: AppointmentSchedulerProps) {
                   ))}
                 </div>
               </div>
+            )}
+
+            {availableSlots.length > 0 && !isLoadingSlots && (
+              <Card className="border-dashed">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Slot Overview</CardTitle>
+                  <CardDescription>Quick glance at capacity per location and route</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {Object.values(slotsByLocation).map(({ summary, slots }) => {
+                    const totalAvailable = slots.reduce((sum, item) => sum + item.available_slots, 0)
+                    return (
+                      <div key={`${summary.location.id}-${summary.date}`} className="rounded-lg bg-muted/60 p-3 space-y-2">
+                        <div className="flex flex-wrap justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold">{summary.location.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {summary.location.city}, {summary.location.province} • {summary.date}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="bg-white">
+                            {summary.route.name}
+                          </Badge>
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          {slots.map((slot) => (
+                            <span
+                              key={`${slot.route_location_id}-${slot.start_time}`}
+                              className="rounded-full bg-background px-3 py-1 border"
+                            >
+                              {slot.start_time} - {slot.end_time} • {slot.available_slots} open
+                            </span>
+                          ))}
+                        </div>
+                        <div className="text-xs font-medium text-muted-foreground">
+                          Total available slots: {totalAvailable}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </CardContent>
+              </Card>
             )}
 
             {availableSlots.length === 0 && !isLoadingSlots && selectedDate && (
