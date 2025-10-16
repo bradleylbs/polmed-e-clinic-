@@ -285,16 +285,16 @@ export default function LandingPage() {
       <section id="features" className="relative border-y border-border/50 bg-gradient-to-b from-muted/30 to-muted/10">
         <div className="absolute inset-0 bg-grid-pattern opacity-5" />
         <div className="container relative mx-auto max-w-7xl px-4 sm:px-6 py-24 md:py-32">
-          <div className="text-center mb-20 space-y-6 max-w-3xl mx-auto">
+          <div className="text-center mb-20 space-y-6 max-w-4xl mx-auto">
             <Badge className="text-sm px-5 py-2 bg-primary/10 text-primary border-primary/20 hover:scale-105 transition-transform cursor-default">
               <Sparkles className="w-3.5 h-3.5 mr-2" />
-              Why Choose POLMED
+              POLMED Mobile Clinics
             </Badge>
             <h2 className="text-4xl sm:text-5xl md:text-6xl font-bold bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
-              Modern Healthcare Delivery
+              Healthcare at Your Doorstep
             </h2>
-            <p className="text-xl text-muted-foreground leading-relaxed">
-              Designed for accessibility, efficiency, and exceptional patient care
+            <p className="text-xl text-muted-foreground leading-relaxed max-w-3xl mx-auto">
+              Bringing quality healthcare services directly to your community through our state-of-the-art mobile clinic network
             </p>
           </div>
 
@@ -421,68 +421,109 @@ export default function LandingPage() {
       <section id="how-it-works" className="relative border-y border-border/50 bg-gradient-to-b from-muted/10 to-muted/30">
         <div className="absolute inset-0 bg-grid-pattern opacity-5" />
         <div className="container relative mx-auto max-w-7xl px-4 sm:px-6 py-24 md:py-32">
-          <div className="text-center mb-20 space-y-6 max-w-3xl mx-auto">
+          <div className="text-center mb-20 space-y-6 max-w-4xl mx-auto">
             <Badge className="text-sm px-5 py-2 bg-accent/10 text-accent border-accent/20 hover:scale-105 transition-transform cursor-default">
-              Simple Process
+              Easy Access to Healthcare
             </Badge>
             <h2 className="text-4xl sm:text-5xl md:text-6xl font-bold bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
               How It Works
             </h2>
             <p className="text-xl text-muted-foreground leading-relaxed">
-              Three simple steps to access quality healthcare in your community
+              Four simple steps to access quality healthcare through our mobile clinic network
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10 relative">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8 relative">
             {/* Enhanced connection lines */}
-            <div className="hidden md:block absolute top-20 left-1/6 right-1/6 h-0.5 overflow-hidden">
+            <div className="hidden lg:block absolute top-20 left-[12.5%] right-[12.5%] h-0.5 overflow-hidden">
               <div className="h-full w-full bg-gradient-to-r from-primary via-secondary to-accent opacity-30 animate-pulse" />
             </div>
 
             {[
               {
                 step: 1,
-                title: "Find a Location",
-                desc: "Discover published mobile clinic stops near you with interactive maps and schedules.",
+                title: "Find Mobile Clinic",
+                desc: "Check our interactive schedule to find mobile clinic locations visiting your area.",
                 icon: MapPin,
                 color: "primary",
+                action: "Browse Schedules"
               },
               {
                 step: 2,
-                title: "Choose a Time",
-                desc: "Select an open time slot that suits your schedule with real-time availability.",
-                icon: Clock,
+                title: "Book Appointment",
+                desc: "Select a convenient time slot and book your appointment online or by phone.",
+                icon: CalendarDays,
                 color: "secondary",
+                action: "Book Now"
               },
               {
                 step: 3,
-                title: "Confirm Booking",
-                desc: "Enter your details and receive instant confirmation with appointment reminders.",
-                icon: CheckCircle2,
+                title: "Visit Mobile Unit",
+                desc: "Arrive at the scheduled time for your appointment at the mobile clinic location.",
+                icon: Truck,
                 color: "accent",
+                action: "Get Care"
+              },
+              {
+                step: 4,
+                title: "Access Records",
+                desc: "View your health records, results, and follow-up care through your patient portal.",
+                icon: Activity,
+                color: "primary",
+                action: "Portal Access"
               },
             ].map((s, idx) => (
               <Card
                 key={s.step}
-                className="relative border-2 border-border/50 shadow-xl hover:shadow-2xl hover:border-primary/30 transition-all duration-500 hover:-translate-y-2 bg-card/80 backdrop-blur-sm group"
+                className="relative border-2 border-border/50 shadow-xl hover:shadow-2xl hover:border-primary/30 transition-all duration-500 hover:-translate-y-3 bg-card/80 backdrop-blur-sm group"
                 style={{ animationDelay: `${idx * 150}ms` }}
               >
-                <CardContent className="p-10 space-y-6">
-                  <div className="flex items-center gap-4">
+                <CardContent className="p-8 space-y-6 text-center">
+                  <div className="flex flex-col items-center gap-4">
                     <div className="relative">
                       <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br from-${s.color} to-${s.color}/70 flex items-center justify-center text-2xl font-bold text-${s.color}-foreground shadow-lg shadow-${s.color}/30 group-hover:scale-110 transition-all duration-500`}>
                         {s.step}
                       </div>
-                      <div className={`absolute -top-1 -right-1 w-8 h-8 rounded-full bg-${s.color} flex items-center justify-center text-${s.color}-foreground shadow-lg group-hover:rotate-12 transition-transform duration-500`}>
-                        <s.icon className="w-4 h-4" />
+                      <div className={`absolute -top-1 -right-1 w-8 h-8 rounded-full bg-${s.color}/20 backdrop-blur flex items-center justify-center border-2 border-${s.color} group-hover:rotate-12 transition-transform duration-500`}>
+                        <s.icon className={`w-4 h-4 text-${s.color}`} />
                       </div>
                     </div>
                   </div>
-                  <h3 className="text-2xl font-bold group-hover:text-primary transition-colors">{s.title}</h3>
-                  <p className="text-muted-foreground leading-relaxed text-base">{s.desc}</p>
+                  <div className="space-y-3">
+                    <h3 className="text-xl font-bold group-hover:text-primary transition-colors">{s.title}</h3>
+                    <p className="text-muted-foreground leading-relaxed text-sm">{s.desc}</p>
+                  </div>
+                  <Badge 
+                    variant="outline" 
+                    className={`text-xs text-${s.color} border-${s.color}/30 group-hover:bg-${s.color}/10 transition-colors cursor-default`}
+                  >
+                    {s.action}
+                  </Badge>
                 </CardContent>
               </Card>
             ))}
+          </div>
+
+          {/* Call to Action */}
+          <div className="text-center mt-16">
+            <div className="space-y-4 max-w-2xl mx-auto">
+              <p className="text-lg text-muted-foreground">
+                Ready to access healthcare in your community?
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Link href="/patient-portal">
+                  <Button size="lg" className="text-base px-8 h-12 shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 group">
+                    <User className="w-5 h-5 mr-2 group-hover:rotate-12 transition-transform" />
+                    Patient Portal
+                    <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                  </Button>
+                </Link>
+                <Button variant="outline" size="lg" className="text-base px-8 h-12 hover:scale-105 transition-all duration-300 group">
+                  <MapPin className="w-5 h-5 mr-2 group-hover:bounce transition-transform" />
+                  Find Locations
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -537,91 +578,163 @@ export default function LandingPage() {
       </section>
 
       {/* Enhanced Footer */}
-      <footer id="contact" className="border-t bg-background relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-muted/20" />
-        <div className="container relative mx-auto max-w-7xl px-4 py-16 text-sm text-muted-foreground space-y-12">
-          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-12">
-            <div className="space-y-6 max-w-md">
-              <div className="flex flex-col gap-6">
-                {/* Partnership Section */}
-                <div className="flex flex-col gap-3">
-                  <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                    Powered by
-                  </span>
-                  <Image
-                    src="/rm_logo.png"
-                    alt="Masala Ramabulana Holdings"
-                    width={320}
-                    height={140}
-                    className="h-16 w-auto sm:h-18 lg:h-20 object-contain transition-all hover:scale-105 duration-300 filter brightness-110"
-                    priority
-                    quality={100}
-                  />
-                </div>
-              </div>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Masala Ramabulana Holdings is proud to partner in delivering innovative healthcare access across the
-                POLMED mobile clinic network.
-              </p>
+      {/* Enhanced Contact Section */}
+      <section id="contact" className="relative border-t border-border/50 bg-gradient-to-b from-background to-muted/20">
+        <div className="absolute inset-0 bg-grid-pattern opacity-5" />
+        <div className="container relative mx-auto max-w-7xl px-4 sm:px-6 py-24 md:py-32">
+          <div className="text-center mb-20 space-y-6 max-w-4xl mx-auto">
+            <Badge className="text-sm px-5 py-2 bg-primary/10 text-primary border-primary/20 hover:scale-105 transition-transform cursor-default">
+              <MapPin className="w-3.5 h-3.5 mr-2" />
+              Get In Touch
+            </Badge>
+            <h2 className="text-4xl sm:text-5xl md:text-6xl font-bold bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
+              Contact Us
+            </h2>
+            <p className="text-xl text-muted-foreground leading-relaxed">
+              Need assistance with appointments or have questions? We're here to help you access the healthcare you need.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-16">
+            {/* Contact Information */}
+            <div className="space-y-8">
+              <Card className="border-2 border-border/50 shadow-xl bg-card/80 backdrop-blur-sm">
+                <CardContent className="p-8 space-y-6">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg">
+                      <Activity className="w-6 h-6 text-primary-foreground" />
+                    </div>
+                    <h3 className="text-2xl font-bold">Patient Support</h3>
+                  </div>
+                  
+                  <div className="grid gap-6">
+                    <div className="flex items-start gap-4">
+                      <MapPin className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
+                      <div>
+                        <h4 className="font-semibold mb-1">Head Office</h4>
+                        <p className="text-muted-foreground text-sm leading-relaxed">
+                          Bldg 4, Villebois Office Park<br />
+                          920 Jacques Street, Pretoria<br />
+                          South Africa 0167
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start gap-4">
+                      <Activity className="w-5 h-5 text-secondary mt-1 flex-shrink-0" />
+                      <div>
+                        <h4 className="font-semibold mb-2">Contact Numbers</h4>
+                        <div className="space-y-1">
+                          <a href="tel:+27129970383" className="block text-muted-foreground hover:text-primary transition-colors text-sm">
+                            📞 +27 12 997 0383
+                          </a>
+                          <a href="tel:+27822644888" className="block text-muted-foreground hover:text-primary transition-colors text-sm">
+                            📱 +27 82 264 4888
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start gap-4">
+                      <Users className="w-5 h-5 text-accent mt-1 flex-shrink-0" />
+                      <div>
+                        <h4 className="font-semibold mb-1">Email Support</h4>
+                        <a 
+                          href="mailto:info@ramabulana.com" 
+                          className="text-primary hover:text-primary/80 transition-colors hover:underline text-sm"
+                        >
+                          info@ramabulana.com
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-10 w-full lg:w-auto text-sm">
-              <div className="space-y-3 group">
-                <h4 className="text-xs font-semibold uppercase tracking-widest text-foreground flex items-center gap-2">
-                  <MapPin className="w-3.5 h-3.5 text-primary" />
-                  Head Offices
-                </h4>
-                <p className="leading-relaxed hover:text-foreground transition-colors">
-                  Gauteng Office
-                  <br />
-                  Bldg 4, Villebois Office Park
-                  <br />
-                  920 Jacques Street, Pretoria
-                  <br />
-                  South Africa 0167
-                </p>
-              </div>
-              
-              <div className="space-y-3 group">
-                <h4 className="text-xs font-semibold uppercase tracking-widest text-foreground flex items-center gap-2">
-                  <Truck className="w-3.5 h-3.5 text-secondary" />
-                  Warehouse
-                </h4>
-                <p className="leading-relaxed hover:text-foreground transition-colors">
-                  11 Thora Cres, Wynberg
-                  <br />
-                  Sandton, Johannesburg
-                  <br />
-                  South Africa 2090
-                </p>
-              </div>
-              
-              <div className="space-y-3 group">
-                <h4 className="text-xs font-semibold uppercase tracking-widest text-foreground flex items-center gap-2">
-                  <Activity className="w-3.5 h-3.5 text-accent" />
-                  Contacts
-                </h4>
-                <p className="leading-relaxed">
-                  <a href="tel:+27129970383" className="hover:text-primary transition-colors block">
-                    +27 12 997 0383
-                  </a>
-                  <a href="tel:+27822644888" className="hover:text-primary transition-colors block">
-                    +27 82 264 4888
-                  </a>
-                  <a 
-                    href="mailto:info@ramabulana.com" 
-                    className="text-primary hover:text-primary/80 transition-colors hover:underline block mt-1"
-                  >
-                    info@ramabulana.com
-                  </a>
-                </p>
-              </div>
+
+            {/* Partnership Information */}
+            <div className="space-y-8">
+              <Card className="border-2 border-border/50 shadow-xl bg-card/80 backdrop-blur-sm">
+                <CardContent className="p-8 space-y-6">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-secondary to-secondary/70 flex items-center justify-center shadow-lg">
+                      <Truck className="w-6 h-6 text-secondary-foreground" />
+                    </div>
+                    <h3 className="text-2xl font-bold">Our Partners</h3>
+                  </div>
+                  
+                  <div className="space-y-6">
+                    <div className="text-center">
+                      <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground block mb-4">
+                        Powered by
+                      </span>
+                      <Image
+                        src="/rm_logo.png"
+                        alt="Masala Ramabulana Holdings"
+                        width={280}
+                        height={120}
+                        className="h-16 w-auto mx-auto object-contain transition-all hover:scale-105 duration-300 filter brightness-110"
+                        priority
+                        quality={100}
+                      />
+                    </div>
+                    
+                    <div className="text-center space-y-3">
+                      <h4 className="font-semibold">Masala Ramabulana Holdings</h4>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        Proudly partnering with POLMED to deliver innovative healthcare access across South Africa through our mobile clinic network.
+                      </p>
+                    </div>
+
+                    <div className="pt-4 border-t border-border/50">
+                      <div className="flex items-start gap-4">
+                        <Truck className="w-5 h-5 text-secondary mt-1 flex-shrink-0" />
+                        <div>
+                          <h4 className="font-semibold mb-1">Warehouse & Operations</h4>
+                          <p className="text-muted-foreground text-sm leading-relaxed">
+                            11 Thora Cres, Wynberg<br />
+                            Sandton, Johannesburg<br />
+                            South Africa 2090
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
-          
-          <Separator className="opacity-50" />
-          
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
+
+          {/* Quick Links */}
+          <div className="text-center border-t border-border/50 pt-12">
+            <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-8">
+              <Link href="/patient-portal">
+                <Button variant="outline" className="hover:scale-105 transition-all duration-300">
+                  <User className="w-4 h-4 mr-2" />
+                  Patient Portal
+                </Button>
+              </Link>
+              <Link href="#features">
+                <Button variant="outline" className="hover:scale-105 transition-all duration-300">
+                  <Stethoscope className="w-4 h-4 mr-2" />
+                  Features
+                </Button>
+              </Link>
+              <Link href="#how-it-works">
+                <Button variant="outline" className="hover:scale-105 transition-all duration-300">
+                  <CalendarDays className="w-4 h-4 mr-2" />
+                  How It Works
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t bg-background/80 backdrop-blur-sm">
+        <div className="container mx-auto max-w-7xl px-4 py-8 text-sm text-muted-foreground">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
               © {new Date().getFullYear()} Masala Ramabulana Holdings. All rights reserved.
             </div>
@@ -636,6 +749,17 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* Scroll to top button */}
+      <button
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        className={`fixed bottom-8 right-8 w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 flex items-center justify-center transition-all duration-300 hover:scale-110 hover:shadow-xl hover:shadow-primary/40 z-40 ${
+          scrolled ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8 pointer-events-none'
+        }`}
+        aria-label="Scroll to top"
+      >
+        <ChevronDown className="w-5 h-5 rotate-180" />
+      </button>
 
       {/* Scroll to top button */}
       <button
