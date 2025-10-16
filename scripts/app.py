@@ -4963,8 +4963,7 @@ def get_dashboard_stats():
 
     except Exception as e:
         logger.error(f"Dashboard stats error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'
-        ''}), 500
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 
 @app.route('/api/activity/recent', methods=['GET'])
