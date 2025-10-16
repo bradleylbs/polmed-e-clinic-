@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Star, MessageSquare, Send, CheckCircle, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { patientPortalService } from "@/lib/patient-portal-service"
 
 interface PatientFeedbackProps {
   patientId: number
@@ -45,30 +46,44 @@ export function PatientFeedback({ patientId }: PatientFeedbackProps) {
     },
   })
 
-  // Mock feedback history
-  const [feedbackHistory] = useState<FeedbackItem[]>([
-    {
-      id: 1,
-      visit_date: "2024-01-15",
-      location_name: "Johannesburg Mobile Clinic",
-      rating: 5,
-      feedback_text:
-        "Excellent service! The staff was very professional and caring. The doctor took time to explain my condition thoroughly.",
-      submitted_at: "2024-01-16T10:30:00Z",
-      status: "responded",
-      response: "Thank you for your positive feedback! We're glad you had a great experience with our team.",
-    },
-    {
-      id: 2,
-      visit_date: "2024-02-20",
-      location_name: "Cape Town Mobile Clinic",
-      rating: 4,
-      feedback_text:
-        "Good service overall, but the waiting time was a bit long. The medical care was excellent though.",
-      submitted_at: "2024-02-21T14:15:00Z",
-      status: "reviewed",
-    },
-  ])
+  // Feedback history from API
+  const [feedbackHistory, setFeedbackHistory] = useState<FeedbackItem[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+
+  useEffect(() => {
+    fetchFeedbackHistory()
+  }, [patientId])
+
+  const fetchFeedbackHistory = async () => {
+    try {
+      setLoadingHistory(true)
+      const response = await patientPortalService.getPatientFeedbackHistory(patientId)
+      
+      if (response.success && response.data) {
+        // Transform the response data to match our interface
+        const transformedData = response.data.map((item: any) => ({
+          id: item.id,
+          visit_date: item.visit_date || new Date().toISOString().split('T')[0],
+          location_name: item.location_name || "Unknown Location",
+          rating: item.overall_rating || 0,
+          feedback_text: item.comments || "",
+          submitted_at: item.created_at || new Date().toISOString(),
+          status: item.status || "pending",
+          response: item.response
+        }))
+        setFeedbackHistory(transformedData)
+      }
+    } catch (error) {
+      console.error('Error fetching feedback history:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load feedback history",
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
 
   const handleRatingChange = (field: string, rating: number) => {
     if (field === "overall") {
@@ -93,27 +108,40 @@ export function PatientFeedback({ patientId }: PatientFeedbackProps) {
 
     try {
       setLoading(true)
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      toast({
-        title: "Feedback submitted successfully",
-        description: "Thank you for your feedback! We appreciate your input.",
+      
+      const response = await patientPortalService.submitPatientFeedback(patientId, {
+        feedback_type: "service_rating",
+        overall_rating: feedbackForm.rating,
+        service_ratings: feedbackForm.service_areas,
+        comments: `Location: ${feedbackForm.location_name}\nVisit Date: ${feedbackForm.visit_date}\n\n${feedbackForm.feedback_text}`,
+        is_anonymous: false
       })
 
-      // Reset form
-      setFeedbackForm({
-        visit_date: "",
-        location_name: "",
-        rating: 0,
-        feedback_text: "",
-        service_areas: {
-          registration: 0,
-          nursing: 0,
-          doctor_consultation: 0,
-          overall_experience: 0,
-        },
-      })
+      if (response.success) {
+        toast({
+          title: "Feedback submitted successfully",
+          description: "Thank you for your feedback! We appreciate your input.",
+        })
+
+        // Reset form
+        setFeedbackForm({
+          visit_date: "",
+          location_name: "",
+          rating: 0,
+          feedback_text: "",
+          service_areas: {
+            registration: 0,
+            nursing: 0,
+            doctor_consultation: 0,
+            overall_experience: 0,
+          },
+        })
+        
+        // Refresh feedback history
+        fetchFeedbackHistory()
+      } else {
+        throw new Error(response.error || "Failed to submit feedback")
+      }
     } catch (err) {
       toast({
         title: "Error",

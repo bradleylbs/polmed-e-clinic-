@@ -5906,6 +5906,293 @@ def get_appointments():
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 
+# ============================================================================
+# PATIENT PORTAL ADDITIONAL ENDPOINTS
+# ============================================================================
+
+@app.route('/api/patient-portal/notifications/<int:patient_id>', methods=['GET'])
+@patient_portal_token_required
+def get_patient_notifications(patient_id: int):
+    """Get patient notifications"""
+    try:
+        # Verify token matches requested patient ID
+        if request.patient_id != patient_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # For now, return sample notifications since we don't have a notifications table yet
+        # TODO: Create patient_notifications table and implement proper notifications
+        notifications = [
+            {
+                'id': 1,
+                'title': 'Upcoming Appointment Reminder',
+                'message': 'You have an appointment scheduled for tomorrow at 10:00 AM.',
+                'type': 'appointment',
+                'is_read': False,
+                'created_at': '2024-01-15T09:00:00Z',
+                'priority': 'medium'
+            },
+            {
+                'id': 2,
+                'title': 'Visit Summary Available',
+                'message': 'Your recent visit summary and prescription are now available to view.',
+                'type': 'medical',
+                'is_read': False,
+                'created_at': '2024-01-14T16:30:00Z',
+                'priority': 'low'
+            },
+            {
+                'id': 3,
+                'title': 'Medication Reminder',
+                'message': 'Don\'t forget to take your prescribed medication.',
+                'type': 'reminder',
+                'is_read': True,
+                'created_at': '2024-01-14T08:00:00Z',
+                'priority': 'high'
+            }
+        ]
+        
+        return jsonify({
+            'success': True,
+            'data': notifications
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get patient notifications error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/notifications/<int:notification_id>/read', methods=['POST'])
+@patient_portal_token_required
+def mark_notification_as_read(notification_id: int):
+    """Mark a notification as read"""
+    try:
+        # TODO: Implement actual notification reading logic with database
+        # For now, just return success
+        
+        return jsonify({
+            'success': True,
+            'message': 'Notification marked as read'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Mark notification as read error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/feedback/<int:patient_id>', methods=['POST'])
+@patient_portal_token_required
+def submit_patient_feedback(patient_id: int):
+    """Submit patient feedback"""
+    try:
+        # Verify token matches requested patient ID
+        if request.patient_id != patient_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        data = request.get_json() or {}
+        feedback_text = data.get('feedback', '').strip()
+        rating = data.get('rating')
+        category = data.get('category', 'general')
+        
+        if not feedback_text:
+            return jsonify({'success': False, 'error': 'Feedback text is required'}), 400
+        
+        if rating is not None and (not isinstance(rating, int) or rating < 1 or rating > 5):
+            return jsonify({'success': False, 'error': 'Rating must be between 1 and 5'}), 400
+        
+        # TODO: Create patient_feedback table and store feedback
+        # For now, just log the feedback
+        logger.info(f"Patient {patient_id} submitted feedback: {feedback_text}, Rating: {rating}, Category: {category}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Feedback submitted successfully'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Submit patient feedback error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/feedback/<int:patient_id>', methods=['GET'])
+@patient_portal_token_required
+def get_patient_feedback_history(patient_id: int):
+    """Get patient's feedback history"""
+    try:
+        # Verify token matches requested patient ID
+        if request.patient_id != patient_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # TODO: Implement actual feedback history from database
+        # For now, return sample feedback history
+        feedback_history = [
+            {
+                'id': 1,
+                'feedback': 'Great service, very professional staff.',
+                'rating': 5,
+                'category': 'service',
+                'submitted_at': '2024-01-10T14:30:00Z',
+                'response': 'Thank you for your positive feedback!'
+            },
+            {
+                'id': 2,
+                'feedback': 'Waiting time was a bit long, but overall good experience.',
+                'rating': 4,
+                'category': 'general',
+                'submitted_at': '2024-01-05T11:15:00Z',
+                'response': None
+            }
+        ]
+        
+        return jsonify({
+            'success': True,
+            'data': feedback_history
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get patient feedback history error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/appointments/available/<int:patient_id>', methods=['GET'], endpoint='patient_available_appointments')
+@patient_portal_token_required
+def get_patient_available_appointments(patient_id: int):
+    """Get available appointment slots for patient"""
+    try:
+        # Verify token matches requested patient ID
+        if request.patient_id != patient_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # Get query parameters
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
+        location_id = request.args.get('location_id')
+        
+        # Get available appointment slots from route_locations
+        query = """
+        SELECT rl.id, rl.route_id, rl.location_id, rl.visit_date, 
+               rl.start_time, rl.end_time, rl.max_appointments, rl.appointment_duration,
+               l.location_name, l.city, l.province, l.address,
+               r.route_name, r.route_type,
+               COALESCE(app_count.booked_count, 0) as booked_count,
+               (rl.max_appointments - COALESCE(app_count.booked_count, 0)) as available_slots
+        FROM route_locations rl
+        JOIN locations l ON rl.location_id = l.id
+        JOIN routes r ON rl.route_id = r.id
+        LEFT JOIN (
+            SELECT route_location_id, COUNT(*) as booked_count 
+            FROM appointments 
+            WHERE status NOT IN ('cancelled', 'no-show')
+            GROUP BY route_location_id
+        ) app_count ON rl.id = app_count.route_location_id
+        WHERE rl.visit_date >= CURDATE()
+        """
+        
+        params = []
+        if date_from:
+            query += " AND rl.visit_date >= %s"
+            params.append(date_from)
+        if date_to:
+            query += " AND rl.visit_date <= %s"
+            params.append(date_to)
+        if location_id:
+            query += " AND rl.location_id = %s"
+            params.append(location_id)
+        
+        query += " ORDER BY rl.visit_date, rl.start_time"
+        
+        available_slots = DatabaseManager.execute_query(query, params, fetch=True) or []
+        
+        # Generate time slots for each available route location
+        appointments_data = []
+        for slot in available_slots:
+            if slot['available_slots'] > 0:
+                appointments_data.append({
+                    'route_location_id': slot['id'],
+                    'date': slot['visit_date'].isoformat() if slot['visit_date'] else None,
+                    'start_time': slot['start_time'].strftime('%H:%M') if slot['start_time'] else None,
+                    'end_time': slot['end_time'].strftime('%H:%M') if slot['end_time'] else None,
+                    'available_slots': slot['available_slots'],
+                    'duration': slot['appointment_duration'],
+                    'location': {
+                        'id': slot['location_id'],
+                        'name': slot['location_name'],
+                        'city': slot['city'],
+                        'province': slot['province'],
+                        'address': slot['address']
+                    },
+                    'route': {
+                        'id': slot['route_id'],
+                        'name': slot['route_name'],
+                        'type': slot['route_type']
+                    }
+                })
+        
+        return jsonify({
+            'success': True,
+            'data': appointments_data
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get available appointments error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/visits/<int:patient_id>', methods=['GET'])
+@patient_portal_token_required
+def get_patient_visit_history(patient_id: int):
+    """Get patient's visit history"""
+    try:
+        # Verify token matches requested patient ID
+        if request.patient_id != patient_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # Get patient visits with details
+        visits_query = """
+        SELECT pv.id, pv.visit_date, pv.chief_complaint, pv.is_completed,
+               pv.created_at, pv.updated_at,
+               l.location_name, l.city, l.province,
+               (SELECT COUNT(*) FROM visit_workflow_progress vwp 
+                WHERE vwp.visit_id = pv.id AND vwp.completed_at IS NOT NULL) as completed_stages,
+               (SELECT COUNT(*) FROM workflow_stages) as total_stages
+        FROM patient_visits pv
+        LEFT JOIN locations l ON pv.location_id = l.id
+        WHERE pv.patient_id = %s
+        ORDER BY pv.visit_date DESC
+        LIMIT 50
+        """
+        
+        visits = DatabaseManager.execute_query(visits_query, (patient_id,), fetch=True) or []
+        
+        # Format visits data
+        visits_data = []
+        for visit in visits:
+            visits_data.append({
+                'id': visit['id'],
+                'visit_date': visit['visit_date'].isoformat() if visit['visit_date'] else None,
+                'chief_complaint': visit['chief_complaint'],
+                'is_completed': bool(visit['is_completed']),
+                'completed_stages': visit['completed_stages'] or 0,
+                'total_stages': visit['total_stages'] or 0,
+                'progress_percentage': round((visit['completed_stages'] or 0) / max(visit['total_stages'] or 1, 1) * 100),
+                'location': {
+                    'name': visit['location_name'],
+                    'city': visit['city'],
+                    'province': visit['province']
+                } if visit['location_name'] else None,
+                'created_at': visit['created_at'].isoformat() if visit['created_at'] else None,
+                'updated_at': visit['updated_at'].isoformat() if visit['updated_at'] else None
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': visits_data
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get patient visit history error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
 if __name__ == '__main__':
     # Disable the reloader to avoid SystemExit in debuggers (parent process exit).
     app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)# Force deployment 10/15/2025 16:58:42

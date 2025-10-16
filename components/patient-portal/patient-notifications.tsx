@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Bell, Calendar, Heart, AlertCircle, Info, CheckCircle, X, Loader2, Settings } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { patientPortalService } from "@/lib/patient-portal-service"
 
 interface PatientNotificationsProps {
   patientId: number
@@ -14,12 +15,16 @@ interface PatientNotificationsProps {
 
 interface Notification {
   id: number
-  type: "appointment" | "health" | "system" | "reminder"
-  title: string
-  message: string
-  created_at: string
-  is_read: boolean
-  priority: "low" | "medium" | "high"
+  type: string
+  subject?: string
+  sent_at?: string
+  status: string
+  // Map these to work with existing component logic
+  title?: string
+  message?: string  
+  created_at?: string
+  is_read?: boolean
+  priority?: "low" | "medium" | "high" | "urgent"
   action_url?: string
 }
 
@@ -36,50 +41,15 @@ export function PatientNotifications({ patientId }: PatientNotificationsProps) {
   const fetchNotifications = async () => {
     try {
       setLoading(true)
-      // Mock data for now - replace with actual API calls
-      const mockNotifications: Notification[] = [
-        {
-          id: 1,
-          type: "appointment",
-          title: "Upcoming Appointment Reminder",
-          message: "You have an appointment scheduled for tomorrow at 10:00 AM at Johannesburg Mobile Clinic.",
-          created_at: "2024-01-14T09:00:00Z",
-          is_read: false,
-          priority: "high",
-          action_url: "/patient-portal?tab=appointments",
-        },
-        {
-          id: 2,
-          type: "health",
-          title: "Lab Results Available",
-          message: "Your blood test results from your recent visit are now available for review.",
-          created_at: "2024-01-13T14:30:00Z",
-          is_read: false,
-          priority: "medium",
-          action_url: "/patient-portal?tab=health",
-        },
-        {
-          id: 3,
-          type: "reminder",
-          title: "Medication Reminder",
-          message: "Don't forget to take your prescribed medication (Amlodipine 5mg) this evening.",
-          created_at: "2024-01-12T18:00:00Z",
-          is_read: true,
-          priority: "medium",
-        },
-        {
-          id: 4,
-          type: "system",
-          title: "Profile Update Required",
-          message: "Please update your emergency contact information in your profile.",
-          created_at: "2024-01-10T10:00:00Z",
-          is_read: true,
-          priority: "low",
-          action_url: "/patient-portal?tab=profile",
-        },
-      ]
-
-      setNotifications(mockNotifications)
+      setError(null)
+      
+      const response = await patientPortalService.getPatientNotifications(patientId)
+      
+      if (response.success && response.data) {
+        setNotifications(response.data || [])
+      } else {
+        throw new Error(response.error || 'Failed to fetch notifications')
+      }
     } catch (err) {
       setError("Failed to load notifications")
     } finally {
@@ -89,18 +59,27 @@ export function PatientNotifications({ patientId }: PatientNotificationsProps) {
 
   const markAsRead = async (notificationId: number) => {
     try {
-      setNotifications((prev) =>
-        prev.map((notification) =>
-          notification.id === notificationId ? { ...notification, is_read: true } : notification,
-        ),
-      )
-      toast({
-        title: "Notification marked as read",
-      })
+      const response = await patientPortalService.markNotificationAsRead(notificationId)
+      
+      if (response.success) {
+        setNotifications((prev) =>
+          prev.map((notification) =>
+            notification.id === notificationId 
+              ? { ...notification, status: "read", sent_at: notification.sent_at || new Date().toISOString() } 
+              : notification,
+          ),
+        )
+        toast({
+          title: "Notification marked as read",
+        })
+      } else {
+        throw new Error(response.error || 'Failed to mark notification as read')
+      }
     } catch (err) {
+      console.error('Error marking notification as read:', err)
       toast({
         title: "Error",
-        description: "Failed to mark notification as read",
+        description: err instanceof Error ? err.message : "Failed to mark notification as read",
         variant: "destructive",
       })
     }
@@ -108,7 +87,7 @@ export function PatientNotifications({ patientId }: PatientNotificationsProps) {
 
   const markAllAsRead = async () => {
     try {
-      setNotifications((prev) => prev.map((notification) => ({ ...notification, is_read: true })))
+      setNotifications((prev) => prev.map((notification) => ({ ...notification, status: "read" })))
       toast({
         title: "All notifications marked as read",
       })
@@ -140,12 +119,14 @@ export function PatientNotifications({ patientId }: PatientNotificationsProps) {
     switch (type) {
       case "appointment":
         return <Calendar className="w-5 h-5 text-blue-500" />
-      case "health":
+      case "health_update":
         return <Heart className="w-5 h-5 text-red-500" />
       case "reminder":
         return <Bell className="w-5 h-5 text-orange-500" />
       case "system":
         return <Info className="w-5 h-5 text-gray-500" />
+      case "alert":
+        return <AlertCircle className="w-5 h-5 text-red-600" />
       default:
         return <Bell className="w-5 h-5" />
     }
@@ -153,6 +134,8 @@ export function PatientNotifications({ patientId }: PatientNotificationsProps) {
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
+      case "urgent":
+        return "destructive"
       case "high":
         return "destructive"
       case "medium":
@@ -204,7 +187,7 @@ export function PatientNotifications({ patientId }: PatientNotificationsProps) {
     )
   }
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length
+  const unreadCount = notifications.filter((n) => n.status === "unread").length
 
   return (
     <div className="space-y-6">
@@ -236,28 +219,28 @@ export function PatientNotifications({ patientId }: PatientNotificationsProps) {
           {notifications.map((notification) => (
             <Card
               key={notification.id}
-              className={`transition-all ${!notification.is_read ? "border-l-4 border-l-primary bg-muted/30" : ""}`}
+              className={`transition-all ${notification.status === "unread" ? "border-l-4 border-l-primary bg-muted/30" : ""}`}
             >
               <CardContent className="pt-6">
                 <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0">{getNotificationIcon(notification.type, notification.priority)}</div>
+                  <div className="flex-shrink-0">{getNotificationIcon(notification.type || "system", notification.priority || "medium")}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <h4 className={`font-medium ${!notification.is_read ? "font-semibold" : ""}`}>
-                            {notification.title}
+                          <h4 className={`font-medium ${notification.status === "unread" ? "font-semibold" : ""}`}>
+                            {notification.title || notification.subject || "Notification"}
                           </h4>
-                          <Badge variant={getPriorityColor(notification.priority)} className="text-xs">
-                            {notification.priority}
+                          <Badge variant={getPriorityColor(notification.priority || "medium")} className="text-xs">
+                            {notification.priority || "medium"}
                           </Badge>
-                          {!notification.is_read && <div className="w-2 h-2 bg-primary rounded-full"></div>}
+                          {notification.status === "unread" && <div className="w-2 h-2 bg-primary rounded-full"></div>}
                         </div>
-                        <p className="text-sm text-muted-foreground mb-2">{notification.message}</p>
-                        <p className="text-xs text-muted-foreground">{formatDate(notification.created_at)}</p>
+                        <p className="text-sm text-muted-foreground mb-2">{notification.message || "No message content"}</p>
+                        <p className="text-xs text-muted-foreground">{formatDate(notification.created_at || notification.sent_at || new Date().toISOString())}</p>
                       </div>
                       <div className="flex gap-1">
-                        {!notification.is_read && (
+                        {notification.status === "unread" && (
                           <Button variant="ghost" size="sm" onClick={() => markAsRead(notification.id)}>
                             <CheckCircle className="w-4 h-4" />
                           </Button>
