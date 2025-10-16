@@ -452,9 +452,15 @@ export function ClinicalWorkflow({
     if (step.status === "completed") return true
     if (step.id === "closure") {
       const counselingDone = workflowSteps.find((s) => s.id === "counseling")?.status === "completed"
-      return step.role === userRole && counselingDone
+      const roleMatches = step.role === userRole || 
+        (userRole === "social_work" && step.role === "social_worker") ||
+        (userRole === "social_worker" && step.role === "social_work")
+      return roleMatches && counselingDone
     }
-    return step.role === userRole
+    const roleMatches = step.role === userRole || 
+      (userRole === "social_work" && step.role === "social_worker") ||
+      (userRole === "social_worker" && step.role === "social_work")
+    return roleMatches
   }
 
   const completeCurrentStep = () => {
@@ -755,7 +761,10 @@ export function ClinicalWorkflow({
           const firstOwnedNotCompleted = nextSteps.findIndex(
             (s) =>
               s.status !== "completed" &&
-              (userRole === "administrator" || s.role === userRole) &&
+              (userRole === "administrator" || s.role === userRole || 
+               // Handle role name variations (social_work vs social_worker)
+               (userRole === "social_work" && s.role === "social_worker") ||
+               (userRole === "social_worker" && s.role === "social_work")) &&
               (s.id !== "closure" || counselingDone),
           )
           if (firstOwnedNotCompleted >= 0) {
@@ -764,9 +773,15 @@ export function ClinicalWorkflow({
 
           setWorkflowSteps(nextSteps)
 
-          const firstActionableLocalIdx = nextSteps.findIndex(
-            (s) => s.status !== "completed" && (userRole === "administrator" || s.role === userRole),
-          )
+
+          const firstActionableLocalIdx = nextSteps.findIndex((s) => {
+            if (s.status === "completed") return false
+            if (userRole === "administrator") return true
+            const roleMatches = s.role === userRole || 
+              (userRole === "social_work" && s.role === "social_worker") ||
+              (userRole === "social_worker" && s.role === "social_work")
+            return roleMatches
+          })
           if (firstActionableLocalIdx >= 0) {
             setCurrentStep(firstActionableLocalIdx)
           }
