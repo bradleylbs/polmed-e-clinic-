@@ -12,7 +12,7 @@ REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-# Import Flask app directly from app.py at root
+# Import Flask app from app.py in the same folder
 from app import app  # type: ignore
 
 
