@@ -6327,6 +6327,8 @@ def get_available_appointments_v2(patient_id: int):
         if request.patient_id != patient_id:
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
+        logger.info(f"Fetching available appointments for patient {patient_id}")
+        
         # Get query parameters
         date_from = request.args.get('date_from')
         date_to = request.args.get('date_to')
@@ -6336,7 +6338,11 @@ def get_available_appointments_v2(patient_id: int):
         
         # Query route_locations with capacity and appointment counts
         # CRITICAL: Filter for active/published routes within date range
-        # NOTE: appointments table links via location_id, NOT route_location_id
+        # Query structure:
+        #   1. route_locations: the visit (when/where)
+        #   2. locations: location details (name, city, province)
+        #   3. routes: route metadata (status, dates, type)
+        #   4. appointments: track booked slots (via route_location_id)
         query = """
         SELECT rl.id, rl.route_id, rl.location_id, rl.visit_date, 
                rl.start_time, rl.end_time, rl.max_appointments, rl.appointment_duration,
@@ -6348,12 +6354,12 @@ def get_available_appointments_v2(patient_id: int):
         JOIN locations l ON rl.location_id = l.id
         JOIN routes r ON rl.route_id = r.id
         LEFT JOIN (
-            SELECT location_id, COUNT(*) AS booked_count
+            SELECT route_location_id, COUNT(*) AS booked_count
             FROM appointments
             WHERE status IS NOT NULL
               AND LOWER(status) NOT IN ('cancelled', 'no-show', 'available')
-            GROUP BY location_id
-        ) app_count ON rl.location_id = app_count.location_id
+            GROUP BY route_location_id
+        ) app_count ON rl.id = app_count.route_location_id
         WHERE rl.visit_date >= CURDATE()
           AND r.start_date <= CURDATE()
           AND r.end_date >= CURDATE()
@@ -6384,6 +6390,25 @@ def get_available_appointments_v2(patient_id: int):
         available_slots = DatabaseManager.execute_query(query, tuple(params) if params else None, fetch=True) or []
         
         logger.info(f"Found {len(available_slots)} available slots")
+        
+        # Defensive: Check if route_locations table has data
+        if len(available_slots) == 0:
+            logger.warning("No available slots found. Checking if route_locations table has any data...")
+            check_rl = DatabaseManager.execute_query(
+                "SELECT COUNT(*) as cnt FROM route_locations WHERE visit_date >= CURDATE()",
+                fetch=True
+            ) or []
+            if check_rl and check_rl[0]['cnt'] == 0:
+                logger.warning("route_locations table is empty. Staff must create routes with locations before patients can book.")
+                return jsonify({
+                    'success': True,
+                    'data': [],
+                    'total': 0,
+                    'message': 'No routes with available appointments. Please contact clinic staff.'
+                }), 200
+            else:
+                logger.warning(f"route_locations has {check_rl[0]['cnt']} records but none match patient filters")
+        
         
         # Format response for frontend
         appointments_data = []
