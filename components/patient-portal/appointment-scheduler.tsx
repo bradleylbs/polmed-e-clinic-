@@ -400,7 +400,17 @@ export function AppointmentScheduler({ patientId }: AppointmentSchedulerProps) {
                       <div className="flex items-center space-x-4 flex-wrap">
                         <div className="flex items-center text-sm text-gray-600">
                           <Calendar className="w-4 h-4 mr-1" />
-                          {new Date(appointment.appointment_date).toLocaleDateString()}
+                          {appointment.appointment_date ? (() => {
+                            try {
+                              const dateParts = appointment.appointment_date.split('-')
+                              if (dateParts.length === 3) {
+                                return new Date(appointment.appointment_date + 'T00:00:00Z').toLocaleDateString()
+                              }
+                              return appointment.appointment_date
+                            } catch {
+                              return appointment.appointment_date
+                            }
+                          })() : 'N/A'}
                         </div>
                         <div className="flex items-center text-sm text-gray-600">
                           <Clock className="w-4 h-4 mr-1" />
