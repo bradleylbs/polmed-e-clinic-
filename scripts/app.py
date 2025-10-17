@@ -2890,12 +2890,12 @@ def create_route():
                             cursor.execute("""
                                 INSERT INTO patient_appointments 
                                 (route_location_id, appointment_date, appointment_time, booking_reference, status, created_at)
-                                VALUES (%s, %s, %s, %s, 'booked', NOW())
+                                VALUES (%s, %s, %s, %s, 'Available', NOW())
                             """, (
                                 route_location_id,
                                 current_date,
                                 slot_time.strftime('%H:%M:%S'),  # TIME format
-                                f"AUTO-{route_location_id}-{slot_count}",  # Auto-generated reference
+                                NULL,  # Leave NULL until booked
                             ))
                             
                             # Move to next slot
