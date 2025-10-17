@@ -2879,32 +2879,13 @@ def create_route():
                         f"Route location {route_location_id} created for route {route_id} on {current_date}"
                     )
 
-                    # Generate appointment slots directly (don't rely on stored procedure)
+                    # Generate appointment slots using stored procedure
                     try:
-                        slot_count = 0
-                        slot_time = aggregated_start_time
+                        # Call stored procedure to generate slots
+                        slot_count_result = cursor.callproc('sp_generate_appointment_slots', [route_location_id, 0])
+                        slot_count = slot_count_result[1] if len(slot_count_result) > 1 else 0
                         
-                        # Generate slots between start and end time
-                        while slot_time < aggregated_end_time and slot_count < max(loc_capacity, per_location_capacity):
-                            # Insert appointment slot into patient_appointments table
-                            cursor.execute("""
-                                INSERT INTO patient_appointments 
-                                (route_location_id, appointment_date, appointment_time, booking_reference, status, created_at)
-                                VALUES (%s, %s, %s, %s, 'Available', NOW())
-                            """, (
-                                route_location_id,
-                                current_date,
-                                slot_time.strftime('%H:%M:%S'),  # TIME format
-                                NULL,  # Leave NULL until booked
-                            ))
-                            
-                            # Move to next slot
-                            slot_dt = datetime.combine(date.today(), slot_time)
-                            slot_dt += timedelta(minutes=default_duration)
-                            slot_time = slot_dt.time()
-                            slot_count += 1
-                        
-                        logger.info(f"Generated {slot_count} appointment slots for route_location {route_location_id}")
+                        logger.info(f"Stored procedure generated {slot_count} appointment slots for route_location {route_location_id}")
                     except Exception as slot_err:
                         logger.warning(
                             f"Failed to generate appointment slots for route_location {route_location_id}: {slot_err}"
