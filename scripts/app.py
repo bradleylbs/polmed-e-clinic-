@@ -6336,6 +6336,7 @@ def get_available_appointments_v2(patient_id: int):
         
         # Query route_locations with capacity and appointment counts
         # CRITICAL: Filter for active/published routes within date range
+        # NOTE: appointments table links via location_id, NOT route_location_id
         query = """
         SELECT rl.id, rl.route_id, rl.location_id, rl.visit_date, 
                rl.start_time, rl.end_time, rl.max_appointments, rl.appointment_duration,
@@ -6347,12 +6348,12 @@ def get_available_appointments_v2(patient_id: int):
         JOIN locations l ON rl.location_id = l.id
         JOIN routes r ON rl.route_id = r.id
         LEFT JOIN (
-            SELECT route_location_id, COUNT(*) AS booked_count
+            SELECT location_id, COUNT(*) AS booked_count
             FROM appointments
             WHERE status IS NOT NULL
               AND LOWER(status) NOT IN ('cancelled', 'no-show', 'available')
-            GROUP BY route_location_id
-        ) app_count ON rl.id = app_count.route_location_id
+            GROUP BY location_id
+        ) app_count ON rl.location_id = app_count.location_id
         WHERE rl.visit_date >= CURDATE()
           AND r.start_date <= CURDATE()
           AND r.end_date >= CURDATE()
