@@ -2884,18 +2884,20 @@ def create_route():
                         slot_cursor = connection.cursor()
                         slot_start = aggregated_start_time
                         slot_index = 0
+                        slots_generated = 0
                         
                         while slot_index < per_location_capacity and slot_start < aggregated_end_time:
-                            # Insert appointment slot
+                            # Insert appointment slot using TIME object directly (not formatted string)
                             slot_cursor.execute("""
                                 INSERT INTO appointments 
                                 (route_location_id, appointment_time, duration_minutes, status, created_at)
                                 VALUES (%s, %s, %s, 'Available', NOW())
                             """, (
                                 route_location_id,
-                                slot_start.strftime('%H:%M:%S'),
+                                slot_start,  # Pass TIME object directly, not formatted string
                                 default_duration
                             ))
+                            slots_generated += 1
                             
                             # Move to next slot
                             slot_dt = datetime.combine(date.today(), slot_start)
@@ -2904,7 +2906,7 @@ def create_route():
                             slot_index += 1
                         
                         slot_cursor.close()
-                        logger.info(f"Generated {slot_index} appointment slots for route_location {route_location_id}")
+                        logger.info(f"Generated {slots_generated} appointment slots for route_location {route_location_id}")
                     except Exception as slot_err:
                         logger.warning(
                             f"Failed to generate appointment slots for route_location {route_location_id}: {slot_err}"
