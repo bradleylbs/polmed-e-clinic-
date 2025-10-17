@@ -16,22 +16,31 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
--- Table structure for table `consumable_categories`
+-- Table structure for table `patient_preferences`
 --
 
-DROP TABLE IF EXISTS `consumable_categories`;
+DROP TABLE IF EXISTS `patient_preferences`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `consumable_categories` (
+CREATE TABLE `patient_preferences` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `category_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `description` text COLLATE utf8mb4_unicode_ci,
-  `requires_prescription` tinyint(1) DEFAULT '0',
-  `storage_requirements` text COLLATE utf8mb4_unicode_ci,
+  `patient_id` int NOT NULL,
+  `preferred_provinces` json DEFAULT NULL,
+  `preferred_cities` json DEFAULT NULL,
+  `preferred_appointment_times` json DEFAULT NULL,
+  `max_travel_distance_km` int DEFAULT '50',
+  `notification_preferences` json DEFAULT NULL,
+  `accessibility_requirements` text,
+  `language_preference` varchar(10) DEFAULT 'en',
+  `privacy_settings` json DEFAULT NULL,
+  `communication_preferences` json DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `category_name` (`category_name`)
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  UNIQUE KEY `patient_id` (`patient_id`),
+  KEY `idx_patient_preferences_patient` (`patient_id`),
+  CONSTRAINT `patient_preferences_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -43,4 +52,4 @@ CREATE TABLE `consumable_categories` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-10-17 17:17:02
+-- Dump completed on 2025-10-17 17:16:32

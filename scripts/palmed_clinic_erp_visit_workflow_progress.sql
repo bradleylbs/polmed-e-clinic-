@@ -39,6 +39,7 @@ CREATE TABLE `visit_workflow_progress` (
   KEY `idx_workflow_stage` (`stage_id`),
   KEY `idx_workflow_user` (`assigned_user_id`),
   KEY `idx_workflow_progress_user_completed` (`assigned_user_id`,`is_completed`,`completed_at`),
+  KEY `idx_workflow_progress_status` (`visit_id`,`stage_id`,`is_completed`,`started_at`),
   CONSTRAINT `visit_workflow_progress_ibfk_1` FOREIGN KEY (`visit_id`) REFERENCES `patient_visits` (`id`) ON DELETE CASCADE,
   CONSTRAINT `visit_workflow_progress_ibfk_2` FOREIGN KEY (`stage_id`) REFERENCES `workflow_stages` (`id`),
   CONSTRAINT `visit_workflow_progress_ibfk_3` FOREIGN KEY (`assigned_user_id`) REFERENCES `users` (`id`)
@@ -54,4 +55,4 @@ CREATE TABLE `visit_workflow_progress` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-10-01 16:18:53
+-- Dump completed on 2025-10-17 17:17:16

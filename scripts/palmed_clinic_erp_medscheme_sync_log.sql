@@ -16,22 +16,34 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
--- Table structure for table `consumable_categories`
+-- Table structure for table `medscheme_sync_log`
 --
 
-DROP TABLE IF EXISTS `consumable_categories`;
+DROP TABLE IF EXISTS `medscheme_sync_log`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `consumable_categories` (
+CREATE TABLE `medscheme_sync_log` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `category_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `description` text COLLATE utf8mb4_unicode_ci,
-  `requires_prescription` tinyint(1) DEFAULT '0',
-  `storage_requirements` text COLLATE utf8mb4_unicode_ci,
+  `patient_id` int NOT NULL,
+  `visit_id` int DEFAULT NULL,
+  `sync_type` enum('patient_data','visit_data','diagnosis','prescription','investigation','full_sync') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `sync_status` enum('pending','in_progress','completed','failed') COLLATE utf8mb4_unicode_ci DEFAULT 'pending',
+  `sync_data` json DEFAULT NULL,
+  `response_data` json DEFAULT NULL,
+  `started_at` timestamp NULL DEFAULT NULL,
+  `completed_at` timestamp NULL DEFAULT NULL,
+  `error_message` text COLLATE utf8mb4_unicode_ci,
+  `retry_count` int DEFAULT '0',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `category_name` (`category_name`)
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `idx_sync_patient` (`patient_id`),
+  KEY `idx_sync_visit` (`visit_id`),
+  KEY `idx_sync_status` (`sync_status`,`created_at`),
+  KEY `idx_sync_type` (`sync_type`,`sync_status`),
+  CONSTRAINT `medscheme_sync_log_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
+  CONSTRAINT `medscheme_sync_log_ibfk_2` FOREIGN KEY (`visit_id`) REFERENCES `patient_visits` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -43,4 +55,4 @@ CREATE TABLE `consumable_categories` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-10-17 17:17:02
+-- Dump completed on 2025-10-17 17:17:25

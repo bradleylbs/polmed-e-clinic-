@@ -42,6 +42,7 @@ CREATE TABLE `sync_status` (
   KEY `idx_sync_status` (`sync_status`),
   KEY `idx_sync_device` (`device_id`),
   KEY `idx_sync_user` (`user_id`),
+  KEY `idx_sync_status_device` (`device_id`,`sync_status`,`server_timestamp`),
   CONSTRAINT `sync_status_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -55,4 +56,4 @@ CREATE TABLE `sync_status` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-10-01 16:20:04
+-- Dump completed on 2025-10-17 17:16:30

@@ -24,22 +24,14 @@ DROP TABLE IF EXISTS `icd10_codes`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `icd10_codes` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `icd10_code` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `description` text COLLATE utf8mb4_unicode_ci NOT NULL,
-  `category` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `subcategory` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `keywords` json DEFAULT NULL,
-  `usage_count` int DEFAULT '0',
+  `code` varchar(10) NOT NULL,
+  `description` text NOT NULL,
   `is_common` tinyint(1) DEFAULT '0',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `icd10_code` (`icd10_code`),
-  KEY `idx_icd10_code` (`icd10_code`),
-  KEY `idx_icd10_category` (`category`),
-  KEY `idx_icd10_common` (`is_common`),
-  KEY `idx_icd10_usage` (`usage_count` DESC),
-  FULLTEXT KEY `idx_icd10_search` (`icd10_code`,`description`)
-) ENGINE=InnoDB AUTO_INCREMENT=31 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  UNIQUE KEY `code` (`code`),
+  KEY `code_2` (`code`)
+) ENGINE=InnoDB AUTO_INCREMENT=74261 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -51,4 +43,4 @@ CREATE TABLE `icd10_codes` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-10-01 16:19:26
+-- Dump completed on 2025-10-17 17:16:52

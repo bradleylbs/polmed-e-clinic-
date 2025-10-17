@@ -16,22 +16,31 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
--- Table structure for table `consumable_categories`
+-- Table structure for table `patient_notifications`
 --
 
-DROP TABLE IF EXISTS `consumable_categories`;
+DROP TABLE IF EXISTS `patient_notifications`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `consumable_categories` (
+CREATE TABLE `patient_notifications` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `category_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `description` text COLLATE utf8mb4_unicode_ci,
-  `requires_prescription` tinyint(1) DEFAULT '0',
-  `storage_requirements` text COLLATE utf8mb4_unicode_ci,
+  `patient_id` int NOT NULL,
+  `notification_type` enum('appointment','health_update','system','reminder','alert') DEFAULT 'system',
+  `title` varchar(255) NOT NULL,
+  `message` text NOT NULL,
+  `priority` enum('low','medium','high','urgent') DEFAULT 'medium',
+  `action_url` varchar(500) DEFAULT NULL,
+  `is_read` tinyint(1) DEFAULT '0',
+  `read_at` timestamp NULL DEFAULT NULL,
+  `expires_at` timestamp NULL DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `category_name` (`category_name`)
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `idx_patient_notifications_patient` (`patient_id`),
+  KEY `idx_patient_notifications_type` (`notification_type`),
+  KEY `idx_patient_notifications_read` (`is_read`),
+  KEY `idx_patient_notifications_created` (`created_at`),
+  CONSTRAINT `patient_notifications_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -43,4 +52,4 @@ CREATE TABLE `consumable_categories` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-10-17 17:17:02
+-- Dump completed on 2025-10-17 17:16:41

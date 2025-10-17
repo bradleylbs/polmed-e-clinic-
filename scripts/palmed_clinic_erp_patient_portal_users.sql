@@ -16,22 +16,34 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
--- Table structure for table `consumable_categories`
+-- Table structure for table `patient_portal_users`
 --
 
-DROP TABLE IF EXISTS `consumable_categories`;
+DROP TABLE IF EXISTS `patient_portal_users`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `consumable_categories` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `category_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `description` text COLLATE utf8mb4_unicode_ci,
-  `requires_prescription` tinyint(1) DEFAULT '0',
-  `storage_requirements` text COLLATE utf8mb4_unicode_ci,
+CREATE TABLE `patient_portal_users` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `patient_id` int NOT NULL,
+  `polmed_number` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `email` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `password_hash` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `is_email_verified` tinyint(1) DEFAULT '0',
+  `verification_token` varchar(120) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `verification_expires` timestamp NULL DEFAULT NULL,
+  `reset_token` varchar(120) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `reset_expires` timestamp NULL DEFAULT NULL,
+  `failed_attempts` int DEFAULT '0',
+  `locked_until` timestamp NULL DEFAULT NULL,
+  `last_login` timestamp NULL DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `category_name` (`category_name`)
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  UNIQUE KEY `ux_patient_portal_users_patient` (`patient_id`),
+  UNIQUE KEY `ux_patient_portal_users_email` (`email`),
+  UNIQUE KEY `ux_patient_portal_users_polmed` (`polmed_number`),
+  CONSTRAINT `fk_patient_portal_users_patient` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -43,4 +55,4 @@ CREATE TABLE `consumable_categories` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-10-17 17:17:02
+-- Dump completed on 2025-10-17 17:16:40

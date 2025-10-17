@@ -50,11 +50,12 @@ CREATE TABLE `clinical_notes` (
   KEY `reviewed_by` (`reviewed_by`),
   KEY `idx_clinical_notes_template` (`template_used`),
   KEY `idx_clinical_notes_reviewed` (`reviewed_at`),
+  FULLTEXT KEY `content` (`content`),
   CONSTRAINT `clinical_notes_ibfk_1` FOREIGN KEY (`visit_id`) REFERENCES `patient_visits` (`id`) ON DELETE CASCADE,
   CONSTRAINT `clinical_notes_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`),
   CONSTRAINT `clinical_notes_ibfk_3` FOREIGN KEY (`template_used`) REFERENCES `clinical_templates` (`id`),
   CONSTRAINT `clinical_notes_ibfk_4` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=23 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=43 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -66,4 +67,4 @@ CREATE TABLE `clinical_notes` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-10-01 16:19:09
+-- Dump completed on 2025-10-17 17:16:56

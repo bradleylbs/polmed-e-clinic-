@@ -50,11 +50,13 @@ CREATE TABLE `patients` (
   KEY `idx_patients_id_number` (`id_number`),
   KEY `idx_patients_name` (`last_name`,`first_name`),
   KEY `idx_patients_member_type` (`member_type`),
+  KEY `idx_patients_created_by_date` (`created_by`,`created_at`),
   KEY `idx_patients_member_status` (`is_palmed_member`,`member_type`,`created_at`),
   KEY `idx_patients_search` (`last_name`,`first_name`,`medical_aid_number`),
-  KEY `idx_patients_created_by_date` (`created_by`,`created_at`),
+  KEY `idx_patients_demographics` (`date_of_birth`),
+  FULLTEXT KEY `first_name` (`first_name`,`last_name`),
   CONSTRAINT `patients_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=25 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -66,4 +68,4 @@ CREATE TABLE `patients` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-10-01 16:20:27
+-- Dump completed on 2025-10-17 17:17:19

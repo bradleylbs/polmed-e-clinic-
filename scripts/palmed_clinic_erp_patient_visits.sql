@@ -36,16 +36,21 @@ CREATE TABLE `patient_visits` (
   `created_by` int NOT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `doctor_id` int DEFAULT NULL,
+  `nurse_id` int DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `created_by` (`created_by`),
   KEY `idx_visits_patient` (`patient_id`),
   KEY `idx_visits_date` (`visit_date`),
   KEY `idx_visits_route` (`route_id`),
   KEY `idx_visits_stage` (`current_stage_id`),
+  KEY `idx_visits_date_location` (`visit_date`,`location`,`is_completed`),
+  KEY `idx_visits_patient_date` (`patient_id`,`visit_date` DESC),
+  CONSTRAINT `fk_patient_visits_patients` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
   CONSTRAINT `patient_visits_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
   CONSTRAINT `patient_visits_ibfk_2` FOREIGN KEY (`current_stage_id`) REFERENCES `workflow_stages` (`id`),
   CONSTRAINT `patient_visits_ibfk_3` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -57,4 +62,4 @@ CREATE TABLE `patient_visits` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-10-01 16:20:01
+-- Dump completed on 2025-10-17 17:17:41

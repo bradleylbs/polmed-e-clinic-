@@ -16,33 +16,34 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
--- Table structure for table `route_locations`
+-- Table structure for table `patient_visit_stages`
 --
 
-DROP TABLE IF EXISTS `route_locations`;
+DROP TABLE IF EXISTS `patient_visit_stages`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `route_locations` (
+CREATE TABLE `patient_visit_stages` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `route_id` int NOT NULL,
-  `location_id` int NOT NULL,
-  `visit_date` date NOT NULL,
-  `start_time` time NOT NULL,
-  `end_time` time NOT NULL,
-  `max_appointments` int DEFAULT '50',
-  `appointment_duration` int DEFAULT '30',
+  `visit_id` int NOT NULL,
+  `stage_name` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'registration, nursing, doctor, counseling, closure',
+  `status` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending' COMMENT 'pending, in_progress, completed, skipped',
+  `assigned_to` int DEFAULT NULL COMMENT 'FK to users.id',
+  `completed_by` int DEFAULT NULL COMMENT 'FK to users.id',
+  `completed_at` datetime DEFAULT NULL,
   `notes` text COLLATE utf8mb4_unicode_ci,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `unique_route_location_date` (`route_id`,`location_id`,`visit_date`),
-  KEY `idx_route_locations_route` (`route_id`),
-  KEY `idx_route_locations_location` (`location_id`),
-  KEY `idx_route_locations_date` (`visit_date`),
-  CONSTRAINT `fk_location` FOREIGN KEY (`location_id`) REFERENCES `locations` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_route` FOREIGN KEY (`route_id`) REFERENCES `routes` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `route_locations_ibfk_1` FOREIGN KEY (`route_id`) REFERENCES `routes` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `route_locations_ibfk_2` FOREIGN KEY (`location_id`) REFERENCES `locations` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=23 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  UNIQUE KEY `uk_pvs_visit_stage` (`visit_id`,`stage_name`),
+  KEY `fk_pvs_completed_by` (`completed_by`),
+  KEY `idx_visit_id` (`visit_id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_assigned_to` (`assigned_to`),
+  KEY `idx_created_at` (`created_at`),
+  CONSTRAINT `fk_pvs_assigned_to` FOREIGN KEY (`assigned_to`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_pvs_completed_by` FOREIGN KEY (`completed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_pvs_visit` FOREIGN KEY (`visit_id`) REFERENCES `patient_visits` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Tracks workflow stage progression for each patient visit';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -54,4 +55,4 @@ CREATE TABLE `route_locations` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-10-17 17:17:28
+-- Dump completed on 2025-10-17 17:16:31

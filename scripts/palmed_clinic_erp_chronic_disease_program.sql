@@ -16,22 +16,35 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
--- Table structure for table `consumable_categories`
+-- Table structure for table `chronic_disease_program`
 --
 
-DROP TABLE IF EXISTS `consumable_categories`;
+DROP TABLE IF EXISTS `chronic_disease_program`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `consumable_categories` (
+CREATE TABLE `chronic_disease_program` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `category_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `description` text COLLATE utf8mb4_unicode_ci,
-  `requires_prescription` tinyint(1) DEFAULT '0',
-  `storage_requirements` text COLLATE utf8mb4_unicode_ci,
+  `patient_id` int NOT NULL,
+  `condition_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `icd10_code` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `enrollment_date` date NOT NULL,
+  `program_status` enum('active','inactive','completed','suspended') COLLATE utf8mb4_unicode_ci DEFAULT 'active',
+  `last_review_date` date DEFAULT NULL,
+  `next_review_date` date DEFAULT NULL,
+  `care_plan` json DEFAULT NULL,
+  `medscheme_notified` tinyint(1) DEFAULT '0',
+  `medscheme_notification_date` timestamp NULL DEFAULT NULL,
+  `created_by` int NOT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `category_name` (`category_name`)
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `idx_chronic_patient` (`patient_id`),
+  KEY `idx_chronic_status` (`program_status`,`next_review_date`),
+  KEY `idx_chronic_condition` (`condition_name`),
+  KEY `chronic_disease_program_ibfk_2` (`created_by`),
+  CONSTRAINT `chronic_disease_program_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
+  CONSTRAINT `chronic_disease_program_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -43,4 +56,4 @@ CREATE TABLE `consumable_categories` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-10-17 17:17:02
+-- Dump completed on 2025-10-17 17:16:50
