@@ -6439,15 +6439,41 @@ def get_available_appointments_v2(patient_id: int):
         appointments_data = []
         for slot in available_slots:
             if slot['available_slots'] > 0:
+                # Convert dates properly
+                appt_date = slot['appointment_date']
+                if hasattr(appt_date, 'isoformat'):
+                    appt_date_str = appt_date.isoformat()
+                else:
+                    appt_date_str = str(appt_date)
+                
+                visit_date = slot['visit_date']
+                if hasattr(visit_date, 'isoformat'):
+                    visit_date_str = visit_date.isoformat()
+                else:
+                    visit_date_str = str(visit_date)
+                
+                # Convert times
+                start_time = slot['start_time']
+                if hasattr(start_time, 'strftime'):
+                    start_time_str = start_time.strftime('%H:%M')
+                else:
+                    start_time_str = str(start_time) if start_time else None
+                
+                end_time = slot['end_time']
+                if hasattr(end_time, 'strftime'):
+                    end_time_str = end_time.strftime('%H:%M')
+                else:
+                    end_time_str = str(end_time) if end_time else None
+                
                 appointments_data.append({
                     'appointment_id': slot['id'],
-                    'route_location_id': slot['id'],
+                    'route_location_id': slot['route_location_id'],
                     'route_id': slot['route_id'],
-                    'date': slot['visit_date'].isoformat() if slot['visit_date'] else None,
-                    'appointment_date': slot['visit_date'].isoformat() if slot['visit_date'] else None,
-                    'start_time': slot['start_time'].strftime('%H:%M') if slot['start_time'] else None,
-                    'appointment_time': slot['start_time'].strftime('%H:%M') if slot['start_time'] else None,
-                    'end_time': slot['end_time'].strftime('%H:%M') if slot['end_time'] else None,
+                    'date': appt_date_str,
+                    'appointment_date': appt_date_str,
+                    'start_time': start_time_str,
+                    'appointment_time': start_time_str,
+                    'end_time': end_time_str,
                     'available_slots': slot['available_slots'],
                     'duration': slot['appointment_duration'],
                     'distance_km': 0,  # Could be calculated if coordinates available
@@ -6465,8 +6491,7 @@ def get_available_appointments_v2(patient_id: int):
                     'route': {
                         'id': slot['route_id'],
                         'name': slot['route_name'],
-                        'type': slot['route_type'],
-                        'status': slot['route_status']
+                        'type': slot['route_type']
                     }
                 })
         
