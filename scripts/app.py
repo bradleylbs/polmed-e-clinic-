@@ -2832,28 +2832,53 @@ def create_route():
                     coordinates = loc_payload.get('coordinates') or {}
                     lat = float(coordinates.get('lat') or 0)
                     lng = float(coordinates.get('lng') or 0)
+                    
+                    # For GEOMETRY columns, we need to handle spatial data carefully
+                    # Using ST_GeomFromText with parameterized input
                     wkt_point = f"POINT({lng} {lat})"
-
-                    insert_location_sql = """
-                        INSERT INTO locations (
-                            location_name, location_type_id, province, city, address,
-                            gps_coordinates, contact_person, contact_phone, is_active
-                        ) VALUES (%s, %s, %s, %s, %s, ST_GeomFromText(%s), %s, %s, TRUE)
-                    """
-
-                    cursor.execute(
-                        insert_location_sql,
-                        (
-                            location_name,
-                            location_type_id,
-                            loc_province,
-                            loc_city,
-                            loc_address,
-                            wkt_point,
-                            contact_person,
-                            contact_phone,
-                        ),
-                    )
+                    
+                    # Try to insert the location first
+                    try:
+                        insert_location_sql = """
+                            INSERT INTO locations (
+                                location_name, location_type_id, province, city, address,
+                                gps_coordinates, contact_person, contact_phone, is_active
+                            ) VALUES (%s, %s, %s, %s, %s, ST_GeomFromText(%s), %s, %s, TRUE)
+                        """
+                        
+                        cursor.execute(
+                            insert_location_sql,
+                            (
+                                location_name,
+                                location_type_id,
+                                loc_province,
+                                loc_city,
+                                loc_address,
+                                wkt_point,
+                                contact_person,
+                                contact_phone,
+                            ),
+                        )
+                    except Exception as geom_err:
+                        logger.warning(f"Failed to insert location with ST_GeomFromText: {geom_err}")
+                        # Retry without spatial coordinates - set them to POINT(0,0)
+                        cursor.execute(
+                            """
+                            INSERT INTO locations (
+                                location_name, location_type_id, province, city, address,
+                                gps_coordinates, contact_person, contact_phone, is_active
+                            ) VALUES (%s, %s, %s, %s, %s, ST_GeomFromText('POINT(0 0)'), %s, %s, TRUE)
+                            """,
+                            (
+                                location_name,
+                                location_type_id,
+                                loc_province,
+                                loc_city,
+                                loc_address,
+                                contact_person,
+                                contact_phone,
+                            ),
+                        )
 
                     location_id = cursor.lastrowid
                     logger.info(f"Created new location {location_id} for {location_name}")
