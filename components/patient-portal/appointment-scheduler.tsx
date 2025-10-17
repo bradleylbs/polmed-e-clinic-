@@ -113,9 +113,16 @@ export function AppointmentScheduler({ patientId }: AppointmentSchedulerProps) {
     setIsLoadingSlots(true)
     setError(null)
     try {
+      // Calculate date range - 30 days from selected date
+      const selectedDateObj = new Date(selectedDate)
+      const endDate = new Date(selectedDateObj)
+      endDate.setDate(endDate.getDate() + 30)
+      
+      const dateToStr = endDate.toISOString().split("T")[0]
+      
       const response = await patientPortalService.getAvailableAppointmentsForPatient(patientId, {
         date_from: selectedDate,
-        date_to: selectedDate,
+        date_to: dateToStr,
       })
       if (response.success && response.data) {
         setAvailableSlots(response.data)
