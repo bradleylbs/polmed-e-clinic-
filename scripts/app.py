@@ -6333,64 +6333,44 @@ def get_available_appointments_v2(patient_id: int):
         logger.info(f"Fetching available appointments for patient {patient_id}")
         
         # Get query parameters
-        date_from = request.args.get('date_from')
+        date_from = request.args.get('date_from', str(date.today()))
         date_to = request.args.get('date_to')
-        location_id = request.args.get('location_id')
         province = request.args.get('province')
-        city = request.args.get('city')
         
-        # Query route_locations with capacity and appointment counts
-        # CRITICAL: Filter for active/published routes within date range
-        # Query structure:
-        #   1. route_locations: the visit (when/where)
-        #   2. locations: location details (name, city, province)
-        #   3. routes: route metadata (status, dates, type)
-        #   4. appointments: track booked slots (via route_location_id)
-        query = """
-        SELECT rl.id, rl.route_id, rl.location_id, rl.visit_date, 
-               rl.start_time, rl.end_time, rl.max_appointments, rl.appointment_duration,
-               l.location_name, l.city, l.province, l.address,
-               r.route_name, r.route_type, r.status as route_status,
-               COALESCE(app_count.booked_count, 0) AS booked_count,
-               GREATEST(rl.max_appointments - COALESCE(app_count.booked_count, 0), 0) AS available_slots
-        FROM route_locations rl
-        JOIN locations l ON rl.location_id = l.id
-        JOIN routes r ON rl.route_id = r.id
-        LEFT JOIN (
-            SELECT route_location_id, COUNT(*) AS booked_count
-            FROM appointments
-            WHERE status IS NOT NULL
-              AND LOWER(status) NOT IN ('cancelled', 'no-show', 'available')
-            GROUP BY route_location_id
-        ) app_count ON rl.id = app_count.route_location_id
-        WHERE rl.visit_date >= CURDATE()
-          AND r.start_date <= CURDATE()
-          AND r.end_date >= CURDATE()
-          AND (r.status = 'active' OR r.status = 'published')
-          AND r.is_active = 1
-        """
+        # Set default date_to if not provided (30 days from now)
+        if not date_to:
+            date_to_obj = date.today() + timedelta(days=30)
+            date_to = str(date_to_obj)
         
-        params = []
-        if date_from:
-            query += " AND rl.visit_date >= %s"
-            params.append(date_from)
-        if date_to:
-            query += " AND rl.visit_date <= %s"
-            params.append(date_to)
-        if location_id:
-            query += " AND rl.location_id = %s"
-            params.append(location_id)
-        if province:
-            query += " AND l.province = %s"
-            params.append(province)
-        if city:
-            query += " AND l.city = %s"
-            params.append(city)
+        # Use stored procedure to get available appointments
+        logger.info(f"Calling sp_get_available_appointments with date_from={date_from}, date_to={date_to}, province={province}")
         
-        query += " ORDER BY rl.visit_date, rl.start_time"
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
         
-        logger.info(f"Patient portal appointments query: {query} with params: {params}")
-        available_slots = DatabaseManager.execute_query(query, tuple(params) if params else None, fetch=True) or []
+        cursor = None
+        try:
+            cursor = connection.cursor(dictionary=True)
+            
+            # Call stored procedure
+            cursor.callproc('sp_get_available_appointments', [
+                date_from,
+                date_to,
+                province if province and province != 'Any Province' else None
+            ])
+            
+            available_slots = cursor.fetchall() or []
+            logger.info(f"Stored procedure returned {len(available_slots)} available appointments")
+            
+        except Exception as sp_err:
+            logger.error(f"Error calling stored procedure: {sp_err}")
+            return jsonify({'success': False, 'error': f'Failed to fetch appointments: {str(sp_err)}'}), 500
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                connection.close()
         
         logger.info(f"Found {len(available_slots)} available slots")
         
