@@ -2887,14 +2887,14 @@ def create_route():
                         slots_generated = 0
                         
                         while slot_index < per_location_capacity and slot_start < aggregated_end_time:
-                            # Insert appointment slot using TIME object directly (not formatted string)
+                            # Insert appointment slot using formatted TIME string (consistent with route_locations inserts)
                             slot_cursor.execute("""
                                 INSERT INTO appointments 
                                 (route_location_id, appointment_time, duration_minutes, status, created_at)
                                 VALUES (%s, %s, %s, 'Available', NOW())
                             """, (
                                 route_location_id,
-                                slot_start,  # Pass TIME object directly, not formatted string
+                                slot_start.strftime('%H:%M:%S'),  # Format as TIME string
                                 default_duration
                             ))
                             slots_generated += 1
