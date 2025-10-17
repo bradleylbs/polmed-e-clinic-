@@ -496,7 +496,15 @@ export function ClinicalWorkflow({
       // Persist step result as a clinical note when applicable
       try {
         let saved = true
-        if (currentStepData.id === "doctor") {
+        if (currentStepData.id === "nursing") {
+          // Save nursing assessment note
+          const content = clinicalNotes.nursingAssessment?.trim() || "Nursing assessment completed."
+          const res = await apiService.createClinicalNote(vId!, { note_type: "Assessment", content })
+          saved = !!res.success
+          if (!saved) {
+            toast({ title: "Warning", description: "Vital signs saved but could not save nursing notes.", variant: "default" })
+          }
+        } else if (currentStepData.id === "doctor") {
           const parseList = (s?: string) =>
             (s || "")
               .split(",")
@@ -579,7 +587,7 @@ export function ClinicalWorkflow({
           const res = await apiService.createClinicalNote(vId!, { note_type: "Closure", content })
           saved = !!res.success
         }
-        if (!saved) {
+        if (!saved && currentStepData.id !== "nursing") {
           toast({ title: "Save failed", description: "Could not save note. Please try again.", variant: "destructive" })
           return
         }
