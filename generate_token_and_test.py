@@ -1,10 +1,26 @@
 #!/usr/bin/env python3
-"""Test route creation to debug the 500 error"""
+"""Generate a valid JWT token for testing"""
 
-import requests
+import jwt
 import json
+from datetime import datetime, timedelta
 
-# Test payload
+# Use the same SECRET_KEY as the Flask app
+SECRET_KEY = 'palmed-clinic-secret-key-2025'
+
+# Create a token with user_id=41 (admin user)
+payload = {
+    'user_id': 41,
+    'exp': datetime.utcnow() + timedelta(hours=24),
+    'iat': datetime.utcnow()
+}
+
+token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+print(f"Generated Token: {token}\n")
+
+# Now test the route creation with this token
+import requests
+
 payload = {
     "route_name": "Pietermarizburg Police Parade",
     "description": "Crime Awareness",
@@ -39,30 +55,28 @@ payload = {
     ]
 }
 
-# Test locally first
-print("Testing local Flask server...")
-print(f"Payload: {json.dumps(payload, indent=2)}\n")
+print("Testing POST /api/routes with valid token...\n")
 
 try:
     response = requests.post(
         "http://localhost:5000/api/routes",
         json=payload,
-        headers={"Authorization": "Bearer test-token"},  # Add a dummy token
+        headers={"Authorization": f"Bearer {token}"},
         timeout=10
     )
     print(f"Status Code: {response.status_code}")
-    print(f"Response: {response.text}\n")
+    print(f"Response Text: {response.text}\n")
     
     if response.status_code != 200:
-        print(f"❌ Error: {response.status_code}")
-        try:
-            error_data = response.json()
-            print(f"Error Details: {json.dumps(error_data, indent=2)}")
-        except:
-            print(f"Response Text: {response.text}")
+        print(f"Error creating route (status {response.status_code})")
+        if response.text:
+            try:
+                print(f"Error Details: {json.dumps(response.json(), indent=2)}")
+            except:
+                print(f"Raw Response: {response.text}")
     else:
-        print(f"✅ Success!")
+        print(f"Success!")
         print(f"Data: {json.dumps(response.json(), indent=2)}")
         
 except Exception as e:
-    print(f"❌ Exception: {type(e).__name__}: {str(e)}")
+    print(f"Exception: {type(e).__name__}: {str(e)}")
