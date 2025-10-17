@@ -2886,15 +2886,16 @@ def create_route():
                         
                         # Generate slots between start and end time
                         while slot_time < aggregated_end_time and slot_count < max(loc_capacity, per_location_capacity):
-                            # Insert appointment slot with correct schema
+                            # Insert appointment slot into patient_appointments table
                             cursor.execute("""
-                                INSERT INTO appointments 
-                                (route_location_id, appointment_time, duration_minutes, status, created_at)
-                                VALUES (%s, %s, %s, 'Available', NOW())
+                                INSERT INTO patient_appointments 
+                                (route_location_id, appointment_date, appointment_time, booking_reference, status, created_at)
+                                VALUES (%s, %s, %s, %s, 'booked', NOW())
                             """, (
                                 route_location_id,
+                                current_date,
                                 slot_time.strftime('%H:%M:%S'),  # TIME format
-                                default_duration
+                                f"AUTO-{route_location_id}-{slot_count}",  # Auto-generated reference
                             ))
                             
                             # Move to next slot
