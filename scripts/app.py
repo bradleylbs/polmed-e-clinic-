@@ -6320,6 +6320,7 @@ def get_available_appointments_v2(patient_id: int):
     """
     Get available appointment slots for a patient from route_locations.
     Frontend endpoint for appointment scheduler.
+    Filters for active/published routes only with valid dates.
     """
     try:
         # Verify token matches requested patient ID
@@ -6330,13 +6331,16 @@ def get_available_appointments_v2(patient_id: int):
         date_from = request.args.get('date_from')
         date_to = request.args.get('date_to')
         location_id = request.args.get('location_id')
+        province = request.args.get('province')
+        city = request.args.get('city')
         
         # Query route_locations with capacity and appointment counts
+        # CRITICAL: Filter for active/published routes within date range
         query = """
         SELECT rl.id, rl.route_id, rl.location_id, rl.visit_date, 
                rl.start_time, rl.end_time, rl.max_appointments, rl.appointment_duration,
                l.location_name, l.city, l.province, l.address,
-               r.route_name, r.route_type,
+               r.route_name, r.route_type, r.status as route_status,
                COALESCE(app_count.booked_count, 0) AS booked_count,
                GREATEST(rl.max_appointments - COALESCE(app_count.booked_count, 0), 0) AS available_slots
         FROM route_locations rl
@@ -6350,6 +6354,10 @@ def get_available_appointments_v2(patient_id: int):
             GROUP BY route_location_id
         ) app_count ON rl.id = app_count.route_location_id
         WHERE rl.visit_date >= CURDATE()
+          AND r.start_date <= CURDATE()
+          AND r.end_date >= CURDATE()
+          AND (r.status = 'active' OR r.status = 'published')
+          AND r.is_active = 1
         """
         
         params = []
@@ -6362,22 +6370,40 @@ def get_available_appointments_v2(patient_id: int):
         if location_id:
             query += " AND rl.location_id = %s"
             params.append(location_id)
+        if province:
+            query += " AND l.province = %s"
+            params.append(province)
+        if city:
+            query += " AND l.city = %s"
+            params.append(city)
         
         query += " ORDER BY rl.visit_date, rl.start_time"
         
+        logger.info(f"Patient portal appointments query: {query} with params: {params}")
         available_slots = DatabaseManager.execute_query(query, tuple(params) if params else None, fetch=True) or []
+        
+        logger.info(f"Found {len(available_slots)} available slots")
         
         # Format response for frontend
         appointments_data = []
         for slot in available_slots:
             if slot['available_slots'] > 0:
                 appointments_data.append({
+                    'appointment_id': slot['id'],
                     'route_location_id': slot['id'],
+                    'route_id': slot['route_id'],
                     'date': slot['visit_date'].isoformat() if slot['visit_date'] else None,
+                    'appointment_date': slot['visit_date'].isoformat() if slot['visit_date'] else None,
                     'start_time': slot['start_time'].strftime('%H:%M') if slot['start_time'] else None,
+                    'appointment_time': slot['start_time'].strftime('%H:%M') if slot['start_time'] else None,
                     'end_time': slot['end_time'].strftime('%H:%M') if slot['end_time'] else None,
                     'available_slots': slot['available_slots'],
                     'duration': slot['appointment_duration'],
+                    'distance_km': 0,  # Could be calculated if coordinates available
+                    'location_name': slot['location_name'],
+                    'address': slot['address'],
+                    'city': slot['city'],
+                    'province': slot['province'],
                     'location': {
                         'id': slot['location_id'],
                         'name': slot['location_name'],
@@ -6388,22 +6414,25 @@ def get_available_appointments_v2(patient_id: int):
                     'route': {
                         'id': slot['route_id'],
                         'name': slot['route_name'],
-                        'type': slot['route_type']
+                        'type': slot['route_type'],
+                        'status': slot['route_status']
                     }
                 })
         
+        logger.info(f"Returning {len(appointments_data)} formatted appointments")
+        
         return jsonify({
             'success': True,
-            'data': appointments_data
+            'data': appointments_data,
+            'total': len(appointments_data)
         }), 200
             
     except Exception as e:
+        logger.error(f"Error fetching available appointments: {str(e)}", exc_info=True)
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
-    finally:
-        connection.close()
 
 @app.route('/api/patient-portal/appointments/book', methods=['POST'])
 def book_appointment_patient_portal():
