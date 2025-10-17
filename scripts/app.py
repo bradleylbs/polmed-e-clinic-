@@ -2630,7 +2630,7 @@ def get_routes():
     
 @app.route('/api/routes', methods=['POST'])
 @token_required
-@role_required(['administrator', 'doctor'])
+@role_required(['administrator', 'doctor'])  # NOTE: Nurses are excluded!
 def create_route():
     """Create a new route with location schedules and appointment slots."""
     try:
@@ -2832,53 +2832,28 @@ def create_route():
                     coordinates = loc_payload.get('coordinates') or {}
                     lat = float(coordinates.get('lat') or 0)
                     lng = float(coordinates.get('lng') or 0)
-                    
-                    # For GEOMETRY columns, we need to handle spatial data carefully
-                    # Using ST_GeomFromText with parameterized input
                     wkt_point = f"POINT({lng} {lat})"
-                    
-                    # Try to insert the location first
-                    try:
-                        insert_location_sql = """
-                            INSERT INTO locations (
-                                location_name, location_type_id, province, city, address,
-                                gps_coordinates, contact_person, contact_phone, is_active
-                            ) VALUES (%s, %s, %s, %s, %s, ST_GeomFromText(%s), %s, %s, TRUE)
-                        """
-                        
-                        cursor.execute(
-                            insert_location_sql,
-                            (
-                                location_name,
-                                location_type_id,
-                                loc_province,
-                                loc_city,
-                                loc_address,
-                                wkt_point,
-                                contact_person,
-                                contact_phone,
-                            ),
-                        )
-                    except Exception as geom_err:
-                        logger.warning(f"Failed to insert location with ST_GeomFromText: {geom_err}")
-                        # Retry without spatial coordinates - set them to POINT(0,0)
-                        cursor.execute(
-                            """
-                            INSERT INTO locations (
-                                location_name, location_type_id, province, city, address,
-                                gps_coordinates, contact_person, contact_phone, is_active
-                            ) VALUES (%s, %s, %s, %s, %s, ST_GeomFromText('POINT(0 0)'), %s, %s, TRUE)
-                            """,
-                            (
-                                location_name,
-                                location_type_id,
-                                loc_province,
-                                loc_city,
-                                loc_address,
-                                contact_person,
-                                contact_phone,
-                            ),
-                        )
+
+                    insert_location_sql = """
+                        INSERT INTO locations (
+                            location_name, location_type_id, province, city, address,
+                            gps_coordinates, contact_person, contact_phone, is_active
+                        ) VALUES (%s, %s, %s, %s, %s, ST_GeomFromText(%s), %s, %s, TRUE)
+                    """
+
+                    cursor.execute(
+                        insert_location_sql,
+                        (
+                            location_name,
+                            location_type_id,
+                            loc_province,
+                            loc_city,
+                            loc_address,
+                            wkt_point,
+                            contact_person,
+                            contact_phone,
+                        ),
+                    )
 
                     location_id = cursor.lastrowid
                     logger.info(f"Created new location {location_id} for {location_name}")
@@ -2904,39 +2879,35 @@ def create_route():
                         f"Route location {route_location_id} created for route {route_id} on {current_date}"
                     )
 
-                    # Generate appointment slots directly (simpler than calling stored proc)
+                    # Generate appointment slots directly (don't rely on stored procedure)
                     try:
-                        slot_cursor = connection.cursor()
-                        slot_start = aggregated_start_time
-                        slot_index = 0
-                        slots_generated = 0
+                        slot_count = 0
+                        slot_time = aggregated_start_time
                         
-                        while slot_index < per_location_capacity and slot_start < aggregated_end_time:
-                            # Insert appointment slot using formatted TIME string (consistent with route_locations inserts)
-                            slot_cursor.execute("""
+                        # Generate slots between start and end time
+                        while slot_time < aggregated_end_time and slot_count < max(loc_capacity, per_location_capacity):
+                            # Insert appointment slot with correct schema
+                            cursor.execute("""
                                 INSERT INTO appointments 
                                 (route_location_id, appointment_time, duration_minutes, status, created_at)
                                 VALUES (%s, %s, %s, 'Available', NOW())
                             """, (
                                 route_location_id,
-                                slot_start.strftime('%H:%M:%S'),  # Format as TIME string
+                                slot_time.strftime('%H:%M:%S'),  # TIME format
                                 default_duration
                             ))
-                            slots_generated += 1
                             
                             # Move to next slot
-                            slot_dt = datetime.combine(date.today(), slot_start)
+                            slot_dt = datetime.combine(date.today(), slot_time)
                             slot_dt += timedelta(minutes=default_duration)
-                            slot_start = slot_dt.time()
-                            slot_index += 1
+                            slot_time = slot_dt.time()
+                            slot_count += 1
                         
-                        slot_cursor.close()
-                        logger.info(f"Generated {slots_generated} appointment slots for route_location {route_location_id}")
+                        logger.info(f"Generated {slot_count} appointment slots for route_location {route_location_id}")
                     except Exception as slot_err:
                         logger.warning(
                             f"Failed to generate appointment slots for route_location {route_location_id}: {slot_err}"
                         )
-                        # Don't fail the entire route creation
 
                     route_locations_response.append({
                         'route_location_id': route_location_id,
@@ -3030,7 +3001,7 @@ def create_route():
 
 @app.route('/api/routes/<int:route_id>', methods=['PUT'])
 @token_required
-@role_required(['administrator', 'doctor'])
+@role_required(['administrator', 'doctor'])  # NOTE: Nurses are excluded here too!
 def update_route(route_id: int):
     """Update an existing route's core fields - IMPROVED VERSION"""
     try:
