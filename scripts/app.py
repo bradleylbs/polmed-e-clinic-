@@ -6354,18 +6354,59 @@ def get_available_appointments_v2(patient_id: int):
         try:
             cursor = connection.cursor(dictionary=True)
             
-            # Call stored procedure
-            cursor.callproc('sp_get_available_appointments', [
-                date_from,
-                date_to,
-                province if province and province != 'Any Province' else None
-            ])
+            # Build direct query (avoid stored procedure collation issues)
+            query = """
+                SELECT 
+                    pa.id,
+                    pa.route_location_id,
+                    pa.appointment_date,
+                    pa.appointment_time,
+                    pa.status,
+                    rl.visit_date,
+                    rl.start_time,
+                    rl.end_time,
+                    rl.max_appointments,
+                    rl.appointment_duration,
+                    l.id AS location_id,
+                    l.location_name,
+                    l.address,
+                    l.city,
+                    l.province,
+                    r.id AS route_id,
+                    r.route_name,
+                    r.route_type,
+                    (rl.max_appointments - COALESCE((
+                        SELECT COUNT(*) 
+                        FROM patient_appointments pa2 
+                        WHERE pa2.route_location_id = rl.id 
+                        AND pa2.status IN ('Booked', 'Confirmed')
+                    ), 0)) AS available_slots
+                FROM patient_appointments pa
+                INNER JOIN route_locations rl ON pa.route_location_id = rl.id
+                INNER JOIN locations l ON rl.location_id = l.id
+                INNER JOIN routes r ON rl.route_id = r.id
+                WHERE 
+                    pa.status = 'Available'
+                    AND pa.appointment_date >= %s
+                    AND pa.appointment_date <= %s
+                    AND r.is_active = TRUE
+            """
             
+            params = [date_from, date_to]
+            
+            # Add province filter if provided
+            if province and province != 'Any Province':
+                query += " AND l.province = %s"
+                params.append(province)
+            
+            query += " ORDER BY pa.appointment_date ASC, pa.appointment_time ASC"
+            
+            cursor.execute(query, params)
             available_slots = cursor.fetchall() or []
-            logger.info(f"Stored procedure returned {len(available_slots)} available appointments")
+            logger.info(f"Query returned {len(available_slots)} available appointments")
             
         except Exception as sp_err:
-            logger.error(f"Error calling stored procedure: {sp_err}")
+            logger.error(f"Error fetching appointments: {sp_err}")
             return jsonify({'success': False, 'error': f'Failed to fetch appointments: {str(sp_err)}'}), 500
         finally:
             if cursor:
