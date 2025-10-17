@@ -1494,44 +1494,62 @@ def add_vital_signs(visit_id: int):
             additional['respiratory_rate'] = respiratory_rate
 
         # Insert vital signs
-        vital_result = DatabaseManager.execute_query(
-            """
-            INSERT INTO vital_signs (
-                visit_id, recorded_by, systolic_bp, diastolic_bp, heart_rate, temperature,
-                weight, height, oxygen_saturation, blood_glucose, additional_measurements
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                visit_id,
-                request.current_user['id'],
-                systolic_bp,
-                diastolic_bp,
-                heart_rate,
-                temperature,
-                weight,
-                height,
-                oxygen_saturation,
-                blood_glucose,
-                json.dumps(additional) if additional else None,
-            ),
-            fetch=False,
-        )
-
-        if not vital_result:
-            return jsonify({'success': False, 'error': 'Failed to record vital signs'}), 500
+        try:
+            logger.info(f"Inserting vitals for visit {visit_id}: BP={systolic_bp}/{diastolic_bp}, HR={heart_rate}, Temp={temperature}, O2={oxygen_saturation}")
+            vital_result = DatabaseManager.execute_query(
+                """
+                INSERT INTO vital_signs (
+                    visit_id, recorded_by, systolic_bp, diastolic_bp, heart_rate, temperature,
+                    weight, height, oxygen_saturation, blood_glucose, additional_measurements
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    visit_id,
+                    request.current_user['id'],
+                    systolic_bp,
+                    diastolic_bp,
+                    heart_rate,
+                    temperature,
+                    weight,
+                    height,
+                    oxygen_saturation,
+                    blood_glucose,
+                    json.dumps(additional) if additional else None,
+                ),
+                fetch=False,
+            )
+            logger.info(f"Vital signs insert result: {vital_result}")
+        except Exception as vital_error:
+            logger.error(f"Failed to insert vital signs: {vital_error}", exc_info=True)
+            return jsonify({'success': False, 'error': f'Failed to record vital signs: {str(vital_error)}'}), 500
 
         # Optional nursing assessment note
         nursing_notes = (data.get('nursing_notes') or '').strip()
         if nursing_notes:
-            DatabaseManager.execute_query(
-                """
-                INSERT INTO clinical_notes (
-                    visit_id, note_type, content, created_by
-                ) VALUES (%s, 'Assessment', %s, %s)
-                """,
-                (visit_id, nursing_notes, request.current_user['id']),
-                fetch=False,
-            )
+            try:
+                logger.info(f"Recording nursing notes for visit {visit_id}: {nursing_notes[:100]}")
+                # Check if clinical_notes table exists first
+                cursor = DatabaseManager.get_connection().cursor()
+                cursor.execute("SHOW TABLES LIKE 'clinical_notes'")
+                table_exists = cursor.fetchone() is not None
+                cursor.close()
+                
+                if table_exists:
+                    DatabaseManager.execute_query(
+                        """
+                        INSERT INTO clinical_notes (
+                            visit_id, note_type, content, created_by
+                        ) VALUES (%s, %s, %s, %s)
+                        """,
+                        (visit_id, 'nursing_assessment', nursing_notes, request.current_user['id']),
+                        fetch=False,
+                    )
+                    logger.info("Nursing notes recorded successfully")
+                else:
+                    logger.warning("clinical_notes table does not exist")
+            except Exception as note_error:
+                logger.warning(f"Failed to record nursing notes: {note_error}")
+                # Don't fail the entire operation if notes fail
 
         return jsonify({'success': True, 'message': 'Vital signs recorded successfully'}), 201
 
