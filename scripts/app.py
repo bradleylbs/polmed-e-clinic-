@@ -897,20 +897,20 @@ def patient_portal_dashboard(patient_id: int):
         # Get upcoming appointments (if appointments table exists)
         upcoming_appointments = []
         try:
-            # Try to get appointments with location info if available
+            # Get appointments with location info from patient_appointments table
             appointments_query = """
-            SELECT a.id, a.booking_reference, 
-                   DATE(a.booked_at) as appointment_date,
-                   a.appointment_time, 
-                   COALESCE(l.location_name, rl.location_id) as location_name,
+            SELECT pa.id, pa.booking_reference, 
+                   DATE(pa.appointment_date) as appointment_date,
+                   pa.appointment_time, 
+                   COALESCE(l.location_name, 'Mobile Clinic') as location_name,
                    COALESCE(l.city, '') as city,
                    COALESCE(l.province, '') as province,
-                   a.status, a.duration_minutes
-            FROM appointments a
-            LEFT JOIN route_locations rl ON a.route_location_id = rl.id
+                   pa.status, COALESCE(pa.appointment_duration, 30) as duration_minutes
+            FROM patient_appointments pa
+            LEFT JOIN route_locations rl ON pa.route_location_id = rl.id
             LEFT JOIN locations l ON rl.location_id = l.id
-            WHERE a.patient_id = %s AND a.status IN ('confirmed', 'pending')
-            ORDER BY a.booked_at DESC
+            WHERE pa.patient_id = %s AND pa.status IN ('Confirmed', 'Booked')
+            ORDER BY pa.appointment_date DESC
             LIMIT 5
             """
             upcoming_appointments = DatabaseManager.execute_query(appointments_query, (patient_id,), fetch=True) or []
@@ -920,14 +920,14 @@ def patient_portal_dashboard(patient_id: int):
             try:
                 fallback_query = """
                 SELECT id, booking_reference, 
-                       DATE(booked_at) as appointment_date,
+                       DATE(appointment_date) as appointment_date,
                        appointment_time, 
                        'Mobile Clinic' as location_name,
                        '' as city, '' as province,
-                       status, duration_minutes
-                FROM appointments
-                WHERE patient_id = %s AND status IN ('confirmed', 'pending')
-                ORDER BY booked_at DESC
+                       status, COALESCE(appointment_duration, 30) as duration_minutes
+                FROM patient_appointments
+                WHERE patient_id = %s AND status IN ('Confirmed', 'Booked')
+                ORDER BY appointment_date DESC
                 LIMIT 5
                 """
                 upcoming_appointments = DatabaseManager.execute_query(fallback_query, (patient_id,), fetch=True) or []
@@ -3107,9 +3107,9 @@ def get_available_appointments():
         
         query = """
         SELECT 
-            a.id,
-            a.appointment_time,
-            a.duration_minutes,
+            pa.id,
+            pa.appointment_time,
+            COALESCE(pa.appointment_duration, 30) as duration_minutes,
             rl.visit_date,
             l.location_name,
             l.province,
@@ -3117,12 +3117,12 @@ def get_available_appointments():
             lt.type_name as location_type,
             r.route_name,
             r.route_type
-        FROM appointments a
-        JOIN route_locations rl ON a.route_location_id = rl.id
+        FROM patient_appointments pa
+        JOIN route_locations rl ON pa.route_location_id = rl.id
         JOIN routes r ON rl.route_id = r.id
         JOIN locations l ON rl.location_id = l.id
         LEFT JOIN location_types lt ON l.location_type_id = lt.id
-        WHERE a.status = 'Available'
+        WHERE pa.status = 'Available'
         AND r.is_active = TRUE
         AND rl.visit_date >= CURDATE()
         """
@@ -6109,19 +6109,20 @@ def get_appointments():
         # Calculate offset
         offset = (page - 1) * limit
         
-        # Build query
+        # Build query using patient_appointments table
         query = """
         SELECT 
-            id,
-            route_location_id,
-            appointment_date,
-            appointment_time,
-            booked_by_name,
-            booked_by_phone,
-            status,
-            special_requirements,
-            created_at
-        FROM appointments 
+            pa.id,
+            pa.route_location_id,
+            pa.appointment_date,
+            pa.appointment_time,
+            COALESCE(u.email, u.username) as booked_by_name,
+            COALESCE(u.phone_number, '') as booked_by_phone,
+            pa.status,
+            pa.notes as special_requirements,
+            pa.created_at
+        FROM patient_appointments pa
+        LEFT JOIN users u ON pa.created_by = u.id
         WHERE 1=1
         """
         
