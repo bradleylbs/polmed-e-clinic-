@@ -372,8 +372,8 @@ export function PatientAppointmentBooking({ patientId }: PatientAppointmentBooki
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline">{appt.status}</Badge>
-                    {appt.status === "scheduled" && (
+                    <Badge variant="outline">{(appt.status || '').charAt(0).toUpperCase() + (appt.status || '').slice(1)}</Badge>
+                    {["scheduled", "booked", "confirmed"].includes((appt.status || "").toLowerCase()) && (
                       <Button
                         variant="destructive"
                         size="sm"
