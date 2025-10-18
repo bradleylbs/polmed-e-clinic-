@@ -336,7 +336,7 @@ export function ClinicalWorkflow({
   }, [])
 
   const searchICD10 = useCallback(async (query: string) => {
-    if (query.length < 2) {
+    if (query.length < 1) {
       setIcd10SearchResults([])
       return
     }
@@ -386,10 +386,10 @@ export function ClinicalWorkflow({
       clearTimeout(searchTimeoutRef.current)
     }
 
-    if (icd10SearchQuery.length >= 2) {
+    if (icd10SearchQuery.length >= 1) {
       searchTimeoutRef.current = setTimeout(() => {
         searchICD10(icd10SearchQuery)
-      }, 300)
+      }, 150)
     } else {
       setIcd10SearchResults([])
     }
@@ -1461,7 +1461,7 @@ export function ClinicalWorkflow({
                               <span className="md:hidden">Search ICD-10</span>
                               {icd10SearchResults.length > 0 && (
                                 <Badge variant="outline" className="ml-auto md:ml-0 text-xs">
-                                  {icd10SearchResults.length} results
+                                  Showing {icd10SearchResults.length} / 25 results
                                 </Badge>
                               )}
                             </div>
@@ -1521,12 +1521,12 @@ export function ClinicalWorkflow({
                                 </div>
                               )}
                               
-                              {!icd10SearchLoading && icd10SearchQuery.length < 2 && (
+                              {!icd10SearchLoading && icd10SearchQuery.length < 1 && (
                                 <div className="p-6 text-center space-y-3">
                                   <Brain className="w-8 h-8 text-muted-foreground/50 mx-auto" />
                                   <div>
                                     <p className="text-sm font-medium text-foreground">Search ICD-10 Codes</p>
-                                    <p className="text-xs text-muted-foreground mt-1">Type diagnosis, symptoms, or code (2+ characters)</p>
+                                    <p className="text-xs text-muted-foreground mt-1">Type diagnosis, symptoms, or code (1+ characters)</p>
                                   </div>
                                   <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
                                     Examples: "diabetes" • "E11.9" • "fever" • "infection"
@@ -1554,7 +1554,7 @@ export function ClinicalWorkflow({
                                 )}
 
                               {!icd10SearchLoading && icd10SearchResults.length > 0 && (
-                                <CommandGroup heading={`${icd10SearchResults.length} ICD-10 Codes Found`}>
+                                <CommandGroup heading={`Top ${icd10SearchResults.length} ICD-10 matches`}>
                                   {icd10SearchResults.map((result, index) => {
                                     const isAlreadySelected = selectedICD10Codes.find(c => c.code === result.code)
                                     return (
