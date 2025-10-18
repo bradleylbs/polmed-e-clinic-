@@ -6379,14 +6379,14 @@ def get_available_appointments_v2(patient_id: int):
                         SELECT COUNT(*) 
                         FROM patient_appointments pa2 
                         WHERE pa2.route_location_id = rl.id 
-                        AND pa2.status IN ('Booked', 'Confirmed')
+                        AND LOWER(pa2.status) IN ('booked', 'confirmed')
                     ), 0)) AS available_slots
                 FROM patient_appointments pa
                 INNER JOIN route_locations rl ON pa.route_location_id = rl.id
                 INNER JOIN locations l ON rl.location_id = l.id
                 INNER JOIN routes r ON rl.route_id = r.id
                 WHERE 
-                    pa.status = 'Available'
+                    (pa.status IS NULL OR LOWER(pa.status) = 'available')
                     AND pa.appointment_date >= %s
                     AND pa.appointment_date <= %s
                     AND r.is_active = TRUE
@@ -7149,7 +7149,7 @@ def book_appointment_via_portal(appointment_id: int):
         FROM patient_appointments pa
         LEFT JOIN route_locations rl ON pa.route_location_id = rl.id
         LEFT JOIN locations l ON rl.location_id = l.id
-        WHERE pa.id = %s AND pa.status = 'Available'
+    WHERE pa.id = %s AND (pa.status IS NULL OR LOWER(pa.status) = 'available')
         """
         
         appointments = DatabaseManager.execute_query(apt_query, (appointment_id,), fetch=True)
@@ -7205,7 +7205,7 @@ def cancel_appointment_via_portal(booking_id: int):
         apt_query = """
         SELECT id, status, patient_id, booking_reference
         FROM patient_appointments
-        WHERE id = %s AND patient_id = %s AND status = 'Booked'
+    WHERE id = %s AND patient_id = %s AND LOWER(status) = 'booked'
         """
         
         appointments = DatabaseManager.execute_query(apt_query, (booking_id, patient_id), fetch=True)
