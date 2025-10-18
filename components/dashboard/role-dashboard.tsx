@@ -67,11 +67,18 @@ interface DashboardStats {
 
 interface ActivityItem {
   id: string
-  type: "patient" | "appointment" | "inventory" | "route"
+  type: "patient" | "appointment" | "inventory" | "route" | "system" | "visit"
   description: string
   timestamp: string
   location?: string
   status: "completed" | "pending" | "alert"
+  performedBy?: string
+  action?: string
+  table?: string
+  recordId?: number | string | null
+  ipAddress?: string | null
+  changeSummary?: string
+  locationData?: unknown
 }
 
 interface TaskItem {
@@ -212,11 +219,18 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
 
         const normalizedActivity: ActivityItem[] = (raw.recentActivity ?? []).map((a: any) => ({
           id: String(a.id),
-          type: (a.type as ActivityItem["type"]) ?? "patient",
+          type: (a.type as ActivityItem["type"]) ?? "system",
           description: String(a.description ?? ""),
           timestamp: String(a.timestamp ?? new Date().toISOString()),
           location: a.location ? String(a.location) : undefined,
           status: (a.status as ActivityItem["status"]) ?? "pending",
+          performedBy: a.performedBy ? String(a.performedBy) : undefined,
+          action: a.action ? String(a.action) : undefined,
+          table: a.table ? String(a.table) : undefined,
+          recordId: a.recordId ?? null,
+          ipAddress: a.ipAddress ? String(a.ipAddress) : a.ipAddress,
+          changeSummary: a.changeSummary ? String(a.changeSummary) : undefined,
+          locationData: a.locationData,
         }))
 
         setDashboardData({
@@ -260,6 +274,11 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
         return <Package className="w-4 h-4" />
       case "route":
         return <MapPin className="w-4 h-4" />
+      case "visit":
+        return <Stethoscope className="w-4 h-4" />
+      case "system":
+      default:
+        return <Activity className="w-4 h-4" />
     }
   }
 
@@ -486,45 +505,72 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
           </Card>
         )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>Your latest actions and updates</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {dashboardData.recentActivity.length > 0 ? (
-                dashboardData.recentActivity.map((activity) => (
-                  <div
-                    key={activity.id}
-                    className="flex items-start gap-3 p-4 border rounded-xl hover:shadow-md hover:border-primary/30 transition-all"
-                  >
-                    <div className={`p-2 rounded-full bg-muted ${getActivityStatusColor(activity.status)}`}>
-                      {getActivityIcon(activity.type)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{activity.description}</p>
-                      <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                        <Clock className="w-3 h-3" />
-                        <span>{formatTimeAgo(activity.timestamp)}</span>
-                        {activity.location && (
-                          <>
-                            <span>•</span>
-                            <MapPin className="w-3 h-3" />
-                            <span>{activity.location}</span>
-                          </>
+      <div
+        className={`grid grid-cols-1 ${normalizedRole === "administrator" ? "lg:grid-cols-2" : "lg:grid-cols-1"} gap-6`}
+      >
+        {normalizedRole === "administrator" && (
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>System Activity</CardTitle>
+              <CardDescription>Most recent actions across the platform</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {dashboardData.recentActivity.length > 0 ? (
+                  dashboardData.recentActivity.map((activity) => (
+                    <div
+                      key={activity.id}
+                      className="flex items-start gap-3 p-4 border rounded-xl hover:shadow-md hover:border-primary/30 transition-all"
+                    >
+                      <div className={`p-2 rounded-full bg-muted ${getActivityStatusColor(activity.status)}`}>
+                        {getActivityIcon(activity.type)}
+                      </div>
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <div>
+                          <p className="text-sm font-medium">{activity.description}</p>
+                          <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
+                            <Clock className="w-3 h-3" />
+                            <span>{formatTimeAgo(activity.timestamp)}</span>
+                            {activity.performedBy && (
+                              <>
+                                <span>•</span>
+                                <Users className="w-3 h-3" />
+                                <span>{activity.performedBy}</span>
+                              </>
+                            )}
+                            {activity.table && (
+                              <>
+                                <span>•</span>
+                                <FileText className="w-3 h-3" />
+                                <span>{activity.table}</span>
+                              </>
+                            )}
+                            {activity.recordId !== undefined && activity.recordId !== null && (
+                              <>
+                                <span>•</span>
+                                <Badge variant="outline" className="text-xs">
+                                  #{activity.recordId}
+                                </Badge>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {(activity.changeSummary || activity.ipAddress) && (
+                          <div className="text-xs text-muted-foreground space-y-1">
+                            {activity.changeSummary && <p className="leading-relaxed">{activity.changeSummary}</p>}
+                            {activity.ipAddress && <p className="text-[11px] uppercase">Source IP: {activity.ipAddress}</p>}
+                          </div>
                         )}
                       </div>
                     </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">No recent activity to display</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">No recent activity to display</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>

@@ -5240,46 +5240,97 @@ def get_dashboard_stats():
             )
             stats['maintenanceAlerts'] = int((maintenance or [{}])[0].get('maintenance_alerts') or 0)
 
-        # Recent activity (user-specific)
-        recent_activity = DatabaseManager.execute_query(
-            """
-            SELECT 
-                al.id,
-                al.action,
-                al.table_name,
-                al.created_at,
-                CASE 
-                    WHEN al.table_name = 'patients' THEN 'patient'
-                    WHEN al.table_name = 'appointments' THEN 'appointment'
-                    WHEN al.table_name = 'inventory_usage' THEN 'inventory'
-                    WHEN al.table_name = 'routes' THEN 'route'
-                    ELSE 'system'
-                END AS activity_type,
-                CASE 
-                    WHEN al.action = 'INSERT' THEN CONCAT('Created new ', al.table_name, ' record')
-                    WHEN al.action = 'UPDATE' THEN CONCAT('Updated ', al.table_name, ' record')
-                    ELSE CONCAT(al.action, ' ', al.table_name)
-                END AS description
-            FROM audit_log al
-            WHERE al.user_id = %s
-            AND al.created_at >= CURDATE() - INTERVAL 7 DAY
-            ORDER BY al.created_at DESC
-            LIMIT 10
-            """,
-            (user_id,),
-            fetch=True,
-        )
+        def format_audit_change_summary(old_values, new_values):
+            """Return a concise change summary derived from audit JSON values."""
+            def parse_json_blob(blob):
+                if not blob:
+                    return {}
+                if isinstance(blob, dict):
+                    return blob
+                try:
+                    return json.loads(blob)
+                except Exception:
+                    return {}
 
-        stats['recentActivity'] = [
-            {
-                'id': str(activity['id']),
-                'type': activity['activity_type'],
-                'description': activity['description'],
-                'timestamp': activity['created_at'].isoformat() if activity['created_at'] else '',
-                'status': 'completed'
-            }
-            for activity in (recent_activity or [])
-        ]
+            old_data = parse_json_blob(old_values)
+            new_data = parse_json_blob(new_values)
+
+            if not isinstance(new_data, dict) or not new_data:
+                return ''
+
+            changes = []
+            for key, new_val in new_data.items():
+                if key in {'updated_at', 'created_at', 'password', 'token'}:
+                    continue
+                old_val = old_data.get(key)
+                if old_val != new_val:
+                    changes.append(f"{key}: {old_val} -> {new_val}")
+                if len(changes) >= 5:
+                    break
+
+            return '; '.join(changes)
+
+        # Recent activity: only expose to administrators for a system-wide view
+        stats['recentActivity'] = []
+        if user_role == 'administrator':
+            recent_activity = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    al.id,
+                    al.action,
+                    al.table_name,
+                    al.record_id,
+                    al.created_at,
+                    al.ip_address,
+                    al.location_data,
+                    al.old_values,
+                    al.new_values,
+                    u.username,
+                    u.first_name,
+                    u.last_name,
+                    CASE 
+                        WHEN al.table_name = 'patients' THEN 'patient'
+                        WHEN al.table_name = 'patient_visits' THEN 'visit'
+                        WHEN al.table_name = 'appointments' THEN 'appointment'
+                        WHEN al.table_name = 'inventory_usage' THEN 'inventory'
+                        WHEN al.table_name = 'routes' THEN 'route'
+                        ELSE 'system'
+                    END AS activity_type
+                FROM audit_log al
+                LEFT JOIN users u ON al.user_id = u.id
+                WHERE al.created_at >= CURDATE() - INTERVAL 7 DAY
+                ORDER BY al.created_at DESC
+                LIMIT 20
+                """,
+                fetch=True,
+            )
+
+            detailed_activity = []
+            for activity in (recent_activity or []):
+                actor_name = (f"{(activity.get('first_name') or '')} {(activity.get('last_name') or '')}".strip()
+                              or activity.get('username') or 'System')
+                action_value = str(activity.get('action') or '').lower() or 'performed'
+                table_value = str(activity.get('table_name') or '').replace('_', ' ').strip() or 'record'
+                record_id = activity.get('record_id')
+                record_suffix = f" record {record_id}" if record_id not in (None, '') else ''
+                description = f"{actor_name} {action_value} {table_value}{record_suffix}".strip()
+
+                detailed_activity.append({
+                    'id': str(activity['id']),
+                    'type': activity.get('activity_type', 'system'),
+                    'description': description,
+                    'timestamp': activity['created_at'].isoformat() if activity['created_at'] else '',
+                    'status': 'completed',
+                    'performedBy': actor_name,
+                    'action': activity.get('action'),
+                    'table': activity.get('table_name'),
+                    'recordId': record_id,
+                    'ipAddress': activity.get('ip_address'),
+                    'changeSummary': format_audit_change_summary(activity.get('old_values'), activity.get('new_values')),
+                    'locationData': activity.get('location_data')
+                })
+
+            stats['recentActivity'] = detailed_activity
 
         return jsonify({'success': True, 'data': stats}), 200
 
@@ -6174,13 +6225,28 @@ def get_appointments():
             pa.route_location_id,
             pa.appointment_date,
             pa.appointment_time,
-            COALESCE(u.email, u.username) as booked_by_name,
-            COALESCE(u.phone_number, '') as booked_by_phone,
-            pa.status,
-            pa.notes as special_requirements,
-            pa.created_at
+            pa.booking_reference,
+            LOWER(pa.status) AS status,
+            pa.notes AS special_requirements,
+            pa.created_at,
+            COALESCE(
+                NULLIF(TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))), ''),
+                NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), ''),
+                COALESCE(u.username, u.email),
+                'Unassigned'
+            ) AS patient_name,
+            COALESCE(p.phone_number, u.phone_number, '') AS patient_phone,
+            COALESCE(p.medical_aid_number, '') AS patient_medical_aid,
+            COALESCE(r.route_name, '') AS route_name,
+            COALESCE(l.location_name, 'Mobile Clinic') AS location_name,
+            COALESCE(l.city, '') AS location_city,
+            COALESCE(l.province, '') AS location_province
         FROM patient_appointments pa
+        LEFT JOIN patients p ON pa.patient_id = p.id
         LEFT JOIN users u ON pa.created_by = u.id
+        LEFT JOIN route_locations rl ON pa.route_location_id = rl.id
+        LEFT JOIN routes r ON rl.route_id = r.id
+        LEFT JOIN locations l ON rl.location_id = l.id
         WHERE 1=1
         """
         
@@ -6188,15 +6254,15 @@ def get_appointments():
         
         # Add filters
         if status_filter:
-            query += " AND status = %s"
-            params.append(status_filter)
+            query += " AND LOWER(pa.status) = %s"
+            params.append(status_filter.lower())
         
         if route_id:
-            query += " AND route_location_id = %s"
+            query += " AND pa.route_location_id = %s"
             params.append(int(route_id))
         
         # Add ordering
-        query += " ORDER BY appointment_date DESC, appointment_time DESC"
+        query += " ORDER BY pa.appointment_date DESC, pa.appointment_time DESC"
         
         # Get total count
         count_query = f"SELECT COUNT(*) as total FROM ({query}) as counted"

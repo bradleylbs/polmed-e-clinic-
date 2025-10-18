@@ -29,28 +29,48 @@ interface Appointment {
   route_id: string
   route_name?: string
   location_name?: string
+  location_city?: string
+  location_province?: string
   appointment_date: string
   appointment_time?: string
   status: "confirmed" | "cancelled" | "completed" | "pending"
   created_at: string
   notes?: string
+  booking_reference?: string
 }
 
 // Transform API appointment to component appointment
-const transformApiAppointment = (apiAppt: ApiAppointment): Appointment => ({
-  id: apiAppt.id?.toString() || '',
-  patient_name: apiAppt.booked_by_name,
-  patient_phone: apiAppt.booked_by_phone,
-  medical_aid_number: '', // Not available in API appointment
-  route_id: apiAppt.route_location_id?.toString() || '',
-  appointment_date: apiAppt.appointment_date,
-  appointment_time: apiAppt.appointment_time,
-  status: apiAppt.status === 'booked' ? 'confirmed' : 
-          apiAppt.status === 'available' ? 'pending' :
-          apiAppt.status as "confirmed" | "cancelled" | "completed" | "pending",
-  created_at: apiAppt.created_at || '',
-  notes: apiAppt.special_requirements
-})
+const transformApiAppointment = (apiAppt: ApiAppointment): Appointment => {
+  const normalizedStatus = (apiAppt.status || "").toLowerCase()
+  const mappedStatus: Appointment["status"] =
+    normalizedStatus === "booked" || normalizedStatus === "confirmed"
+      ? "confirmed"
+      : normalizedStatus === "available"
+        ? "pending"
+        : normalizedStatus === "completed"
+          ? "completed"
+          : normalizedStatus === "cancelled"
+            ? "cancelled"
+            : "pending"
+
+  return {
+    id: apiAppt.id?.toString() || "",
+  patient_name: apiAppt.patient_name || apiAppt.booked_by_name || "Unassigned",
+  patient_phone: apiAppt.patient_phone || apiAppt.booked_by_phone || "",
+    medical_aid_number: apiAppt.patient_medical_aid || "",
+    route_id: apiAppt.route_location_id?.toString() || "",
+  route_name: apiAppt.route_name,
+  location_name: apiAppt.location_name,
+  location_city: apiAppt.location_city,
+  location_province: apiAppt.location_province,
+    appointment_date: apiAppt.appointment_date,
+    appointment_time: apiAppt.appointment_time,
+    status: mappedStatus,
+    created_at: apiAppt.created_at || "",
+    notes: apiAppt.special_requirements,
+    booking_reference: apiAppt.booking_reference || undefined,
+  }
+}
 
 interface AppointmentListProps {
   userRole: string
@@ -113,7 +133,8 @@ export function AppointmentList({ userRole, onNewAppointment, onEditAppointment 
           apt.patient_name?.toLowerCase().includes(term) ||
           apt.medical_aid_number?.toLowerCase().includes(term) ||
           apt.patient_phone?.includes(term) ||
-          apt.route_name?.toLowerCase().includes(term),
+          apt.route_name?.toLowerCase().includes(term) ||
+          apt.booking_reference?.toLowerCase().includes(term),
       )
     }
 
@@ -354,12 +375,20 @@ export function AppointmentList({ userRole, onNewAppointment, onEditAppointment 
                           <User className="w-4 h-4 text-muted-foreground" />
                           <span className="font-semibold text-lg">{appointment.patient_name}</span>
                         </div>
+                        {appointment.booking_reference && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span className="uppercase tracking-wide">Reference</span>
+                            <Badge variant="outline" className="font-mono">
+                              {appointment.booking_reference}
+                            </Badge>
+                          </div>
+                        )}
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Phone className="w-3 h-3" />
-                            {appointment.patient_phone}
+                            {appointment.patient_phone || "Not provided"}
                           </span>
-                          <span>Medical Aid: {appointment.medical_aid_number}</span>
+                          <span>Medical Aid: {appointment.medical_aid_number || "N/A"}</span>
                         </div>
                       </div>
                       {getStatusBadge(appointment.status)}
@@ -379,7 +408,17 @@ export function AppointmentList({ userRole, onNewAppointment, onEditAppointment 
                       {appointment.location_name && (
                         <div className="flex items-center gap-2">
                           <MapPin className="w-4 h-4 text-muted-foreground" />
-                          <span>{appointment.location_name}</span>
+                          <span>
+                            {appointment.location_name}
+                            {appointment.location_city && `, ${appointment.location_city}`}
+                            {appointment.location_province && ` (${appointment.location_province})`}
+                          </span>
+                        </div>
+                      )}
+                      {appointment.route_name && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Calendar className="w-4 h-4" />
+                          <span>{appointment.route_name}</span>
                         </div>
                       )}
                     </div>

@@ -154,11 +154,18 @@ interface DashboardStats {
   maintenanceAlerts: number
   recentActivity: Array<{
     id: string
-    type: "patient" | "appointment" | "inventory" | "route"
+    type: "patient" | "appointment" | "inventory" | "route" | "system" | "visit"
     description: string
     timestamp: string
     location?: string
     status: "completed" | "pending" | "alert"
+    performedBy?: string
+    action?: string
+    table?: string
+    recordId?: number | string | null
+    ipAddress?: string | null
+    changeSummary?: string
+    locationData?: unknown
   }>
   upcomingTasks: Array<{
     id: string
@@ -245,10 +252,18 @@ export interface Appointment {
   booked_by_email?: string
   appointment_date: string
   appointment_time: string
-  status: "available" | "booked" | "completed" | "cancelled"
+  status: "available" | "booked" | "confirmed" | "completed" | "cancelled"
   special_requirements?: string
   created_at?: string
   updated_at?: string
+  booking_reference?: string
+  patient_name?: string
+  patient_phone?: string
+  patient_medical_aid?: string
+  route_name?: string
+  location_name?: string
+  location_city?: string
+  location_province?: string
 }
 
 export interface BookAppointmentRequest {
