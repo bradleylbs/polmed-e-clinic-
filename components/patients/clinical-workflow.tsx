@@ -1453,50 +1453,103 @@ export function ClinicalWorkflow({
                             )}
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-[600px] p-0 shadow-xl border-2" align="start">
-                          <div className="border-b bg-muted/30 p-3">
+                        <PopoverContent className="w-[95vw] md:w-[600px] max-w-[600px] p-0 shadow-xl border-2" align="start">
+                          <div className="border-b bg-muted/30 p-3 flex items-center justify-between">
                             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                               <Target className="w-4 h-4" />
-                              ICD-10-CM Code Search
+                              <span className="hidden md:inline">ICD-10-CM Code Search</span>
+                              <span className="md:hidden">Search ICD-10</span>
                               {icd10SearchResults.length > 0 && (
-                                <Badge variant="outline" className="ml-auto text-xs">
+                                <Badge variant="outline" className="ml-auto md:ml-0 text-xs">
                                   {icd10SearchResults.length} results
                                 </Badge>
                               )}
                             </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setIcd10SearchOpen(false)}
+                              className="md:hidden h-6 w-6 p-0"
+                              aria-label="Close search"
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
                           </div>
                           <Command>
                             <CommandInput
-                              placeholder="Type to search... (e.g., 'diabetes', 'hypertension', 'E11.9')"
+                              placeholder="Search by code or condition (e.g., E11.9, diabetes)"
                               value={icd10SearchQuery}
                               onValueChange={setIcd10SearchQuery}
                               className="border-0 focus:ring-0 text-base"
                             />
+                            
+                            {/* Show selected codes in search popover */}
+                            {selectedICD10Codes.length > 0 && (
+                              <div className="border-b bg-blue-50 p-3">
+                                <p className="text-xs font-medium text-blue-900 mb-2">
+                                  ✅ Currently Selected ({selectedICD10Codes.length}):
+                                </p>
+                                <div className="flex flex-wrap gap-1">
+                                  {selectedICD10Codes.map((code, idx) => (
+                                    <Badge 
+                                      key={idx}
+                                      variant="secondary" 
+                                      className="bg-green-100 text-green-800 border-green-300 text-xs"
+                                    >
+                                      {code.code}
+                                      <button
+                                        onClick={() => removeICD10Code(code.code)}
+                                        className="ml-1 hover:text-destructive"
+                                      >
+                                        ×
+                                      </button>
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                             <CommandList className="max-h-96">
                               {icd10SearchLoading && (
-                                <div className="p-6 text-center">
-                                  <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                                    Searching ICD-10 database...
+                                <div className="p-8 text-center space-y-2">
+                                  <div className="inline-flex flex-col items-center gap-3">
+                                    <div className="w-5 h-5 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+                                    <div>
+                                      <p className="text-sm font-medium text-foreground">Searching ICD-10 database...</p>
+                                      <p className="text-xs text-muted-foreground">Should take less than 1 second</p>
+                                    </div>
                                   </div>
                                 </div>
                               )}
                               
                               {!icd10SearchLoading && icd10SearchQuery.length < 2 && (
-                                <div className="p-6 text-center">
-                                  <Brain className="w-8 h-8 text-muted-foreground/50 mx-auto mb-2" />
-                                  <p className="text-sm text-muted-foreground mb-1">Start typing to search ICD-10 codes</p>
-                                  <p className="text-xs text-muted-foreground">Search by code, condition, or symptoms</p>
+                                <div className="p-6 text-center space-y-3">
+                                  <Brain className="w-8 h-8 text-muted-foreground/50 mx-auto" />
+                                  <div>
+                                    <p className="text-sm font-medium text-foreground">Search ICD-10 Codes</p>
+                                    <p className="text-xs text-muted-foreground mt-1">Type diagnosis, symptoms, or code (2+ characters)</p>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                                    Examples: "diabetes" • "E11.9" • "fever" • "infection"
+                                  </div>
                                 </div>
                               )}
 
                               {!icd10SearchLoading &&
                                 icd10SearchQuery.length >= 2 &&
                                 icd10SearchResults.length === 0 && (
-                                  <div className="p-6 text-center">
-                                    <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-                                    <p className="text-sm font-medium mb-1">No ICD-10 codes found</p>
-                                    <p className="text-xs text-muted-foreground">Try different keywords or check spelling</p>
+                                  <div className="p-6 text-center space-y-3">
+                                    <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto" />
+                                    <div>
+                                      <p className="text-sm font-semibold text-foreground mb-1">
+                                        No matches found for "{icd10SearchQuery}"
+                                      </p>
+                                      <p className="text-xs text-muted-foreground mb-3">
+                                        Suggestions: try broader terms • check spelling • use code format (e.g., E11)
+                                      </p>
+                                      <div className="text-xs bg-blue-50 border border-blue-200 rounded p-2 text-blue-700">
+                                        💡 <span className="font-medium">Tip:</span> Try searching for symptoms or use the quick access codes below
+                                      </div>
+                                    </div>
                                   </div>
                                 )}
 
@@ -1574,22 +1627,23 @@ export function ClinicalWorkflow({
                           
                           {icd10SearchResults.length > 0 && (
                             <div className="border-t bg-muted/20 p-3 space-y-2">
-                              <div className="flex items-center justify-between">
+                              <div className="flex items-center justify-between gap-2 flex-col md:flex-row">
                                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                                   <Zap className="w-3 h-3" />
-                                  Click any code to add it to diagnosis
+                                  Click any code to add it
                                 </p>
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                  <kbd className="px-1 py-0.5 bg-muted rounded border text-xs">↑↓</kbd>
+                                <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground">
+                                  <span className="font-medium">Keyboard:</span>
+                                  <kbd className="px-2 py-1 bg-muted rounded border text-xs font-mono">↑↓</kbd>
                                   <span>Navigate</span>
-                                  <kbd className="px-1 py-0.5 bg-muted rounded border text-xs">Enter</kbd>
+                                  <kbd className="px-2 py-1 bg-muted rounded border text-xs font-mono">Enter</kbd>
                                   <span>Select</span>
-                                  <kbd className="px-1 py-0.5 bg-muted rounded border text-xs">Esc</kbd>
+                                  <kbd className="px-2 py-1 bg-muted rounded border text-xs font-mono">Esc</kbd>
                                   <span>Close</span>
                                 </div>
                               </div>
                               {selectedICD10Codes.length > 0 && (
-                                <div className="flex items-center gap-2 text-xs text-green-600">
+                                <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50 p-2 rounded">
                                   <CheckCircle className="w-3 h-3" />
                                   <span>{selectedICD10Codes.length} code(s) selected • Search continues for more</span>
                                 </div>
@@ -1607,7 +1661,7 @@ export function ClinicalWorkflow({
                             <div className="flex items-center justify-between mb-2">
                               <p className="text-xs text-muted-foreground flex items-center gap-1">
                                 <Sparkles className="w-3 h-3" />
-                                Quick Access - Common ICD-10 Codes:
+                                <span className="font-medium">Frequently Used ICD-10 Codes</span>
                               </p>
                               {selectedICD10Codes.length > 0 && (
                                 <Button
@@ -1628,16 +1682,16 @@ export function ClinicalWorkflow({
                                 </Button>
                               )}
                             </div>
-                            <div className="flex flex-wrap gap-1">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
                               {[
-                                { code: "Z00.00", desc: "General adult medical examination" },
-                                { code: "I10", desc: "Essential hypertension" },
-                                { code: "E11.9", desc: "Type 2 diabetes mellitus without complications" }, 
-                                { code: "J06.9", desc: "Acute upper respiratory infection, unspecified" },
-                                { code: "M79.3", desc: "Panniculitis, unspecified" },
-                                { code: "R50.9", desc: "Fever, unspecified" },
-                                { code: "K59.00", desc: "Constipation, unspecified" },
-                                { code: "R06.02", desc: "Shortness of breath" }
+                                { code: "I10", desc: "Hypertension" },
+                                { code: "E11.9", desc: "Type 2 Diabetes", popular: true }, 
+                                { code: "J06.9", desc: "Upper Respiratory Infection" },
+                                { code: "R50.9", desc: "Fever" },
+                                { code: "R06.02", desc: "Shortness of Breath", popular: true },
+                                { code: "M79.3", desc: "Panniculitis" },
+                                { code: "K59.00", desc: "Constipation" },
+                                { code: "Z00.00", desc: "General Medical Exam" }
                               ].map((item) => {
                                 const isSelected = selectedICD10Codes.find(c => c.code === item.code)
                                 return (
@@ -1647,15 +1701,16 @@ export function ClinicalWorkflow({
                                     size="sm"
                                     onClick={() => addICD10Code(item.code, item.desc)}
                                     disabled={!!isSelected}
-                                    className={`text-xs h-7 px-2 font-mono transition-all ${
+                                    className={`text-xs h-8 px-2 font-mono transition-all justify-start ${
                                       isSelected 
                                         ? 'bg-green-100 text-green-700 border-green-200 cursor-not-allowed' 
                                         : 'hover:bg-primary/10 border border-transparent hover:border-primary/20'
                                     }`}
                                     title={item.desc}
                                   >
-                                    {isSelected && <CheckCircle className="w-3 h-3 mr-1" />}
-                                    {item.code}
+                                    {isSelected && <CheckCircle className="w-3 h-3 mr-1 flex-shrink-0" />}
+                                    <span className="font-bold">{item.code}</span>
+                                    <span className="text-xs opacity-70 ml-1 hidden md:inline">• {item.desc}</span>
                                   </Button>
                                 )
                               })}
@@ -1663,15 +1718,15 @@ export function ClinicalWorkflow({
                           </div>
                           
                           {/* Search Tips */}
-                          <div className="text-xs text-muted-foreground bg-blue-50 border border-blue-200 rounded-lg p-2">
+                          <div className="text-xs bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
                             <div className="flex items-start gap-2">
-                              <Brain className="w-3 h-3 text-blue-600 mt-0.5 flex-shrink-0" />
-                              <div>
-                                <p className="font-medium text-blue-900 mb-1">Search Tips:</p>
-                                <ul className="space-y-0.5 text-blue-700">
-                                  <li>• Use specific terms: "diabetes", "hypertension", "infection"</li>
-                                  <li>• Search by code: "E11", "I10", "J06" for partial matches</li>
-                                  <li>• Multiple codes can be selected in one search session</li>
+                              <Brain className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                              <div className="flex-1">
+                                <p className="font-semibold text-blue-900 mb-1">💡 Search Tips:</p>
+                                <ul className="space-y-1 text-blue-700">
+                                  <li>🔍 Search by symptom: "diabetes", "hypertension", "fever"</li>
+                                  <li>📝 Search by code: "E11", "I10", "J06" for partial matches</li>
+                                  <li>✨ Select multiple codes in one search session</li>
                                 </ul>
                               </div>
                             </div>
