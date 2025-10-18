@@ -7130,13 +7130,26 @@ def book_appointment_via_portal(appointment_id: int):
         data = request.get_json() or {}
         patient_id = request.patient_id
         
-        # Validate appointment exists and is available
+        # Validate appointment exists and is available (using patient_appointments table)
         apt_query = """
-        SELECT ra.id, ra.route_location_id, ra.available_slots, ra.appointment_duration,
-               rl.route_id, rl.location_id, rl.visit_date, rl.start_time, rl.end_time
-        FROM route_appointments ra
-        LEFT JOIN route_locations rl ON ra.route_location_id = rl.id
-        WHERE ra.id = %s AND ra.available_slots > 0
+        SELECT 
+            pa.id,
+            pa.route_location_id,
+            pa.appointment_date,
+            pa.appointment_time,
+            pa.status,
+            rl.visit_date,
+            rl.start_time,
+            rl.end_time,
+            rl.max_appointments,
+            rl.appointment_duration,
+            l.location_name,
+            l.address,
+            l.city
+        FROM patient_appointments pa
+        LEFT JOIN route_locations rl ON pa.route_location_id = rl.id
+        LEFT JOIN locations l ON rl.location_id = l.id
+        WHERE pa.id = %s AND pa.status = 'Available'
         """
         
         appointments = DatabaseManager.execute_query(apt_query, (appointment_id,), fetch=True)
@@ -7145,41 +7158,32 @@ def book_appointment_via_portal(appointment_id: int):
         
         apt = appointments[0]
         
-        # Create booking
-        booking_id = str(uuid.uuid4())
-        booking_query = """
-        INSERT INTO bookings 
-        (patient_id, route_location_id, appointment_id, booking_reference, 
-         booking_status, notes, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
+        # Generate booking reference
+        booking_reference = str(uuid.uuid4())
+        
+        # Update appointment status to Booked
+        update_query = """
+        UPDATE patient_appointments 
+        SET status = 'Booked', 
+            booking_reference = %s,
+            patient_id = %s,
+            updated_at = NOW()
+        WHERE id = %s
         """
         
-        params = (
-            patient_id,
-            apt['route_location_id'],
-            appointment_id,
-            booking_id,
-            'confirmed',
-            data.get('notes', '')
-        )
-        
-        result = DatabaseManager.execute_query(booking_query, params)
-        if not result:
-            return jsonify({'success': False, 'error': 'Failed to create booking'}), 400
-        
-        # Decrement available slots
-        update_query = "UPDATE route_appointments SET available_slots = available_slots - 1 WHERE id = %s"
-        DatabaseManager.execute_query(update_query, (appointment_id,))
+        DatabaseManager.execute_query(update_query, (booking_reference, patient_id, appointment_id))
         
         return jsonify({
             'success': True,
             'data': {
-                'booking_id': booking_id,
+                'booking_reference': booking_reference,
                 'appointment_id': appointment_id,
-                'visit_date': apt['visit_date'].isoformat() if apt['visit_date'] else None,
-                'start_time': apt['start_time'].strftime('%H:%M') if apt['start_time'] else None,
-                'end_time': apt['end_time'].strftime('%H:%M') if apt['end_time'] else None,
-                'status': 'confirmed',
+                'appointment_date': apt['appointment_date'].isoformat() if apt['appointment_date'] else None,
+                'appointment_time': apt['appointment_time'].strftime('%H:%M') if apt['appointment_time'] else None,
+                'location': apt['location_name'] or 'N/A',
+                'address': apt['address'] or 'N/A',
+                'city': apt['city'] or 'N/A',
+                'status': 'Booked',
                 'message': 'Appointment booked successfully'
             }
         }), 201
@@ -7192,51 +7196,41 @@ def book_appointment_via_portal(appointment_id: int):
 @app.route('/api/patient-portal/appointments/<int:booking_id>/cancel', methods=['POST'])
 @patient_portal_token_required
 def cancel_appointment_via_portal(booking_id: int):
-    """Cancel a booked appointment"""
+    """Cancel a booked appointment (booking_id is the appointment_id)"""
     try:
         data = request.get_json() or {}
         patient_id = request.patient_id
         
-        # Verify booking exists and belongs to patient
-        booking_query = """
-        SELECT b.id, b.appointment_id, b.route_location_id, b.booking_status
-        FROM bookings b
-        WHERE b.id = %s AND b.patient_id = %s
+        # Verify appointment exists and belongs to patient
+        apt_query = """
+        SELECT id, status, patient_id, booking_reference
+        FROM patient_appointments
+        WHERE id = %s AND patient_id = %s AND status = 'Booked'
         """
         
-        bookings = DatabaseManager.execute_query(booking_query, (booking_id, patient_id), fetch=True)
-        if not bookings or len(bookings) == 0:
-            return jsonify({'success': False, 'error': 'Booking not found'}), 404
+        appointments = DatabaseManager.execute_query(apt_query, (booking_id, patient_id), fetch=True)
+        if not appointments or len(appointments) == 0:
+            return jsonify({'success': False, 'error': 'Appointment not found or not booked by you'}), 404
         
-        booking = bookings[0]
+        apt = appointments[0]
         
-        if booking['booking_status'] == 'cancelled':
-            return jsonify({'success': False, 'error': 'Booking already cancelled'}), 400
-        
-        # Update booking status
+        # Update appointment status back to Available
         update_query = """
-        UPDATE bookings 
-        SET booking_status = %s, cancellation_reason = %s, updated_at = NOW()
+        UPDATE patient_appointments 
+        SET status = 'Available', 
+            patient_id = NULL,
+            booking_reference = NULL,
+            updated_at = NOW()
         WHERE id = %s
         """
         
-        params = (
-            'cancelled',
-            data.get('reason', 'Patient cancelled'),
-            booking_id
-        )
-        
-        DatabaseManager.execute_query(update_query, params)
-        
-        # Increment available slots back
-        apt_update = "UPDATE route_appointments SET available_slots = available_slots + 1 WHERE id = %s"
-        DatabaseManager.execute_query(apt_update, (booking['appointment_id'],))
+        DatabaseManager.execute_query(update_query, (booking_id,))
         
         return jsonify({
             'success': True,
             'data': {
-                'booking_id': booking_id,
-                'status': 'cancelled',
+                'appointment_id': booking_id,
+                'status': 'Available',
                 'message': 'Appointment cancelled successfully'
             }
         }), 200
