@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 import os
 import logging
-from typing import Dict, List, Set
+from typing import Any, Dict, List, Set, Optional, Sequence
 import uuid
 import json 
 
@@ -139,6 +139,44 @@ class DatabaseManager:
         finally:
             if connection and connection.is_connected():
                 cursor.close()
+                connection.close()
+
+    @staticmethod
+    def call_procedure(proc_name: str, params: list | tuple | None = None, fetch: bool = True):
+        """Call a stored procedure and optionally return result sets."""
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            logger.error("No database connection available for stored procedure call")
+            return None
+
+        cursor = None
+        try:
+            cursor = connection.cursor(dictionary=True)
+            call_params = list(params or [])
+            logger.info(f"Calling stored procedure {proc_name} with params: {call_params}")
+            result_args = cursor.callproc(proc_name, call_params)
+
+            result_sets = []
+            if fetch:
+                for stored in cursor.stored_results():
+                    fetched = stored.fetchall()
+                    logger.info(f"Procedure {proc_name} returned {len(fetched) if fetched else 0} rows")
+                    result_sets.append(fetched)
+
+            connection.commit()
+            return {
+                'args': result_args,
+                'result_sets': result_sets
+            }
+        except Error as e:
+            logger.error(f"Stored procedure {proc_name} execution error: {e}")
+            if connection:
+                connection.rollback()
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+            if connection and connection.is_connected():
                 connection.close()
 
 def token_required(f):
@@ -2166,24 +2204,42 @@ def get_smart_suggestions():
         
         # Log the suggestion request for learning
         try:
-            DatabaseManager.execute_query(
-                """
-                INSERT INTO smart_suggestions (
-                    suggestion_type, input_context, suggestion_data, 
-                    confidence_score, user_id, patient_context
-                ) VALUES (%s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    suggestion_type,
+            allowed_types = {"icd10", "medication", "investigation", "template"}
+            log_type = suggestion_type if suggestion_type in allowed_types else "template"
+            suggestion_payload = json.dumps(suggestions)
+            patient_payload = json.dumps(patient_context) if patient_context else None
+            max_confidence = 0.0
+            if suggestions:
+                max_confidence = max(float(s.get('confidence', 0.0)) for s in suggestions)
+
+            proc_result = DatabaseManager.call_procedure(
+                'sp_log_smart_suggestion',
+                [
+                    log_type,
                     input_text,
-                    json.dumps(suggestions),
-                    max([s['confidence'] for s in suggestions]) if suggestions else 0.0,
+                    suggestion_payload,
+                    round(max_confidence, 3),
+                    'heuristic-v1',
                     request.current_user['id'],
-                    json.dumps(patient_context)
-                )
+                    patient_payload,
+                    0
+                ],
+                fetch=True
             )
+
+            logged_id = None
+            if proc_result:
+                result_args = proc_result.get('args') or []
+                if result_args:
+                    logged_id = result_args[-1]
+                if not logged_id:
+                    result_sets = proc_result.get('result_sets') or []
+                    if result_sets and result_sets[0]:
+                        logged_id = result_sets[0][0].get('new_id')
+            if logged_id:
+                logger.info(f"Smart suggestion logged with id {logged_id}")
         except Exception as log_error:
-            logger.warning(f"Failed to log smart suggestion: {log_error}")
+            logger.warning(f"Failed to log smart suggestion via stored procedure: {log_error}")
         
         return jsonify({
             'success': True,
@@ -2206,22 +2262,24 @@ def provide_suggestion_feedback(suggestion_id: int):
         feedback_score = data.get('feedback_score')  # 1-5 rating
         feedback_notes = data.get('feedback_notes', '')
         
-        result = DatabaseManager.execute_query(
-            """
-            UPDATE smart_suggestions 
-            SET was_accepted = %s, feedback_score = %s, feedback_notes = %s, accepted_at = %s
-            WHERE id = %s
-            """,
-            (
-                was_accepted,
+        proc_result = DatabaseManager.call_procedure(
+            'sp_record_suggestion_feedback',
+            [
+                suggestion_id,
+                int(was_accepted) if was_accepted is not None else None,
                 feedback_score,
-                feedback_notes,
-                datetime.now(timezone.utc) if was_accepted else None,
-                suggestion_id
-            )
+                feedback_notes
+            ],
+            fetch=True
         )
+
+        affected = 0
+        if proc_result:
+            result_sets = proc_result.get('result_sets') or []
+            if result_sets and result_sets[0]:
+                affected = result_sets[0][0].get('affected_rows', 0)
         
-        if result:
+        if affected:
             return jsonify({
                 'success': True,
                 'message': 'Feedback recorded successfully'
