@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -29,6 +30,17 @@ interface AvailableAppointment {
   available_slots: number
 }
 
+interface UpcomingAppointment {
+  id: number
+  booking_reference: string
+  appointment_date: string
+  appointment_time: string
+  location_name: string
+  city: string
+  province: string
+  status: string
+}
+
 interface BookingFilters {
   province: string
   city: string
@@ -39,6 +51,8 @@ interface BookingFilters {
 
 export function PatientAppointmentBooking({ patientId }: PatientAppointmentBookingProps) {
   const [availableAppointments, setAvailableAppointments] = useState<AvailableAppointment[]>([])
+  const [upcomingAppointments, setUpcomingAppointments] = useState<UpcomingAppointment[]>([])
+  const [loadingAppointments, setLoadingAppointments] = useState(false)
   const [loading, setLoading] = useState(false)
   const [bookingLoading, setBookingLoading] = useState<number | null>(null)
   const [filters, setFilters] = useState<BookingFilters>({
@@ -64,6 +78,8 @@ export function PatientAppointmentBooking({ patientId }: PatientAppointmentBooki
       date_from: today.toISOString().split("T")[0],
       date_to: nextMonth.toISOString().split("T")[0],
     }))
+    // Load upcoming appointments on mount
+    void loadUpcomingAppointments()
   }, [])
 
   useEffect(() => {
@@ -71,6 +87,25 @@ export function PatientAppointmentBooking({ patientId }: PatientAppointmentBooki
       searchAppointments()
     }
   }, [filters.date_from, filters.date_to])
+
+  const loadUpcomingAppointments = async () => {
+    setLoadingAppointments(true)
+    try {
+      const response = await patientPortalService.getPatientDashboard(patientId)
+      if (response.success && response.data?.upcoming_appointments) {
+        setUpcomingAppointments(response.data.upcoming_appointments)
+      } else {
+        if (response.error) {
+          toast({ title: "Error", description: response.error, variant: "destructive" })
+        }
+        setUpcomingAppointments([])
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to load appointments", variant: "destructive" })
+    } finally {
+      setLoadingAppointments(false)
+    }
+  }
 
   const searchAppointments = async () => {
     setLoading(true)
@@ -84,7 +119,19 @@ export function PatientAppointmentBooking({ patientId }: PatientAppointmentBooki
       })
 
       if (response.success && response.data) {
-        setAvailableAppointments(response.data)
+        // Deduplicate results by appointment_id; fall back to composite key if missing
+        const seen = new Set<string>()
+        const deduped: AvailableAppointment[] = []
+        for (const appt of response.data as AvailableAppointment[]) {
+          const key = appt.appointment_id
+            ? `id:${appt.appointment_id}`
+            : `loc:${appt.route_location_id}|${appt.appointment_date}|${appt.appointment_time}`
+          if (!seen.has(key)) {
+            seen.add(key)
+            deduped.push(appt)
+          }
+        }
+        setAvailableAppointments(deduped)
       } else {
         toast({
           title: "Search Failed",
@@ -124,7 +171,7 @@ export function PatientAppointmentBooking({ patientId }: PatientAppointmentBooki
         setShowBookingForm(false)
         setSelectedAppointment(null)
         setBookingNotes("")
-        searchAppointments()
+        await Promise.allSettled([searchAppointments(), loadUpcomingAppointments()])
       } else {
         toast({
           title: "Booking Failed",
@@ -140,6 +187,23 @@ export function PatientAppointmentBooking({ patientId }: PatientAppointmentBooki
       })
     } finally {
       setBookingLoading(null)
+    }
+  }
+
+  const handleCancelAppointment = async (appointmentId: number) => {
+    try {
+      const response = await patientPortalService.cancelAppointmentViaPortal(
+        appointmentId,
+        "Patient requested cancellation",
+      )
+      if (response.success) {
+        toast({ title: "Cancelled", description: "Appointment cancelled successfully" })
+        await loadUpcomingAppointments()
+      } else {
+        toast({ title: "Cancel Failed", description: response.error || "Unable to cancel", variant: "destructive" })
+      }
+    } catch (error) {
+      toast({ title: "Cancel Error", description: "An error occurred while cancelling", variant: "destructive" })
     }
   }
 
@@ -270,6 +334,62 @@ export function PatientAppointmentBooking({ patientId }: PatientAppointmentBooki
 
   return (
     <div className="space-y-6">
+      {/* Your Appointments */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="w-5 h-5" />
+            Your Appointments
+          </CardTitle>
+          <CardDescription>Manage your upcoming bookings</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loadingAppointments ? (
+            <div className="text-center py-6 text-muted-foreground">Loading appointments…</div>
+          ) : upcomingAppointments.length === 0 ? (
+            <div className="text-center py-6 text-muted-foreground">No upcoming appointments</div>
+          ) : (
+            <div className="space-y-3">
+              {upcomingAppointments.map((appt) => (
+                <div key={appt.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-4">
+                    <div className="text-center">
+                      <p className="font-semibold">
+                        {new Date(appt.appointment_date).toLocaleDateString("en-ZA", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </p>
+                      <p className="text-sm text-muted-foreground">{new Date(`2000-01-01T${appt.appointment_time}`).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium">{appt.location_name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {appt.city}, {appt.province}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Ref: {appt.booking_reference}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">{appt.status}</Badge>
+                    {appt.status === "scheduled" && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleCancelAppointment(appt.id)}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Search Filters */}
       <Card>
         <CardHeader>
