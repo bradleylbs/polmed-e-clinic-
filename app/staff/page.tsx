@@ -131,6 +131,21 @@ const roleConfig: Record<UserRole, { label: string }> = {
   social_worker: { label: "Social Worker" },
 }
 
+const ROLE_PRIMARY_VIEW: Record<UserRole, ViewMode> = {
+  administrator: "dashboard",
+  doctor: "appointments",
+  nurse: "patients",
+  clerk: "patient-register",
+  social_worker: "patients",
+}
+
+const NAV_SYNC_MAP: Partial<Record<ViewMode, string>> = {
+  patients: "patients",
+  routes: "routes",
+  appointments: "appointments",
+  inventory: "inventory",
+}
+
 export default function StaffHomePage() {
   const [user, setUser] = useState<User | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>("dashboard")
@@ -151,6 +166,32 @@ export default function StaffHomePage() {
   const [appError, setAppError] = useState<AppError | null>(null)
   const [isOnline, setIsOnline] = useState(true)
   const { toast } = useToast()
+
+  const syncNavigationTab = useCallback((view: ViewMode) => {
+    const navTarget = NAV_SYNC_MAP[view]
+    if (!navTarget) return
+
+    try {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("navigate", { detail: { view: navTarget } }))
+      }
+    } catch (eventError) {
+      console.warn("Failed to sync navigation tab:", eventError)
+    }
+  }, [])
+
+  const applyRoleLandingPage = useCallback(
+    (role: UserRole | null | undefined) => {
+      if (!role) return
+
+      const normalizedRole = String(role).toLowerCase().replace(/\s+/g, "_") as UserRole
+      const defaultView = ROLE_PRIMARY_VIEW[normalizedRole] || "dashboard"
+
+      setViewMode(defaultView)
+      syncNavigationTab(defaultView)
+    },
+    [syncNavigationTab],
+  )
 
   // Session management utilities
   const saveSession = useCallback(
@@ -221,6 +262,7 @@ export default function StaffHomePage() {
 
             if (isSessionValid(sessionData)) {
               setUser(sessionData)
+              applyRoleLandingPage(sessionData.role)
               toast({
                 title: "Welcome back!",
                 description: `Hello ${sessionData.username}`,
@@ -279,7 +321,7 @@ export default function StaffHomePage() {
     }
 
     initializeApp()
-  }, [isSessionValid, clearSession, toast])
+  }, [isSessionValid, clearSession, toast, applyRoleLandingPage])
 
   // Monitor online/offline status
   useEffect(() => {
@@ -442,6 +484,7 @@ export default function StaffHomePage() {
         console.log("[v0] User object created with normalized role:", JSON.stringify(newUser, null, 2))
 
         saveSession(newUser)
+        applyRoleLandingPage(newUser.role)
 
         toast({
           title: "Login Successful",
@@ -461,7 +504,7 @@ export default function StaffHomePage() {
         })
       }
     },
-    [saveSession, toast],
+    [saveSession, toast, applyRoleLandingPage],
   )
 
   // Logout handler

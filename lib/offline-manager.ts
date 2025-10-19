@@ -205,7 +205,7 @@ class OfflineManager {
         lastModified: Date.now(),
       }
 
-      await store.put(dataWithVersion)
+  await store.put(dataWithVersion)
 
       // Update search index
       const indexData = this.searchIndex.get(storeName) || []
@@ -218,14 +218,19 @@ class OfflineManager {
       this.searchIndex.set(storeName, indexData)
 
       if (!this.isOnline) {
+        const action = data.id ? "update" : "create"
+        const { endpoint, method } = this.resolveEndpoint(storeName, action, dataWithVersion)
+
         this.addToSyncQueue({
-          id: `${storeName}-${data.id}-${Date.now()}`,
+          id: `${storeName}-${data.id ?? "local"}-${Date.now()}`,
           type: storeName as any,
-          action: data.id ? "update" : "create",
+          action,
           data: dataWithVersion,
           timestamp: Date.now(),
           synced: false,
           version: dataWithVersion.version,
+          endpoint,
+          method,
         })
       }
     } catch (error) {
@@ -302,6 +307,9 @@ class OfflineManager {
     method?: string
   }) {
     const opId = params.id || `${params.type}-${params.data?.id ?? "local"}-${Date.now()}`
+    const action = params.action
+    const resolved = this.resolveEndpoint(params.type, action, params.data)
+
     this.addToSyncQueue({
       id: opId,
       type: params.type,
@@ -309,8 +317,8 @@ class OfflineManager {
       data: params.data,
       timestamp: Date.now(),
       synced: false,
-      endpoint: params.endpoint,
-      method: params.method,
+      endpoint: params.endpoint || resolved.endpoint,
+      method: params.method || resolved.method,
       retryCount: 0,
     })
     return opId
@@ -478,14 +486,65 @@ class OfflineManager {
     return this.syncQueue.length
   }
 
+  private resolveEndpoint(
+    storeName: string,
+    action: SyncData["action"],
+    payload?: Record<string, any>,
+  ): { endpoint?: string; method?: string } {
+    const normalized = String(storeName || "").toLowerCase()
+
+    const baseMap: Record<string, string> = {
+      patient: "/api/patients",
+      patients: "/api/patients",
+      route: "/api/routes",
+      routes: "/api/routes",
+      appointment: "/api/appointments",
+      appointments: "/api/appointments",
+      inventory: "/api/inventory",
+      billing: "/api/billing",
+      user: "/api/users",
+      users: "/api/users",
+      report: "/api/reports",
+      reports: "/api/reports",
+    }
+
+    const baseEndpoint = baseMap[normalized]
+    if (!baseEndpoint) {
+      return { endpoint: undefined, method: undefined }
+    }
+
+    const methodMap: Record<SyncData["action"], string> = {
+      create: "POST",
+      update: "PUT",
+      delete: "DELETE",
+    }
+
+    const method = methodMap[action]
+    const id = payload?.id || payload?.record_id || payload?.external_id
+
+    if ((action === "update" || action === "delete") && id !== undefined && id !== null) {
+      return { endpoint: `${baseEndpoint}/${id}`, method }
+    }
+
+    return { endpoint: baseEndpoint, method }
+  }
+
   getPendingRecordsForServer() {
-    return this.syncQueue.map((item) => ({
-      table_name: item.type,
-      record_id: (item.data && (item.data.id || item.id)) ?? item.id,
-      operation_type: item.action,
-      timestamp: item.timestamp,
-      version: item.version,
-    }))
+    return this.syncQueue.map((item) => {
+      const operationType =
+        item.action === "create" ? "INSERT" : item.action === "delete" ? "DELETE" : "UPDATE"
+
+      return {
+        table_name: item.type,
+        record_id: (item.data && (item.data.id || item.id)) ?? item.id,
+        operation_type: operationType,
+        timestamp: item.timestamp,
+        version: item.version,
+        payload: item.data,
+        endpoint: item.endpoint,
+        method: item.method,
+      }
+    })
   }
 
   async clearAllData() {

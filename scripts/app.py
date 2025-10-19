@@ -11,7 +11,8 @@ import os
 import logging
 from typing import Any, Dict, List, Set, Optional, Sequence
 import uuid
-import json 
+import json
+import hashlib
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -90,6 +91,154 @@ def _get_table_columns(table_name: str) -> Set[str]:
     columns = {row.get('Field') for row in rows or [] if row.get('Field')}
     _table_columns_cache[table_name] = columns
     return columns
+
+
+def _normalize_record_id(raw_id: Any) -> int:
+    """Convert arbitrary record identifiers into a stable integer."""
+    if raw_id is None:
+        return 0
+
+    if isinstance(raw_id, bool):
+        return int(raw_id)
+
+    if isinstance(raw_id, (int, float)):
+        try:
+            return int(raw_id)
+        except (ValueError, TypeError):
+            pass
+
+    try:
+        raw_str = str(raw_id).strip()
+        if raw_str.isdigit() or (raw_str.startswith("-") and raw_str[1:].isdigit()):
+            return int(raw_str)
+    except Exception:
+        raw_str = None
+
+    hashed_source = raw_str if raw_str is not None else json.dumps(raw_id, default=str)
+    digest = hashlib.sha256(hashed_source.encode("utf-8")).hexdigest()[:10]
+    # Keep within signed 32-bit range for compatibility with schema expectations
+    return int(digest, 16) % 2147483647
+
+
+def _infer_endpoint_from_record(record: Dict[str, Any], payload: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """Derive a REST endpoint when the client did not supply one."""
+    table_name = str(record.get("table_name") or "").strip().lower()
+
+    base_map = {
+        "patient": "/api/patients",
+        "patients": "/api/patients",
+        "route": "/api/routes",
+        "routes": "/api/routes",
+        "appointment": "/api/appointments",
+        "appointments": "/api/appointments",
+        "inventory": "/api/inventory",
+        "billing": "/api/billing",
+        "user": "/api/users",
+        "users": "/api/users",
+        "report": "/api/reports",
+        "reports": "/api/reports",
+    }
+
+    base = base_map.get(table_name)
+    if not base:
+        return None
+
+    operation = str(record.get("operation_type") or "").strip().upper()
+    identifier = None
+
+    if payload and isinstance(payload, dict):
+        identifier = payload.get("id") or payload.get("record_id") or payload.get("external_id")
+
+    if identifier is None:
+        identifier = record.get("record_id")
+
+    if operation in {"UPDATE", "DELETE"} and identifier is not None:
+        return f"{base.rstrip('/')}/{identifier}"
+
+    return base
+
+
+def _operation_method(operation_type: str, provided_method: Optional[str] = None) -> str:
+    if provided_method:
+        return provided_method.upper()
+
+    op = (operation_type or "").upper()
+    if op == "INSERT":
+        return "POST"
+    if op == "DELETE":
+        return "DELETE"
+    return "PUT"
+
+
+def _persist_sync_status(
+    *,
+    table_name: str,
+    record_id: int,
+    operation_type: str,
+    status: str,
+    device_id: Optional[str],
+    user_id: Optional[int],
+    timestamp_ms: Optional[int],
+    payload: Optional[Dict[str, Any]] = None,
+    error_message: Optional[str] = None,
+):
+    """Insert or update sync_status rows with rich metadata."""
+    local_timestamp = None
+    if timestamp_ms:
+        try:
+            local_timestamp = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+        except Exception:
+            local_timestamp = None
+
+    if local_timestamp is None:
+        local_timestamp = datetime.utcnow().replace(tzinfo=timezone.utc)
+
+    conflict_payload = None
+    if payload:
+        try:
+            conflict_payload = json.dumps(payload)
+        except Exception:
+            conflict_payload = json.dumps({"payload": str(payload)})
+
+    retry_count_value = 0 if status == "Synced" else 1
+    synced_at_value = datetime.utcnow() if status == "Synced" else None
+
+    query = """
+    INSERT INTO sync_status (
+        table_name, record_id, operation_type, sync_status,
+        device_id, user_id, local_timestamp, server_timestamp,
+        error_message, conflict_data, retry_count, last_retry_at, synced_at
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, NOW(), %s)
+    ON DUPLICATE KEY UPDATE
+        operation_type = VALUES(operation_type),
+        sync_status = VALUES(sync_status),
+        device_id = VALUES(device_id),
+        user_id = VALUES(user_id),
+        local_timestamp = VALUES(local_timestamp),
+        server_timestamp = NOW(),
+        error_message = VALUES(error_message),
+        conflict_data = VALUES(conflict_data),
+        retry_count = CASE WHEN VALUES(sync_status) = 'Synced' THEN 0 ELSE retry_count + 1 END,
+        last_retry_at = NOW(),
+        synced_at = CASE WHEN VALUES(sync_status) = 'Synced' THEN NOW() ELSE synced_at
+    """
+
+    DatabaseManager.execute_query(
+        query,
+        (
+            table_name,
+            record_id,
+            operation_type,
+            status,
+            device_id,
+            user_id,
+            local_timestamp,
+            error_message,
+            conflict_payload,
+            retry_count_value,
+            synced_at_value,
+        ),
+    )
 
 
 class DatabaseManager:
@@ -4758,54 +4907,177 @@ def get_sync_status():
 @app.route('/api/sync/pending', methods=['POST'])
 @token_required
 def sync_pending_records():
-    """Sync pending offline records to server"""
+    """Replay queued offline mutations against the live API."""
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         device_id = data.get('device_id')
-        records = data.get('records', [])
-        
-        if not device_id or not records:
+        records = data.get('records') or []
+
+        if not device_id or not isinstance(records, list) or len(records) == 0:
             return jsonify({'success': False, 'error': 'device_id and records are required'}), 400
-        
+
+        client = app.test_client()
+        auth_header = request.headers.get('Authorization')
+        headers = {'Authorization': auth_header} if auth_header else {}
+
         synced_count = 0
         failed_count = 0
-        
-        for record in records:
-            try:
-                DatabaseManager.execute_query(
-                    """
-                    INSERT INTO sync_status (
-                        table_name, record_id, operation_type, sync_status,
-                        device_id, user_id, local_timestamp
-                    ) VALUES (%s, %s, %s, 'Pending', %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                        sync_status = 'Pending',
-                        retry_count = retry_count + 1,
-                        last_retry_at = NOW()
-                    """,
-                    (
-                        record.get('table_name'),
-                        record.get('record_id'),
-                        record.get('operation_type'),
-                        device_id,
-                        request.current_user['id'],
-                        record.get('timestamp')
-                    )
-                )
-                synced_count += 1
-            except Exception as sync_error:
-                logger.error(f"Sync record error: {sync_error}")
+        synced_records: List[Dict[str, Any]] = []
+        failed_records: List[Dict[str, Any]] = []
+
+        for raw_record in records:
+            if not isinstance(raw_record, dict):
+                logger.warning(f"Ignoring malformed sync record: {raw_record}")
                 failed_count += 1
-        
-        return jsonify({
-            'success': True,
-            'synced_count': synced_count,
-            'failed_count': failed_count,
-            'message': f'Synced {synced_count} records, {failed_count} failed'
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Sync pending records error: {e}")
+                failed_records.append({'record': raw_record, 'error': 'Malformed record'})
+                continue
+
+            table_name = str(raw_record.get('table_name') or '').strip()
+            operation_type = str(raw_record.get('operation_type') or 'UPDATE').upper()
+            record_payload = raw_record.get('payload')
+
+            if isinstance(record_payload, str):
+                try:
+                    record_payload = json.loads(record_payload)
+                except Exception:
+                    record_payload = {'raw': record_payload}
+
+            if record_payload is None:
+                record_payload = {}
+
+            record_identifier = raw_record.get('record_id')
+            normalized_id = _normalize_record_id(record_identifier or record_payload.get('id'))
+
+            endpoint = raw_record.get('endpoint') or _infer_endpoint_from_record(raw_record, record_payload)
+            if not endpoint:
+                error_message = 'Unable to determine API endpoint for sync record'
+                failed_count += 1
+                failed_records.append({'record': raw_record, 'error': error_message})
+                _persist_sync_status(
+                    table_name=table_name,
+                    record_id=normalized_id,
+                    operation_type=operation_type,
+                    status='Failed',
+                    device_id=device_id,
+                    user_id=request.current_user.get('id'),
+                    timestamp_ms=raw_record.get('timestamp'),
+                    payload=record_payload,
+                    error_message=error_message,
+                )
+                continue
+
+            if not endpoint.startswith('/'):
+                endpoint = f'/{endpoint.lstrip()}'
+
+            method = _operation_method(operation_type, raw_record.get('method'))
+
+            request_kwargs: Dict[str, Any] = {
+                'path': endpoint,
+                'method': method,
+                'headers': headers,
+            }
+
+            request_body = record_payload if record_payload else None
+            if method in {'POST', 'PUT', 'PATCH'}:
+                request_kwargs['json'] = request_body or {}
+            elif method == 'DELETE' and request_body:
+                request_kwargs['json'] = request_body
+
+            logger.info(
+                f"[SYNC] Replaying {method} {endpoint} for table '{table_name}' with payload keys: {list((record_payload or {}).keys())}"
+            )
+
+            try:
+                response = client.open(**request_kwargs)
+            except Exception as call_error:
+                error_message = f"Request execution failed: {call_error}"
+                logger.error(f"[SYNC] {error_message}")
+                failed_count += 1
+                failed_records.append({'record': raw_record, 'error': error_message})
+                _persist_sync_status(
+                    table_name=table_name,
+                    record_id=normalized_id,
+                    operation_type=operation_type,
+                    status='Failed',
+                    device_id=device_id,
+                    user_id=request.current_user.get('id'),
+                    timestamp_ms=raw_record.get('timestamp'),
+                    payload=record_payload,
+                    error_message=error_message,
+                )
+                continue
+
+            try:
+                response_payload = response.get_json(silent=True)
+            except Exception:
+                response_payload = None
+
+            success = 200 <= (response.status_code or 0) < 300
+
+            if success:
+                synced_count += 1
+                synced_records.append(
+                    {
+                        'table_name': table_name,
+                        'local_record_id': record_identifier,
+                        'normalized_record_id': normalized_id,
+                        'operation': operation_type,
+                        'status_code': response.status_code,
+                        'response': response_payload,
+                    }
+                )
+
+                _persist_sync_status(
+                    table_name=table_name,
+                    record_id=normalized_id,
+                    operation_type=operation_type,
+                    status='Synced',
+                    device_id=device_id,
+                    user_id=request.current_user.get('id'),
+                    timestamp_ms=raw_record.get('timestamp'),
+                    payload=record_payload,
+                )
+            else:
+                error_message = None
+                if response_payload and isinstance(response_payload, dict):
+                    error_message = response_payload.get('error') or response_payload.get('message')
+                if not error_message:
+                    error_message = f"HTTP {response.status_code}"
+
+                failed_count += 1
+                failed_records.append(
+                    {
+                        'table_name': table_name,
+                        'record': raw_record,
+                        'status_code': response.status_code,
+                        'error': error_message,
+                    }
+                )
+
+                _persist_sync_status(
+                    table_name=table_name,
+                    record_id=normalized_id,
+                    operation_type=operation_type,
+                    status='Failed',
+                    device_id=device_id,
+                    user_id=request.current_user.get('id'),
+                    timestamp_ms=raw_record.get('timestamp'),
+                    payload=record_payload,
+                    error_message=error_message,
+                )
+
+        return jsonify(
+            {
+                'success': failed_count == 0,
+                'synced_count': synced_count,
+                'failed_count': failed_count,
+                'synced_records': synced_records,
+                'failed_records': failed_records,
+            }
+        ), 200 if failed_count == 0 else 207
+
+    except Exception as exc:
+        logger.error(f"Sync pending records error: {exc}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 # ============================================================================
