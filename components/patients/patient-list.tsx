@@ -26,6 +26,9 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
   const [memberFilter, setMemberFilter] = useState<string>("all")
   const { toast } = useToast()
 
+  const normalizedRole = String(userRole || "").toLowerCase().replace(/\s+/g, "_")
+  const canCreatePatient = normalizedRole === "clerk"
+
   useEffect(() => {
     fetchPatients()
   }, [])
@@ -144,13 +147,15 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
           <h2 className="text-3xl font-bold text-foreground mb-2">Patient Management</h2>
           <p className="text-muted-foreground">Manage patient records and clinical workflows</p>
         </div>
-        <Button
-          onClick={onNewPatient}
-          className="flex items-center gap-2 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
-        >
-          <UserPlus className="w-4 h-4" />
-          New Patient
-        </Button>
+        {canCreatePatient && (
+          <Button
+            onClick={onNewPatient}
+            className="flex items-center gap-2 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
+          >
+            <UserPlus className="w-4 h-4" />
+            New Patient
+          </Button>
+        )}
       </div>
 
       <Card className="border-primary/10 shadow-lg hover:shadow-xl transition-shadow">

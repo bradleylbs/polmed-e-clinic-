@@ -108,6 +108,44 @@ interface Medication {
   duration: string
 }
 
+const WORKFLOW_DEPENDENCIES: Record<WorkflowStep["id"], WorkflowStep["id"][]> = {
+  registration: [],
+  nursing: ["registration"],
+  doctor: ["nursing"],
+  counseling: ["doctor"],
+  closure: ["nursing", "doctor", "counseling"],
+}
+
+const normalizeRoleValue = (role?: string | null) => (role ? role.toLowerCase().replace(/\s+/g, "_") : "")
+
+const rolesAlign = (stepRole: string, activeRole: string) => {
+  const normalizedStep = normalizeRoleValue(stepRole)
+  const normalizedActive = normalizeRoleValue(activeRole)
+  if (normalizedActive === "administrator") return true
+  if (normalizedActive === normalizedStep) return true
+  if (normalizedActive === "social_work" && normalizedStep === "social_worker") return true
+  if (normalizedActive === "social_worker" && normalizedStep === "social_work") return true
+  return false
+}
+
+const listIncompleteDependencies = (stepId: WorkflowStep["id"], steps: WorkflowStep[]) =>
+  (WORKFLOW_DEPENDENCIES[stepId] || []).filter(
+    (dependency) => steps.find((s) => s.id === dependency)?.status !== "completed",
+  )
+
+const canAccessStepForRole = (
+  step: WorkflowStep | undefined,
+  steps: WorkflowStep[],
+  activeRole: string,
+  options?: { allowCompleted?: boolean },
+) => {
+  if (!step) return false
+  const allowCompleted = options?.allowCompleted ?? true
+  if (allowCompleted && step.status === "completed") return true
+  if (!rolesAlign(step.role, activeRole)) return false
+  return listIncompleteDependencies(step.id, steps).length === 0
+}
+
 export function ClinicalWorkflow({
   patientId,
   patientName,
@@ -607,21 +645,7 @@ export function ClinicalWorkflow({
     updateClinicalNotes("icd10Codes", newCodes.map((c) => c.code).join(", "))
   }
 
-  const canAccessStep = (step: WorkflowStep) => {
-    if (userRole === "administrator") return true
-    if (step.status === "completed") return true
-    if (step.id === "closure") {
-      const counselingDone = workflowSteps.find((s) => s.id === "counseling")?.status === "completed"
-      const roleMatches = step.role === userRole || 
-        (userRole === "social_work" && step.role === "social_worker") ||
-        (userRole === "social_worker" && step.role === "social_work")
-      return roleMatches && counselingDone
-    }
-    const roleMatches = step.role === userRole || 
-      (userRole === "social_work" && step.role === "social_worker") ||
-      (userRole === "social_worker" && step.role === "social_work")
-    return roleMatches
-  }
+  const canAccessStep = (step: WorkflowStep) => canAccessStepForRole(step, workflowSteps, userRole)
 
   const completeCurrentStep = () => {
     if (completingStep) return
@@ -630,7 +654,36 @@ export function ClinicalWorkflow({
       setCompletingStep(true)
       const updatedSteps = [...workflowSteps]
       const currentStepData = updatedSteps[currentStep]
-      if (!currentStepData || !canAccessStep(currentStepData)) return
+      if (!currentStepData) {
+        toast({
+          title: "No step selected",
+          description: "Select a workflow stage before completing.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const unmetDependencies = listIncompleteDependencies(currentStepData.id, updatedSteps)
+      if (unmetDependencies.length > 0) {
+        const dependencyTitles = updatedSteps
+          .filter((step) => unmetDependencies.includes(step.id))
+          .map((step) => step.title)
+        toast({
+          title: "Step locked",
+          description: `Complete ${dependencyTitles.join(", ")} first.`,
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (!canAccessStepForRole(currentStepData, updatedSteps, userRole, { allowCompleted: false })) {
+        toast({
+          title: "Step unavailable",
+          description: "This stage is not assigned to you or is not yet unlocked.",
+          variant: "destructive",
+        })
+        return
+      }
 
       // Ensure a visit exists for note posting
       let vId = visitId
@@ -955,15 +1008,8 @@ export function ClinicalWorkflow({
             return { ...s, status: "pending" }
           })
 
-          const counselingDone = nextSteps.find((s) => s.id === "counseling")?.status === "completed"
-          const firstOwnedNotCompleted = nextSteps.findIndex(
-            (s) =>
-              s.status !== "completed" &&
-              (userRole === "administrator" || s.role === userRole || 
-               // Handle role name variations (social_work vs social_worker)
-               (userRole === "social_work" && s.role === "social_worker") ||
-               (userRole === "social_worker" && s.role === "social_work")) &&
-              (s.id !== "closure" || counselingDone),
+          const firstOwnedNotCompleted = nextSteps.findIndex((s) =>
+            s.status !== "completed" && canAccessStepForRole(s, nextSteps, userRole, { allowCompleted: false }),
           )
           if (firstOwnedNotCompleted >= 0) {
             nextSteps[firstOwnedNotCompleted] = { ...nextSteps[firstOwnedNotCompleted], status: "in-progress" }
@@ -971,15 +1017,9 @@ export function ClinicalWorkflow({
 
           setWorkflowSteps(nextSteps)
 
-
-          const firstActionableLocalIdx = nextSteps.findIndex((s) => {
-            if (s.status === "completed") return false
-            if (userRole === "administrator") return true
-            const roleMatches = s.role === userRole || 
-              (userRole === "social_work" && s.role === "social_worker") ||
-              (userRole === "social_worker" && s.role === "social_work")
-            return roleMatches
-          })
+          const firstActionableLocalIdx = nextSteps.findIndex(
+            (s) => s.status !== "completed" && canAccessStepForRole(s, nextSteps, userRole, { allowCompleted: false }),
+          )
           if (firstActionableLocalIdx >= 0) {
             setCurrentStep(firstActionableLocalIdx)
           }
