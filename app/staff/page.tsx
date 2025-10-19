@@ -133,7 +133,7 @@ const roleConfig: Record<UserRole, { label: string }> = {
 
 const ROLE_PRIMARY_VIEW: Record<UserRole, ViewMode> = {
   administrator: "dashboard",
-  doctor: "appointments",
+  doctor: "patients",
   nurse: "patients",
   clerk: "patient-register",
   social_worker: "patients",
