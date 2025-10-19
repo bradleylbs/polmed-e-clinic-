@@ -5,6 +5,7 @@ import { PatientPortalLogin } from "@/components/patient-portal/patient-portal-l
 import { PatientPortalDashboard } from "@/components/patient-portal/patient-portal-dashboard"
 import { PatientPortalRegistration } from "@/components/patient-portal/patient-portal-registration"
 import { patientPortalService, type PatientDashboardData } from "@/lib/patient-portal-service"
+import { authPersistence } from "@/lib/auth-persistence"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, ShieldCheck, Mail, CheckCircle2, AlertCircle } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -27,6 +28,8 @@ interface VerificationState {
 
 // Session expiry: 7 days
 const SESSION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000
+const PATIENT_SESSION_KEY = "patient_portal_session"
+const PATIENT_PERSISTENT_KEY = "patient_portal_persistent" // For persistent login across browser closures
 
 export default function PatientPortalPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("loading")
@@ -44,7 +47,9 @@ export default function PatientPortalPage() {
     }
     
     try {
-      localStorage.setItem("patient_portal_session", JSON.stringify(fullSession))
+      // Save to both localStorage and additional persistent storage for cross-session persistence
+      localStorage.setItem(PATIENT_SESSION_KEY, JSON.stringify(fullSession))
+      localStorage.setItem(PATIENT_PERSISTENT_KEY, JSON.stringify(fullSession))
       setSession(fullSession)
     } catch (error) {
       console.error("Failed to save session:", error)
@@ -58,7 +63,8 @@ export default function PatientPortalPage() {
 
   const clearSession = useCallback(() => {
     try {
-      localStorage.removeItem("patient_portal_session")
+      localStorage.removeItem(PATIENT_SESSION_KEY)
+      localStorage.removeItem(PATIENT_PERSISTENT_KEY) // Also remove persistent storage
       setSession(null)
     } catch (error) {
       console.error("Failed to clear session:", error)
@@ -95,13 +101,23 @@ export default function PatientPortalPage() {
           return
         }
 
-        // Check for saved session
-        const savedSession = localStorage.getItem("patient_portal_session")
-        if (savedSession) {
+        // Check for saved session (in order of priority: primary first, then persistent)
+        let savedSessionStr = localStorage.getItem(PATIENT_SESSION_KEY)
+        
+        // If no session in primary storage, check persistent storage
+        if (!savedSessionStr) {
+          savedSessionStr = localStorage.getItem(PATIENT_PERSISTENT_KEY)
+        }
+
+        if (savedSessionStr) {
           try {
-            const parsedSession: PatientSession = JSON.parse(savedSession)
+            const parsedSession: PatientSession = JSON.parse(savedSessionStr)
             
             if (isSessionValid(parsedSession)) {
+              // Restore to both storage locations
+              localStorage.setItem(PATIENT_SESSION_KEY, JSON.stringify(parsedSession))
+              localStorage.setItem(PATIENT_PERSISTENT_KEY, JSON.stringify(parsedSession))
+              
               setSession(parsedSession)
               setViewMode("dashboard")
               
@@ -205,7 +221,12 @@ export default function PatientPortalPage() {
           patient_data: response.data.patient_data,
         }
 
+        // Save to both local session and persistent storage
         saveSession(sessionData)
+        
+        // Also save to persistent auth manager for cross-session persistence
+        authPersistence.saveSession("patient", response.data.patient_data, response.data.token, SESSION_EXPIRY_MS)
+        
         setViewMode("dashboard")
 
         toast({

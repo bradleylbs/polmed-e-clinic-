@@ -17,6 +17,8 @@ import { UserManagement } from "@/components/admin/user-management"
 import { SyncManager } from "@/components/offline/sync-manager"
 import { offlineManager } from "@/lib/offline-manager"
 import { useToast } from "@/hooks/use-toast"
+import { usePersistentAuth } from "@/hooks/use-persistent-auth"
+import { authPersistence } from "@/lib/auth-persistence"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -121,6 +123,7 @@ interface AppError {
 
 const VALID_ROLES: UserRole[] = ["administrator", "doctor", "nurse", "clerk", "social_worker"]
 const SESSION_STORAGE_KEY = "staff_session"
+const PERSISTENT_SESSION_KEY = "staff_session_persistent" // For persistent login across browser closures
 const SESSION_EXPIRY_MS = 8 * 60 * 60 * 1000 // 8 hours
 
 const roleConfig: Record<UserRole, { label: string }> = {
@@ -202,7 +205,9 @@ export default function StaffHomePage() {
           loginTime: Date.now(),
           sessionId: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         }
+        // Save to both sessionStorage and localStorage for persistence
         sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionData))
+        localStorage.setItem(PERSISTENT_SESSION_KEY, JSON.stringify(sessionData))
         setUser(sessionData)
       } catch (error) {
         console.error("Failed to save session:", error)
@@ -219,6 +224,7 @@ export default function StaffHomePage() {
   const clearSession = useCallback(() => {
     try {
       sessionStorage.removeItem(SESSION_STORAGE_KEY)
+      localStorage.removeItem(PERSISTENT_SESSION_KEY) // Also remove persistent session
       setUser(null)
       setViewMode("dashboard")
       setSelectedPatient(null)
@@ -254,13 +260,23 @@ export default function StaffHomePage() {
         await offlineManager.init()
         console.log("Offline manager initialized successfully")
 
-        // Check for existing session
+        // Check for existing session (in order of priority: sessionStorage first, then persistent storage)
         try {
-          const savedSession = sessionStorage.getItem(SESSION_STORAGE_KEY)
+          let savedSession = sessionStorage.getItem(SESSION_STORAGE_KEY)
+          
+          // If no session in sessionStorage, check persistent storage
+          if (!savedSession) {
+            savedSession = localStorage.getItem(PERSISTENT_SESSION_KEY)
+          }
+
           if (savedSession) {
             const sessionData: User = JSON.parse(savedSession)
 
             if (isSessionValid(sessionData)) {
+              // Restore session to both storages
+              sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionData))
+              localStorage.setItem(PERSISTENT_SESSION_KEY, JSON.stringify(sessionData))
+              
               setUser(sessionData)
               applyRoleLandingPage(sessionData.role)
               toast({
@@ -483,7 +499,12 @@ export default function StaffHomePage() {
 
         console.log("[v0] User object created with normalized role:", JSON.stringify(newUser, null, 2))
 
+        // Save to both local session and persistent storage
         saveSession(newUser)
+        
+        // Also save to persistent auth manager for cross-session persistence
+        authPersistence.saveSession("staff", newUser, credentials.token, SESSION_EXPIRY_MS)
+        
         applyRoleLandingPage(newUser.role)
 
         toast({

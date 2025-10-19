@@ -24,6 +24,7 @@ import {
 import { patientPortalService, type PatientDashboardData } from "@/lib/patient-portal-service"
 import { PatientAppointmentBooking } from "./patient-appointment-booking"
 import { PatientHealthRecords } from "./patient-health-records"
+import { PatientMedicalReports } from "./patient-medical-reports"
 import { PatientNotifications } from "./patient-notifications"
 import { PatientProfile } from "./patient-profile"
 import { PatientFeedback } from "./patient-feedback"
@@ -146,10 +147,11 @@ export function PatientPortalDashboard({ patientId, onLogout }: PatientPortalDas
 
       <div className="container mx-auto p-6 space-y-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="appointments">Appointments</TabsTrigger>
             <TabsTrigger value="health">Health Records</TabsTrigger>
+            <TabsTrigger value="reports">Medical Reports</TabsTrigger>
             <TabsTrigger value="notifications">
               <div className="flex items-center gap-2">
                 Notifications
@@ -379,6 +381,34 @@ export function PatientPortalDashboard({ patientId, onLogout }: PatientPortalDas
                   )}
               </CardContent>
             </Card>
+
+            {/* Medical Reports */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    Medical Reports
+                  </CardTitle>
+                  <Button variant="outline" size="sm" onClick={() => setActiveTab("reports")}>
+                    <Eye className="w-4 h-4 mr-2" />
+                    View Reports
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-600 mb-4">
+                  Medical reports from your completed visits are available for download, printing, and sharing.
+                </p>
+                <Button 
+                  onClick={() => setActiveTab("reports")}
+                  className="w-full"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Access Your Medical Reports
+                </Button>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="appointments">
@@ -387,6 +417,13 @@ export function PatientPortalDashboard({ patientId, onLogout }: PatientPortalDas
 
           <TabsContent value="health">
             <PatientHealthRecords patientId={patientId} />
+          </TabsContent>
+
+          <TabsContent value="reports">
+            <PatientMedicalReports 
+              patientId={patientId} 
+              patientName={patient_info?.full_name || "Patient"} 
+            />
           </TabsContent>
 
           <TabsContent value="notifications">

@@ -726,6 +726,148 @@ class PatientPortalService {
       }
     }
   }
-}
 
+  // Medical Report Methods
+  async getPatientMedicalReports(
+    patientId: number,
+    filters?: {
+      status?: "completed" | "pending"
+      from_date?: string
+      to_date?: string
+    }
+  ): Promise<ApiResponse<any[]>> {
+    const token = this.getPatientToken()
+    if (!token) {
+      return { success: false, error: "Not authenticated" }
+    }
+
+    try {
+      const queryParams = new URLSearchParams()
+      if (filters?.status) queryParams.append("status", filters.status)
+      if (filters?.from_date) queryParams.append("from_date", filters.from_date)
+      if (filters?.to_date) queryParams.append("to_date", filters.to_date)
+
+      const url =
+        `/patient-portal/medical-reports/${patientId}` +
+        (queryParams.toString() ? `?${queryParams.toString()}` : "")
+
+      const response = await apiService["request"](url, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      return (response as ApiResponse<any[]>) || { success: false, error: "No reports found" }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch medical reports",
+      }
+    }
+  }
+
+  async getVisitReport(visitId: number): Promise<
+    ApiResponse<{
+      visit_id: number
+      patient_id: number
+      visit_date: string
+      location_name: string
+      chief_complaint: string
+      vital_signs: any
+      clinical_notes: any[]
+      diagnoses: any[]
+      medications: any[]
+      investigations: any[]
+      referrals: any[]
+      report_generated_at: string
+      generated_by: string
+    }>
+  > {
+    const token = this.getPatientToken()
+    if (!token) {
+      return { success: false, error: "Not authenticated" }
+    }
+
+    try {
+      const response = await apiService["request"](
+        `/patient-portal/visits/${visitId}/report`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      ) as ApiResponse<{
+        visit_id: number
+        patient_id: number
+        visit_date: string
+        location_name: string
+        chief_complaint: string
+        vital_signs: any
+        clinical_notes: any[]
+        diagnoses: any[]
+        medications: any[]
+        investigations: any[]
+        referrals: any[]
+        report_generated_at: string
+        generated_by: string
+      }>
+
+      return response ?? { success: false, error: "Report not found" }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to fetch visit report",
+      }
+    }
+  }
+
+  async downloadVisitReport(
+    visitId: number,
+    format: "pdf" | "html" | "json" = "pdf"
+  ): Promise<ApiResponse<{ download_url: string }>> {
+    const token = this.getPatientToken()
+    if (!token) {
+      return { success: false, error: "Not authenticated" }
+    }
+
+    try {
+      const response = await apiService["request"]<{ download_url: string }>(
+        `/patient-portal/visits/${visitId}/report/download?format=${format}`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      )
+
+      return response ?? { success: false, error: "Download failed" }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to generate download",
+      }
+    }
+  }
+
+  async printVisitReport(visitId: number): Promise<ApiResponse<{ content: string }>> {
+    const token = this.getPatientToken()
+    if (!token) {
+      return { success: false, error: "Not authenticated" }
+    }
+
+    try {
+      const response = await apiService["request"]<{ content: string }>(
+        `/patient-portal/visits/${visitId}/report/print`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      )
+
+      return response ?? { success: false, error: "Print preparation failed" }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to prepare for printing",
+      }
+    }
+  }
+}
 export const patientPortalService = new PatientPortalService()
