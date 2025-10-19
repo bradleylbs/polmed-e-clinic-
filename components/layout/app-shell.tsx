@@ -56,7 +56,12 @@ const navigationItems = [
   },
   { id: "appointments", label: "Appointments", icon: Calendar, roles: ["administrator", "doctor", "nurse", "clerk"] },
   { id: "inventory", label: "Inventory", icon: Package, roles: ["administrator", "doctor", "nurse"] },
-  { id: "reports", label: "Reports", icon: BarChart3, roles: ["administrator", "doctor"] },
+  {
+    id: "reports",
+    label: "Reports",
+    icon: BarChart3,
+    roles: ["administrator", "doctor", "nurse", "clerk", "social_worker"],
+  },
   { id: "settings", label: "Settings", icon: Settings, roles: ["administrator"] },
 ]
 
