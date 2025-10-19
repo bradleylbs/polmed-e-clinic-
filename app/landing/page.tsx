@@ -733,7 +733,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="border-t bg-background/80 backdrop-blur-sm">
         <div className="container mx-auto max-w-7xl px-4 py-8 text-sm text-muted-foreground">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-border/50">
             <div>
               © {new Date().getFullYear()} Masala Ramabulana Holdings. All rights reserved.
             </div>
@@ -745,6 +745,11 @@ export default function LandingPage() {
                 Terms of Service
               </Link>
             </div>
+          </div>
+          
+          {/* Accreditation */}
+          <div className="pt-4 text-center text-xs text-muted-foreground/70">
+            <p>Developed by <span className="font-semibold text-muted-foreground hover:text-primary transition-colors cursor-default">Ongoti Tech Solutions</span></p>
           </div>
         </div>
       </footer>

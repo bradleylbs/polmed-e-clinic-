@@ -10,9 +10,17 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { User, Phone, Shield, Eye, EyeOff, Save, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { patientPortalService } from "@/lib/patient-portal-service"
+import { handleUpdateWithFeedback, formatErrorMessage } from "@/lib/feedback-utils"
 
 interface PatientProfileProps {
   patientId: number
@@ -38,10 +46,11 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
     full_name: patientData.full_name || "",
     email: patientData.email || "",
     phone_number: patientData.phone_number || "",
-    address: "123 Main Street, Johannesburg, 2000",
-    emergency_contact_name: "Jane Doe",
-    emergency_contact_phone: "+27 82 123 4567",
-    emergency_contact_relationship: "Spouse",
+    date_of_birth: new Date().toISOString().split('T')[0],
+    address: "",
+    emergency_contact_name: "",
+    emergency_contact_phone: "",
+    emergency_contact_relationship: "",
     current_password: "",
     new_password: "",
     confirm_password: "",
@@ -65,38 +74,36 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
   }
 
   const handleSaveProfile = async () => {
-    try {
-      setLoading(true)
-      const response = await patientPortalService.updatePatientProfile(patientId, {
-        phone_number: formData.phone_number,
-        email: formData.email,
-        physical_address: formData.address,
-        emergency_contact_name: formData.emergency_contact_name,
-        emergency_contact_phone: formData.emergency_contact_phone,
-      })
+    await handleUpdateWithFeedback(
+      async () => {
+        const response = await patientPortalService.updatePatientProfile(patientId, {
+          phone_number: formData.phone_number,
+          email: formData.email,
+          date_of_birth: formData.date_of_birth,
+          physical_address: formData.address,
+          emergency_contact_name: formData.emergency_contact_name,
+          emergency_contact_phone: formData.emergency_contact_phone,
+          emergency_contact_relationship: formData.emergency_contact_relationship,
+        })
 
-      if (response.success) {
-        toast({
-          title: "Profile updated successfully",
-          description: "Your profile information has been saved.",
-        })
-        setIsEditing(false)
-      } else {
-        toast({
-          title: "Error",
-          description: response.error || "Failed to update profile. Please try again.",
-          variant: "destructive",
-        })
+        if (!response.success) {
+          throw new Error(response.error || "Failed to update profile")
+        }
+
+        // Save privacy settings
+        localStorage.setItem("patient_privacy_settings", JSON.stringify(privacySettings))
+        return response
+      },
+      toast,
+      {
+        loadingMessage: "Updating your profile...",
+        successMessage: "✅ Profile updated successfully!",
+        errorMessage: "❌ Failed to update profile",
+        onSuccess: () => {
+          setIsEditing(false)
+        },
       }
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: "Failed to update profile. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
+    )
   }
 
   const handleChangePassword = async () => {
@@ -157,25 +164,18 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
   }
 
   const handleSavePrivacySettings = async () => {
-    try {
-      setLoading(true)
-      // Privacy settings update - store locally and sync with backend if needed
-      // Currently privacy settings are stored client-side
-      localStorage.setItem('patient_privacy_settings', JSON.stringify(privacySettings))
-      
-      toast({
-        title: "Privacy settings updated",
-        description: "Your privacy preferences have been saved.",
-      })
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: "Failed to update privacy settings. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
+    await handleUpdateWithFeedback(
+      async () => {
+        localStorage.setItem("patient_privacy_settings", JSON.stringify(privacySettings))
+        return { success: true }
+      },
+      toast,
+      {
+        loadingMessage: "Saving privacy settings...",
+        successMessage: "✅ Privacy settings updated!",
+        errorMessage: "❌ Failed to update privacy settings",
+      }
+    )
   }
 
   return (
@@ -246,6 +246,16 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
                   />
                 </div>
                 <div>
+                  <Label htmlFor="date_of_birth">Date of Birth</Label>
+                  <Input
+                    id="date_of_birth"
+                    type="date"
+                    value={formData.date_of_birth}
+                    onChange={(e) => handleInputChange("date_of_birth", e.target.value)}
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
                   <Label>Medical Aid Number</Label>
                   <div className="flex items-center gap-2">
                     <Input value={patientData.medical_aid_number} disabled />
@@ -298,12 +308,32 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
                 </div>
                 <div>
                   <Label htmlFor="emergency_contact_relationship">Relationship</Label>
-                  <Input
-                    id="emergency_contact_relationship"
-                    value={formData.emergency_contact_relationship}
-                    onChange={(e) => handleInputChange("emergency_contact_relationship", e.target.value)}
-                    disabled={!isEditing}
-                  />
+                  {isEditing ? (
+                    <Select
+                      value={formData.emergency_contact_relationship}
+                      onValueChange={(value) =>
+                        handleInputChange("emergency_contact_relationship", value)
+                      }
+                    >
+                      <SelectTrigger id="emergency_contact_relationship">
+                        <SelectValue placeholder="Select relationship" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Spouse">Spouse</SelectItem>
+                        <SelectItem value="Parent">Parent</SelectItem>
+                        <SelectItem value="Sibling">Sibling</SelectItem>
+                        <SelectItem value="Child">Child</SelectItem>
+                        <SelectItem value="Friend">Friend</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id="emergency_contact_relationship"
+                      value={formData.emergency_contact_relationship}
+                      disabled={true}
+                    />
+                  )}
                 </div>
               </div>
             </CardContent>

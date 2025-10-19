@@ -29,8 +29,7 @@
 ## 1. System Overview
 
 ### Project Description
-
-PALMED Clinic ERP is a comprehensive healthcare management system designed for South African mobile clinics operated by the Palmed organization. The system manages patient appointments, clinical visits, inventory, and staff workflows across multiple clinic locations and routes.
+ POLMED Clinic ERP is a comprehensive healthcare management system designed for South African mobile clinics operated by the Palmed organization. The system manages patient appointments, clinical visits, inventory, and staff workflows across multiple clinic locations and routes.
 
 ### Key Features
 
@@ -1547,7 +1546,7 @@ def sync_pending_records():
     "upcoming_appointments": [
       {
         "id": 456,
-        "booking_reference": "PAL-2025-001",
+        "booking_reference": " POL-2025-001",
         "appointment_date": "2025-02-15",
         "appointment_time": "09:00",
         "location_name": "Johannesburg Clinic",
@@ -1677,9 +1676,9 @@ def sync_pending_records():
 {
   "success": true,
   "data": {
-    "booking_reference": "PAL-2025-001234"
+    "booking_reference": " POL-2025-001234"
   },
-  "booking_reference": "PAL-2025-001234",
+  "booking_reference": " POL-2025-001234",
   "message": "Appointment booked successfully"
 }
 ```

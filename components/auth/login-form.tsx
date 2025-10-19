@@ -3,6 +3,8 @@
 import type React from "react"
 
 import Image from "next/image"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { apiService } from "@/lib/api-service"
 import { Button } from "@/components/ui/button"
@@ -10,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Shield, Stethoscope, Heart, AlertCircle, Eye, EyeOff, Mail, Lock, ArrowRight } from "lucide-react"
+import { Shield, Stethoscope, Heart, AlertCircle, Eye, EyeOff, Mail, Lock, ArrowRight, ArrowLeft, Home } from "lucide-react"
 
 type UserRole = "administrator" | "doctor" | "nurse" | "clerk" | "social_worker"
 
@@ -31,6 +33,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
+  const router = useRouter()
 
   useEffect(() => {
     setError(null)
@@ -84,13 +87,50 @@ export function LoginForm({ onLogin }: LoginFormProps) {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
+      {/* Header with Back Button and Logo Navigation */}
+      <div className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-xl border-b border-border/50">
+        <div className="container mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+          {/* Back Button */}
+          <button
+            onClick={() => router.back()}
+            className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors duration-300 group"
+            aria-label="Go back"
+          >
+            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+            <span className="text-sm font-medium hidden sm:inline">Back</span>
+          </button>
+
+          {/* Logo - Links to Landing Page */}
+          <Link href="/landing" className="flex items-center transition-all hover:scale-105 duration-300">
+            <Image
+              src="/polmed_logo.png"
+              alt="POLMED"
+              width={140}
+              height={46}
+              className="h-10 w-auto"
+              priority
+            />
+          </Link>
+
+          {/* Home Button */}
+          <Link
+            href="/landing"
+            className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors duration-300 group"
+            aria-label="Go to home"
+          >
+            <span className="text-sm font-medium hidden sm:inline">Home</span>
+            <Home className="w-5 h-5 group-hover:scale-110 transition-transform" />
+          </Link>
+        </div>
+      </div>
+
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse animate-delay-1s" />
       </div>
 
-      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-12 items-center relative">
+      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-12 items-center relative mt-20">
         {/* Left side - Branding and messaging */}
         <aside className="text-center lg:text-left space-y-8 animate-fade-in" aria-label="Staff Portal Overview">
           <div className="flex items-center justify-center lg:justify-start">

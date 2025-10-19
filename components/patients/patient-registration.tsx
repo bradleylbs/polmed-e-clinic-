@@ -14,6 +14,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { UserPlus, Search, CheckCircle, AlertCircle } from "lucide-react"
 import { apiService } from "@/lib/api-service"
 import { offlineManager } from "@/lib/offline-manager"
+import { handleSubmissionWithFeedback, showWarningFeedback } from "@/lib/feedback-utils"
+import { useToast } from "@/hooks/use-toast"
 
 interface PatientData {
   id?: string
@@ -48,6 +50,7 @@ interface PatientRegistrationProps {
 }
 
 function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrationProps) {
+  const { toast } = useToast()
   const [formData, setFormData] = useState<PatientData>({
     fullName: "",
     physicalAddress: "",
@@ -106,85 +109,88 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsSubmitting(true)
     setError(null)
     setSuccess(null)
 
-    try {
-      const nameParts = formData.fullName.trim().split(" ")
-      const firstName = nameParts[0] || ""
-      const lastName = nameParts.slice(1).join(" ") || "N/A"
+    // Validation
+    if (!formData.fullName.trim()) {
+      showWarningFeedback(toast, {
+        title: "Missing Required Field",
+        description: "Full name is required",
+      })
+      return
+    }
+    if (!formData.dateOfBirth) {
+      showWarningFeedback(toast, {
+        title: "Missing Required Field",
+        description: "Date of birth is required",
+      })
+      return
+    }
+    if (!formData.gender) {
+      showWarningFeedback(toast, {
+        title: "Missing Required Field",
+        description: "Gender is required",
+      })
+      return
+    }
+    if (!formData.idNumber.trim()) {
+      showWarningFeedback(toast, {
+        title: "Missing Required Field",
+        description: "ID number is required",
+      })
+      return
+    }
+    if (!formData.telephone.trim()) {
+      showWarningFeedback(toast, {
+        title: "Missing Required Field",
+        description: "Phone number is required",
+      })
+      return
+    }
 
-      if (!formData.fullName.trim()) {
-        setError("Full name is required")
-        setIsSubmitting(false)
-        return
-      }
-      if (!formData.dateOfBirth) {
-        setError("Date of birth is required")
-        setIsSubmitting(false)
-        return
-      }
-      if (!formData.gender) {
-        setError("Gender is required")
-        setIsSubmitting(false)
-        return
-      }
-      if (!formData.idNumber.trim()) {
-        setError("ID number is required")
-        setIsSubmitting(false)
-        return
-      }
-      if (!formData.telephone.trim()) {
-        setError("Phone number is required")
-        setIsSubmitting(false)
-        return
-      }
+    await handleSubmissionWithFeedback(
+      async () => {
+        const nameParts = formData.fullName.trim().split(" ")
+        const firstName = nameParts[0] || ""
+        const lastName = nameParts.slice(1).join(" ") || "N/A"
 
-      const g = formData.gender.trim().toLowerCase()
-      const genderForApi = g === "male" ? "Male" : g === "female" ? "Female" : g ? "Other" : ""
-      const patientPayload = {
-        first_name: firstName.trim(),
-        last_name: lastName.trim() || "N/A",
-        date_of_birth: formData.dateOfBirth.trim(),
-        gender: genderForApi,
-        id_number: formData.idNumber.trim(),
-        phone_number: formData.telephone.trim(),
-        medical_aid_number: formData.medicalAidNumber.trim() || null,
-        email: formData.email.trim() || null,
-        physical_address: formData.physicalAddress.trim() || null,
-        emergency_contact_name: formData.emergencyContact.trim() || null,
-        emergency_contact_phone: formData.emergencyPhone.trim() || null,
-        is_palmed_member: formData.isMember,
-        member_type: formData.isMember ? formData.membershipStatus || "active" : "Non-member",
-        chronic_conditions: formData.chronicConditions.trim() ? [formData.chronicConditions.trim()] : [],
-        allergies: formData.knownAllergies.trim() ? [formData.knownAllergies.trim()] : [],
-        current_medications: formData.currentMedications.trim() ? [formData.currentMedications.trim()] : [],
-      }
+        const g = formData.gender.trim().toLowerCase()
+        const genderForApi = g === "male" ? "Male" : g === "female" ? "Female" : g ? "Other" : ""
+        
+        const patientPayload = {
+          first_name: firstName.trim(),
+          last_name: lastName.trim() || "N/A",
+          date_of_birth: formData.dateOfBirth.trim(),
+          gender: genderForApi,
+          id_number: formData.idNumber.trim(),
+          phone_number: formData.telephone.trim(),
+          medical_aid_number: formData.medicalAidNumber.trim() || null,
+          email: formData.email.trim() || null,
+          physical_address: formData.physicalAddress.trim() || null,
+          emergency_contact_name: formData.emergencyContact.trim() || null,
+          emergency_contact_phone: formData.emergencyPhone.trim() || null,
+          is_palmed_member: formData.isMember,
+          member_type: formData.isMember ? formData.membershipStatus || "active" : "Non-member",
+          chronic_conditions: formData.chronicConditions.trim() ? [formData.chronicConditions.trim()] : [],
+          allergies: formData.knownAllergies.trim() ? [formData.knownAllergies.trim()] : [],
+          current_medications: formData.currentMedications.trim() ? [formData.currentMedications.trim()] : [],
+        }
 
-      if (!patientPayload.date_of_birth) {
-        setError("Date of birth cannot be empty")
-        setIsSubmitting(false)
-        return
-      }
-      if (!patientPayload.gender) {
-        setError("Gender must be selected")
-        setIsSubmitting(false)
-        return
-      }
+        if (!offlineManager.getConnectionStatus()) {
+          await offlineManager.saveData("patients", {
+            ...patientPayload,
+            id: `PAT-${Date.now()}`,
+          })
+          setSuccess("Patient saved offline and will sync when online.")
+          return patientPayload
+        }
 
-      if (!offlineManager.getConnectionStatus()) {
-        await offlineManager.saveData("patients", {
-          ...patientPayload,
-          id: `PAT-${Date.now()}`,
-        })
-        setSuccess("Patient saved offline and will sync when online.")
-        setIsSubmitting(false)
-        return
-      }
+        const result = await apiService.createPatient(patientPayload as any)
+        if (!result.success) {
+          throw new Error(result.error || "Failed to register patient")
+        }
 
-      const result = await apiService.createPatient(patientPayload as any)
-      if (result.success) {
         const patientData: PatientData = {
           ...formData,
           id:
@@ -193,37 +199,38 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
             `PAT-${Date.now()}`,
         }
         onPatientRegistered(patientData)
-        setSuccess("Patient registered successfully!")
-        setFormData({
-          fullName: "",
-          physicalAddress: "",
-          telephone: "",
-          email: "",
-          medicalAidNumber: "",
-          dateOfBirth: "",
-          gender: "",
-          idNumber: "",
-          emergencyContact: "",
-          emergencyPhone: "",
-          knownAllergies: "",
-          currentMedications: "",
-          chronicConditions: "",
-          isMember: false,
-        })
-        setMemberFound(null)
-      } else {
-        setError(result.error || "Failed to register patient")
+
+        return result
+      },
+      toast,
+      {
+        loadingMessage: "Registering patient...",
+        successMessage: "✅ Patient registered successfully!",
+        errorMessage: "❌ Failed to register patient",
+        onSuccess: () => {
+          setFormData({
+            fullName: "",
+            physicalAddress: "",
+            telephone: "",
+            email: "",
+            medicalAidNumber: "",
+            dateOfBirth: "",
+            gender: "",
+            idNumber: "",
+            emergencyContact: "",
+            emergencyPhone: "",
+            knownAllergies: "",
+            currentMedications: "",
+            chronicConditions: "",
+            isMember: false,
+          })
+        },
       }
-    } catch (err) {
-      console.error("[v0] Network error:", err)
-      setError("Network error. Please check your connection and try again.")
-    } finally {
-      setIsSubmitting(false)
-    }
+    )
   }
 
   const updateFormData = (field: keyof PatientData, value: string | boolean) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
+    setFormData((prev: PatientData) => ({ ...prev, [field]: value }))
     if (error) setError(null)
     if (success) setSuccess(null)
   }

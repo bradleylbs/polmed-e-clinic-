@@ -491,9 +491,11 @@ class PatientPortalService {
     updates: {
       phone_number?: string
       email?: string
+      date_of_birth?: string
       physical_address?: string
       emergency_contact_name?: string
       emergency_contact_phone?: string
+      emergency_contact_relationship?: string
     },
   ): Promise<ApiResponse<{ updated: boolean }>> {
     return apiService["request"](`/patient-portal/profile/${patientId}`, {

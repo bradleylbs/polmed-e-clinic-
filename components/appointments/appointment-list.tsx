@@ -9,6 +9,7 @@ import { Calendar, Clock, MapPin, Phone, User, Search, Plus, Edit, CheckCircle, 
 import { apiService, type Appointment as ApiAppointment } from "@/lib/api-service"
 import { useToast } from "@/hooks/use-toast"
 import { offlineManager } from "@/lib/offline-manager"
+import { handleUpdateWithFeedback } from "@/lib/feedback-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   AlertDialog,
@@ -172,33 +173,47 @@ export function AppointmentList({ userRole, onNewAppointment, onEditAppointment 
   }
 
   const handleUpdateStatus = async (appointmentId: string, newStatus: "confirmed" | "cancelled" | "completed") => {
-    try {
-      const numericId = parseInt(appointmentId, 10)
-      if (isNaN(numericId)) {
-        throw new Error('Invalid appointment ID')
-      }
-      
-      // Map component status to API status
-      const apiStatus = newStatus === 'confirmed' ? 'booked' : 
-                       newStatus === 'completed' ? 'completed' :
-                       newStatus === 'cancelled' ? 'cancelled' : 'available'
-      
-      await apiService.updateAppointment(numericId, { status: apiStatus as any })
-
-      toast({
-        title: "Status Updated",
-        description: `Appointment status changed to ${newStatus}.`,
-      })
-
-      loadAppointments()
-    } catch (error) {
-      console.error("Failed to update appointment:", error)
-      toast({
-        title: "Error",
-        description: "Failed to update appointment status.",
-        variant: "destructive",
-      })
+    const statusMessages = {
+      confirmed: "Confirming appointment...",
+      cancelled: "Cancelling appointment...",
+      completed: "Marking appointment as completed...",
     }
+
+    await handleUpdateWithFeedback(
+      async () => {
+        const numericId = parseInt(appointmentId, 10)
+        if (isNaN(numericId)) {
+          throw new Error("Invalid appointment ID")
+        }
+
+        // Map component status to API status
+        const apiStatus =
+          newStatus === "confirmed"
+            ? "booked"
+            : newStatus === "completed"
+              ? "completed"
+              : newStatus === "cancelled"
+                ? "cancelled"
+                : "available"
+
+        const result = await apiService.updateAppointment(numericId, { status: apiStatus as any })
+
+        if (!result.success) {
+          throw new Error(result.error || "Failed to update appointment")
+        }
+
+        return result
+      },
+      toast,
+      {
+        loadingMessage: statusMessages[newStatus],
+        successMessage: `✅ Appointment ${newStatus}!`,
+        errorMessage: `❌ Failed to ${newStatus} appointment`,
+        onSuccess: () => {
+          loadAppointments()
+        },
+      }
+    )
   }
 
   const handleDeleteAppointment = async () => {

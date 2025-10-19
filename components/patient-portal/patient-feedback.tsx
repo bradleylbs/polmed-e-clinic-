@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Star, MessageSquare, Send, CheckCircle, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { patientPortalService } from "@/lib/patient-portal-service"
+import { handleSubmissionWithFeedback, showWarningFeedback } from "@/lib/feedback-utils"
 
 interface PatientFeedbackProps {
   patientId: number
@@ -98,59 +99,54 @@ export function PatientFeedback({ patientId }: PatientFeedbackProps) {
 
   const handleSubmitFeedback = async () => {
     if (!feedbackForm.visit_date || !feedbackForm.location_name || feedbackForm.rating === 0) {
-      toast({
-        title: "Error",
+      showWarningFeedback(toast, {
+        title: "Missing Information",
         description: "Please fill in all required fields and provide a rating.",
-        variant: "destructive",
       })
       return
     }
 
-    try {
-      setLoading(true)
-      
-      const response = await patientPortalService.submitPatientFeedback(patientId, {
-        feedback_type: "service_rating",
-        overall_rating: feedbackForm.rating,
-        service_ratings: feedbackForm.service_areas,
-        comments: `Location: ${feedbackForm.location_name}\nVisit Date: ${feedbackForm.visit_date}\n\n${feedbackForm.feedback_text}`,
-        is_anonymous: false
-      })
-
-      if (response.success) {
-        toast({
-          title: "Feedback submitted successfully",
-          description: "Thank you for your feedback! We appreciate your input.",
+    await handleSubmissionWithFeedback(
+      async () => {
+        const response = await patientPortalService.submitPatientFeedback(patientId, {
+          feedback_type: "service_rating",
+          overall_rating: feedbackForm.rating,
+          service_ratings: feedbackForm.service_areas,
+          comments: `Location: ${feedbackForm.location_name}\nVisit Date: ${feedbackForm.visit_date}\n\n${feedbackForm.feedback_text}`,
+          is_anonymous: false,
         })
 
-        // Reset form
-        setFeedbackForm({
-          visit_date: "",
-          location_name: "",
-          rating: 0,
-          feedback_text: "",
-          service_areas: {
-            registration: 0,
-            nursing: 0,
-            doctor_consultation: 0,
-            overall_experience: 0,
-          },
-        })
-        
-        // Refresh feedback history
-        fetchFeedbackHistory()
-      } else {
-        throw new Error(response.error || "Failed to submit feedback")
+        if (!response.success) {
+          throw new Error(response.error || "Failed to submit feedback")
+        }
+
+        return response
+      },
+      toast,
+      {
+        loadingMessage: "Submitting your feedback...",
+        successMessage: "✅ Thank you for your feedback!",
+        errorMessage: "❌ Failed to submit feedback",
+        onSuccess: () => {
+          // Reset form
+          setFeedbackForm({
+            visit_date: "",
+            location_name: "",
+            rating: 0,
+            feedback_text: "",
+            service_areas: {
+              registration: 0,
+              nursing: 0,
+              doctor_consultation: 0,
+              overall_experience: 0,
+            },
+          })
+
+          // Refresh feedback history
+          fetchFeedbackHistory()
+        },
       }
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: "Failed to submit feedback. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
+    )
   }
 
   const renderStarRating = (rating: number, onRatingChange?: (rating: number) => void, size: "sm" | "md" = "md") => {

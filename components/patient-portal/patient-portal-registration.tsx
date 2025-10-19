@@ -24,6 +24,7 @@ import {
 } from "lucide-react"
 import { patientPortalService } from "@/lib/patient-portal-service"
 import { useToast } from "@/hooks/use-toast"
+import { handleSubmissionWithFeedback, showWarningFeedback } from "@/lib/feedback-utils"
 
 interface PatientPortalRegistrationProps {
   onRegistrationComplete: (data: any) => Promise<void>
@@ -211,31 +212,34 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
   const handleSubmit = async () => {
     if (!validateStep(currentStep)) return
 
-    setIsLoading(true)
-    try {
-      const registrationData = {
-        first_name: formData.first_name.trim(),
-        last_name: formData.last_name.trim(),
-        date_of_birth: formData.date_of_birth,
-        gender: formData.gender,
-        email: formData.email.trim().toLowerCase(),
-        mobile_number: formData.mobile_number.replace(/\s/g, ""),  // Normalize format
-        polmed_number: formData.polmed_number.trim() || "", // Always optional - empty string if not provided
-        password: formData.password,
-        is_private_patient: registerWithoutPolmed || !formData.polmed_number.trim(), // Private patient if no POLMED number
-        terms_accepted: formData.terms_accepted,
-        privacy_accepted: formData.privacy_accepted,
-        marketing_consent: formData.marketing_consent,
-        terms_version: "2025-portal-v1",
-        privacy_version: "2025-portal-v1",
-      }
+    await handleSubmissionWithFeedback(
+      async () => {
+        const registrationData = {
+          first_name: formData.first_name.trim(),
+          last_name: formData.last_name.trim(),
+          date_of_birth: formData.date_of_birth,
+          gender: formData.gender,
+          email: formData.email.trim().toLowerCase(),
+          mobile_number: formData.mobile_number.replace(/\s/g, ""),  // Normalize format
+          polmed_number: formData.polmed_number.trim() || "", // Always optional - empty string if not provided
+          password: formData.password,
+          is_private_patient: registerWithoutPolmed || !formData.polmed_number.trim(), // Private patient if no POLMED number
+          terms_accepted: formData.terms_accepted,
+          privacy_accepted: formData.privacy_accepted,
+          marketing_consent: formData.marketing_consent,
+          terms_version: "2025-portal-v1",
+          privacy_version: "2025-portal-v1",
+        }
 
-      await onRegistrationComplete(registrationData)
-    } catch (error) {
-      console.error("Registration error:", error)
-    } finally {
-      setIsLoading(false)
-    }
+        return await onRegistrationComplete(registrationData)
+      },
+      toast,
+      {
+        loadingMessage: "Creating your account...",
+        successMessage: "✅ Account created successfully!",
+        errorMessage: "❌ Registration failed",
+      }
+    )
   }
 
   const renderStep = () => {
@@ -360,7 +364,7 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
                     id="polmed_number"
                     value={formData.polmed_number}
                     onChange={(e) => updateFormData("polmed_number", e.target.value.toUpperCase())}
-                    placeholder="e.g., PAL123456789 (optional)"
+                    placeholder="e.g.,  POL123456789 (optional)"
                     className="flex-1"
                     disabled={registerWithoutPolmed}
                   />
@@ -375,11 +379,7 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
                 </div>
                 {errors.polmed_number && <p className="text-sm text-destructive">{errors.polmed_number}</p>}
                 
-                {!registerWithoutPolmed && (
-                  <p className="text-xs text-muted-foreground">
-                    Leave blank if you don't have POLMED membership. You can add this information later in your profile.
-                  </p>
-                )}
+                
 
                 {polmedValidation && !registerWithoutPolmed && (
                   <Alert variant={polmedValidation.is_valid ? "default" : "destructive"}>
@@ -415,9 +415,7 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
                     }
                   }}
                 />
-                <Label htmlFor="register_without_polmed" className="text-sm cursor-pointer">
-                  Skip POLMED membership - I'll register as a private patient
-                </Label>
+                
               </div>
 
               {registerWithoutPolmed && (

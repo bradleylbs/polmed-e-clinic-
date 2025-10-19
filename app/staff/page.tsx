@@ -545,7 +545,7 @@ export default function StaffHomePage() {
           email: patient.email || "",
           dateOfBirth: "",
           gender: "",
-          isMember: !!patient.medical_aid_number && patient.medical_aid_number.startsWith("PAL"),
+          isMember: !!patient.medical_aid_number && patient.medical_aid_number.startsWith(" POL"),
           workflowStatus: "registered",
         }
 
