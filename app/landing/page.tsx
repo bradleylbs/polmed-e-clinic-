@@ -78,7 +78,7 @@ export default function LandingPage() {
           
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
-            {["Features", "How it works", "Contact"].map((item) => (
+            {["How it works", "Features", "Contact"].map((item) => (
               <Link
                 key={item}
                 href={`#${item.toLowerCase().replace(" ", "-")}`}
@@ -92,7 +92,7 @@ export default function LandingPage() {
 
           <div className="flex items-center gap-3">
             <Link href="/patient-portal" className="hidden sm:block">
-              <Button variant="ghost" className="hover:bg-primary/10 transition-all duration-300">
+              <Button className="shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-300 hover:scale-105">
                 <User className="w-4 h-4 mr-2" />
                 Patient Portal
               </Button>
@@ -120,7 +120,7 @@ export default function LandingPage() {
           }`}
         >
           <nav className="container mx-auto max-w-7xl px-4 py-4 flex flex-col gap-3">
-            {["Features", "How it works", "Contact"].map((item) => (
+            {["How it works", "Features", "Contact"].map((item) => (
               <Link
                 key={item}
                 href={`#${item.toLowerCase().replace(" ", "-")}`}
@@ -132,7 +132,7 @@ export default function LandingPage() {
             ))}
             <Separator className="my-2" />
             <Link href="/patient-portal" onClick={() => setMobileMenuOpen(false)}>
-              <Button variant="ghost" className="w-full justify-start">
+              <Button className="w-full justify-start shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-300">
                 <User className="w-4 h-4 mr-2" />
                 Patient Portal
               </Button>
@@ -507,21 +507,30 @@ export default function LandingPage() {
           {/* Call to Action */}
           <div className="text-center mt-16">
             <div className="space-y-4 max-w-2xl mx-auto">
-              <p className="text-lg text-muted-foreground">
-                Ready to access healthcare in your community?
+              <p className="text-sm text-muted-foreground">
+                11 Thora Cres, Wynberg, Sandton, Johannesburg, South Africa 2090
               </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <div className="flex flex-wrap justify-center gap-4">
                 <Link href="/patient-portal">
-                  <Button size="lg" className="text-base px-8 h-12 shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 group">
+                  <Button
+                    size="lg"
+                    className="text-base px-10 h-14 shadow-xl shadow-primary/25 hover:shadow-2xl hover:shadow-primary/30 hover:scale-105 transition-all duration-300 group"
+                  >
                     <User className="w-5 h-5 mr-2 group-hover:rotate-12 transition-transform" />
                     Patient Portal
                     <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
                   </Button>
                 </Link>
-                <Button variant="outline" size="lg" className="text-base px-8 h-12 hover:scale-105 transition-all duration-300 group">
-                  <MapPin className="w-5 h-5 mr-2 group-hover:bounce transition-transform" />
-                  Find Locations
-                </Button>
+                <Link href="#contact">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="text-base px-8 h-12 hover:scale-105 transition-all duration-300 group"
+                  >
+                    <MapPin className="w-5 h-5 mr-2 group-hover:bounce transition-transform" />
+                    Find Locations
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>
@@ -553,24 +562,14 @@ export default function LandingPage() {
           </div>
 
           <div className="flex flex-wrap gap-4 justify-center">
-            <Link href="/book-appointment">
+            <Link href="/patient-portal">
               <Button
                 size="lg"
                 className="text-base px-10 h-14 shadow-xl shadow-primary/25 hover:shadow-2xl hover:shadow-primary/30 hover:scale-105 transition-all duration-300 group"
               >
-                <CalendarDays className="w-5 h-5 mr-2 group-hover:rotate-12 transition-transform" />
-                Book Now
-                <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
-              </Button>
-            </Link>
-            <Link href="/patient-portal">
-              <Button
-                size="lg"
-                variant="outline"
-                className="text-base px-10 h-14 border-2 hover:bg-primary/5 hover:border-primary/50 transition-all duration-300 bg-transparent group"
-              >
                 <User className="w-5 h-5 mr-2 group-hover:rotate-12 transition-transform" />
                 Patient Portal
+                <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
               </Button>
             </Link>
           </div>
@@ -655,25 +654,25 @@ export default function LandingPage() {
             {/* Partnership Information */}
             <div className="space-y-8">
               <Card className="border-2 border-border/50 shadow-xl bg-card/80 backdrop-blur-sm">
-                <CardContent className="p-8 space-y-6">
-                  <div className="flex items-center gap-4 mb-6">
+                <CardContent className="p-7 space-y-5">
+                  <div className="flex items-center gap-4 mb-3">
                     <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-secondary to-secondary/70 flex items-center justify-center shadow-lg">
                       <Truck className="w-6 h-6 text-secondary-foreground" />
                     </div>
                     <h3 className="text-2xl font-bold">Our Partners</h3>
                   </div>
                   
-                  <div className="space-y-6">
+                  <div className="space-y-3.5">
                     <div className="text-center">
-                      <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground block mb-4">
+                      <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground block mb-3">
                         Powered by
                       </span>
                       <Image
                         src="/rm_logo.png"
                         alt="Masala Ramabulana Holdings"
-                        width={280}
-                        height={120}
-                        className="h-16 w-auto mx-auto object-contain transition-all hover:scale-105 duration-300 filter brightness-110"
+                        width={220}
+                        height={90}
+                        className="h-12 w-auto mx-auto object-contain transition-all hover:scale-105 duration-300 filter brightness-110"
                         priority
                         quality={100}
                       />
@@ -686,12 +685,12 @@ export default function LandingPage() {
                       </p>
                     </div>
 
-                    <div className="pt-4 border-t border-border/50">
+                    <div className="pt-3 border-t border-border/50">
                       <div className="flex items-start gap-4">
                         <Truck className="w-5 h-5 text-secondary mt-1 flex-shrink-0" />
                         <div>
                           <h4 className="font-semibold mb-1">Warehouse & Operations</h4>
-                          <p className="text-muted-foreground text-sm leading-relaxed">
+                          <p className="text-muted-foreground text-sm leading-normal">
                             11 Thora Cres, Wynberg<br />
                             Sandton, Johannesburg<br />
                             South Africa 2090
