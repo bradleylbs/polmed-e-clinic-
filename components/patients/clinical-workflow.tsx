@@ -116,6 +116,14 @@ const WORKFLOW_DEPENDENCIES: Record<WorkflowStep["id"], WorkflowStep["id"][]> = 
   closure: ["nursing", "doctor", "counseling"],
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  administrator: "Administrator",
+  clerk: "Admin Clerk",
+  nurse: "Nurse",
+  doctor: "Doctor",
+  social_worker: "Social Worker",
+}
+
 const normalizeRoleValue = (role?: string | null) => (role ? role.toLowerCase().replace(/\s+/g, "_") : "")
 
 const rolesAlign = (stepRole: string, activeRole: string) => {
@@ -141,8 +149,8 @@ const canAccessStepForRole = (
 ) => {
   if (!step) return false
   const allowCompleted = options?.allowCompleted ?? true
-  if (allowCompleted && step.status === "completed") return true
   if (!rolesAlign(step.role, activeRole)) return false
+  if (allowCompleted && step.status === "completed") return true
   return listIncompleteDependencies(step.id, steps).length === 0
 }
 
@@ -250,6 +258,18 @@ export function ClinicalWorkflow({
       status: "pending",
     },
   ])
+
+  useEffect(() => {
+    const current = workflowSteps[currentStep]
+    if (current && rolesAlign(current.role, userRole)) {
+      return
+    }
+
+    const firstRoleMatch = workflowSteps.findIndex((step) => rolesAlign(step.role, userRole))
+    if (firstRoleMatch >= 0 && firstRoleMatch !== currentStep) {
+      setCurrentStep(firstRoleMatch)
+    }
+  }, [workflowSteps, userRole, currentStep])
 
   // Generate vital alerts for enhanced doctor interface
   const generateVitalAlerts = (): VitalAlert[] => {
@@ -2504,7 +2524,7 @@ export function ClinicalWorkflow({
               <TabsTrigger
                 key={step.id}
                 value={step.id}
-                disabled={!canAccessStep(step)}
+                disabled={!rolesAlign(step.role, userRole)}
                 onClick={() => setCurrentStep(index)}
               >
                 {step.title}
@@ -2514,17 +2534,51 @@ export function ClinicalWorkflow({
 
           {workflowSteps.map((step) => (
             <TabsContent key={step.id} value={step.id} className="mt-6">
-              {getStepContent(step)}
+              {(() => {
+                const roleAligned = rolesAlign(step.role, userRole)
+                if (!roleAligned) {
+                  const normalizedStepRole = normalizeRoleValue(step.role)
+                  const roleLabel = ROLE_LABELS[normalizedStepRole] || step.title
+                  return (
+                    <Alert variant="destructive" className="flex items-start gap-3">
+                      <AlertTriangle className="h-4 w-4 mt-0.5" />
+                      <AlertDescription className="text-sm">
+                        {roleLabel} access required for {step.title}.
+                      </AlertDescription>
+                    </Alert>
+                  )
+                }
 
-              {canAccessStep(step) && step.status !== "completed" && step.id !== "nursing" && (
-                <div className="mt-6 flex flex-col items-end gap-2">
-                  {(() => {
-                    const nursingDone = workflowSteps.find((s) => s.id === "nursing")?.status === "completed"
-                    const doctorDone = workflowSteps.find((s) => s.id === "doctor")?.status === "completed"
-                    const counselingDone = workflowSteps.find((s) => s.id === "counseling")?.status === "completed"
-                    const closureReady = step.id !== "closure" || (nursingDone && doctorDone && counselingDone)
-                    return (
-                      <>
+                const pendingDependencies = listIncompleteDependencies(step.id, workflowSteps)
+                const blockingTitles = pendingDependencies
+                  .map((dependency) => workflowSteps.find((s) => s.id === dependency)?.title)
+                  .filter(Boolean) as string[]
+                const accessGranted = canAccessStep(step)
+
+                if (!accessGranted) {
+                  return (
+                    <Alert variant="default" className="flex items-start gap-3">
+                      <Clock className="h-4 w-4 mt-0.5" />
+                      <AlertDescription className="text-sm">
+                        {blockingTitles.length > 0
+                          ? `Waiting for ${blockingTitles.join(", ")} to finish before ${step.title} can begin.`
+                          : `${step.title} is not yet available.`}
+                      </AlertDescription>
+                    </Alert>
+                  )
+                }
+
+                const nursingDone = workflowSteps.find((s) => s.id === "nursing")?.status === "completed"
+                const doctorDone = workflowSteps.find((s) => s.id === "doctor")?.status === "completed"
+                const counselingDone = workflowSteps.find((s) => s.id === "counseling")?.status === "completed"
+                const closureReady = step.id !== "closure" || (nursingDone && doctorDone && counselingDone)
+
+                return (
+                  <>
+                    {getStepContent(step)}
+
+                    {step.status !== "completed" && step.id !== "nursing" && (
+                      <div className="mt-6 flex flex-col items-end gap-2">
                         {step.id === "closure" && !closureReady && (
                           <div className="text-xs text-muted-foreground mr-auto">
                             {(() => {
@@ -2540,13 +2594,13 @@ export function ClinicalWorkflow({
                           {completingStep ? "Completing..." : `Complete ${step.title}`}
                           <CheckCircle className="w-4 h-4 ml-2" />
                         </Button>
-                      </>
-                    )
-                  })()}
-                </div>
-              )}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
 
-              {step.status === "completed" && (
+              {rolesAlign(step.role, userRole) && step.status === "completed" && (
                 <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                   <div className="flex items-center gap-2 text-green-800">
                     <CheckCircle className="w-4 h-4" />
