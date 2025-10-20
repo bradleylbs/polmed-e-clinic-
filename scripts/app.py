@@ -5,7 +5,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import mysql.connector
 from mysql.connector import Error, errorcode
 import jwt
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, time
 from functools import wraps
 import os
 import logging
@@ -6975,57 +6975,91 @@ def book_appointment_patient_portal():
 @app.route('/api/patient-portal/visits/<int:patient_id>', methods=['GET'])
 @patient_portal_token_required
 def get_patient_visit_history(patient_id: int):
-    """Get patient's visit history"""
+    """Get patient's visit history with detailed information"""
     try:
         # Verify token matches requested patient ID
         if request.patient_id != patient_id:
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
-        # Get patient visits with details
+        # Get patient visits - corrected query (no location_id join, use location string directly)
         visits_query = """
-        SELECT pv.id, pv.visit_date, pv.chief_complaint, pv.is_completed,
-               pv.created_at, pv.updated_at,
-               l.location_name, l.city, l.province,
+        SELECT pv.id, pv.visit_date, pv.visit_time, pv.chief_complaint, 
+               pv.is_completed, pv.completed_at,
+               pv.location, pv.route_id,
+               pv.created_at, pv.updated_at, pv.doctor_id, pv.nurse_id,
                (SELECT COUNT(*) FROM visit_workflow_progress vwp 
                 WHERE vwp.visit_id = pv.id AND vwp.completed_at IS NOT NULL) as completed_stages,
-               (SELECT COUNT(*) FROM workflow_stages) as total_stages
+               (SELECT COUNT(*) FROM workflow_stages) as total_stages,
+               CONCAT(u.first_name, ' ', u.last_name) as doctor_name
         FROM patient_visits pv
-        LEFT JOIN locations l ON pv.location_id = l.id
+        LEFT JOIN users u ON pv.doctor_id = u.id
         WHERE pv.patient_id = %s
-        ORDER BY pv.visit_date DESC
-        LIMIT 50
+        ORDER BY pv.visit_date DESC, pv.visit_time DESC
+        LIMIT 100
         """
         
         visits = DatabaseManager.execute_query(visits_query, (patient_id,), fetch=True) or []
         
+        if not visits:
+            logger.info(f"No visits found for patient {patient_id}")
+            return jsonify({
+                'success': True,
+                'data': [],
+                'message': 'No visit history found'
+            }), 200
+        
         # Format visits data
         visits_data = []
         for visit in visits:
+            # Parse visit date and time
+            visit_datetime = None
+            if visit['visit_date']:
+                try:
+                    visit_datetime = datetime.combine(
+                        visit['visit_date'],
+                        visit['visit_time'] if visit['visit_time'] else time(0, 0)
+                    ).isoformat()
+                except Exception as dt_err:
+                    logger.warning(f"Error combining date/time for visit {visit['id']}: {dt_err}")
+                    visit_datetime = visit['visit_date'].isoformat() if visit['visit_date'] else None
+            
+            completed_stages = visit['completed_stages'] or 0
+            total_stages = visit['total_stages'] or 0
+            progress_pct = round((completed_stages / max(total_stages, 1)) * 100) if total_stages > 0 else 0
+            
             visits_data.append({
                 'id': visit['id'],
+                'visit_id': visit['id'],  # Some clients expect visit_id
                 'visit_date': visit['visit_date'].isoformat() if visit['visit_date'] else None,
-                'chief_complaint': visit['chief_complaint'],
+                'visit_time': visit['visit_time'].isoformat() if visit['visit_time'] else None,
+                'visit_datetime': visit_datetime,
+                'chief_complaint': visit['chief_complaint'] or '',
                 'is_completed': bool(visit['is_completed']),
-                'completed_stages': visit['completed_stages'] or 0,
-                'total_stages': visit['total_stages'] or 0,
-                'progress_percentage': round((visit['completed_stages'] or 0) / max(visit['total_stages'] or 1, 1) * 100),
-                'location': {
-                    'name': visit['location_name'],
-                    'city': visit['city'],
-                    'province': visit['province']
-                } if visit['location_name'] else None,
+                'completed_at': visit['completed_at'].isoformat() if visit['completed_at'] else None,
+                'location_name': visit['location'] or 'Unknown Location',
+                'location': visit['location'] or 'Unknown',
+                'doctor_name': visit['doctor_name'] or 'Not Assigned',
+                'completed_stages': completed_stages,
+                'total_stages': total_stages,
+                'progress_percentage': progress_pct,
                 'created_at': visit['created_at'].isoformat() if visit['created_at'] else None,
                 'updated_at': visit['updated_at'].isoformat() if visit['updated_at'] else None
             })
         
+        logger.info(f"Retrieved {len(visits_data)} visits for patient {patient_id}")
         return jsonify({
             'success': True,
-            'data': visits_data
+            'data': visits_data,
+            'count': len(visits_data)
         }), 200
         
     except Exception as e:
-        logger.error(f"Get patient visit history error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+        logger.error(f"Get patient visit history error for patient {patient_id}: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': 'Failed to retrieve visit history',
+            'details': str(e) if app.debug else None
+        }), 500
 
 
 # ============================================================================
@@ -7146,6 +7180,107 @@ def get_patient_test_results(patient_id: int):
         
     except Exception as e:
         logger.error(f"Get test results error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/medical-reports/<int:patient_id>', methods=['GET'])
+@patient_portal_token_required
+def get_patient_medical_reports(patient_id: int):
+    """Get patient's medical reports combining visits and medical records"""
+    try:
+        # Verify token matches requested patient ID
+        if request.patient_id != patient_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # Get query parameters for filtering
+        status = request.args.get('status')  # 'completed' or 'pending'
+        from_date = request.args.get('from_date')
+        to_date = request.args.get('to_date')
+        
+        # Build base query to get medical reports (visits with associated medical records)
+        query = """
+        SELECT DISTINCT
+            pv.id as visit_id,
+            pv.visit_date,
+            pv.chief_complaint,
+            pv.is_completed,
+            l.location_name,
+            l.city,
+            l.province,
+            u.first_name as provider_first,
+            u.last_name as provider_last,
+            pv.created_at,
+            pv.updated_at
+        FROM patient_visits pv
+        LEFT JOIN locations l ON pv.location_id = l.id
+        LEFT JOIN users u ON pv.doctor_id = u.id
+        WHERE pv.patient_id = %s
+        """
+        
+        params = [patient_id]
+        
+        # Apply status filter
+        if status:
+            if status == 'completed':
+                query += " AND pv.is_completed = 1"
+            elif status == 'pending':
+                query += " AND pv.is_completed = 0"
+        
+        # Apply date range filters
+        if from_date:
+            query += " AND pv.visit_date >= %s"
+            params.append(from_date)
+        if to_date:
+            query += " AND pv.visit_date <= %s"
+            params.append(to_date)
+        
+        query += " ORDER BY pv.visit_date DESC LIMIT 200"
+        
+        visits = DatabaseManager.execute_query(query, params, fetch=True) or []
+        
+        # Format reports data
+        reports_data = []
+        for visit in visits:
+            # Get medical records (diagnoses) for this visit
+            diagnoses = []
+            diag_query = """
+            SELECT mr.icd10_code, mr.description, mr.status
+            FROM medical_records mr
+            WHERE mr.visit_id = %s
+            ORDER BY mr.created_at DESC
+            """
+            diag_results = DatabaseManager.execute_query(diag_query, (visit['visit_id'],), fetch=True) or []
+            
+            for diag in diag_results:
+                diagnoses.append({
+                    'code': diag['icd10_code'],
+                    'description': diag['description'],
+                    'status': diag['status']
+                })
+            
+            reports_data.append({
+                'id': visit['visit_id'],
+                'visit_id': visit['visit_id'],
+                'visit_date': visit['visit_date'].isoformat() if visit['visit_date'] else None,
+                'location_name': visit['location_name'],
+                'city': visit['city'],
+                'province': visit['province'],
+                'chief_complaint': visit['chief_complaint'],
+                'is_completed': bool(visit['is_completed']),
+                'report_type': 'visit_summary',
+                'diagnoses': diagnoses,
+                'provider': f"{visit['provider_first']} {visit['provider_last']}" if visit['provider_first'] else None,
+                'created_at': visit['created_at'].isoformat() if visit['created_at'] else None,
+                'updated_at': visit['updated_at'].isoformat() if visit['updated_at'] else None
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': reports_data
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get patient medical reports error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 
