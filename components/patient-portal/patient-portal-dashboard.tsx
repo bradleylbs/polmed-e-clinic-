@@ -114,30 +114,31 @@ export function PatientPortalDashboard({ patientId, onLogout }: PatientPortalDas
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="bg-card border-b border-border">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Avatar className="w-16 h-16">
-                <AvatarFallback className="bg-primary text-primary-foreground text-lg">
+        <div className="container mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-4 flex-1">
+              <Avatar className="w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0">
+                <AvatarFallback className="bg-primary text-primary-foreground text-sm sm:text-lg">
                   {getInitials(patient_info.full_name)}
                 </AvatarFallback>
               </Avatar>
-              <div>
-                <h1 className="text-2xl font-bold">Welcome, {patient_info.full_name}</h1>
-                <div className="flex items-center gap-2 mt-1">
-                  <Badge variant={patient_info.is_palmed_member ? "default" : "secondary"}>
+              <div className="min-w-0 flex-1">
+                <h1 className="text-lg sm:text-2xl font-bold truncate">Welcome, {patient_info.full_name}</h1>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <Badge variant={patient_info.is_palmed_member ? "default" : "secondary"} className="text-xs sm:text-sm">
                     {patient_info.is_palmed_member ? `POLMED ${patient_info.member_type}` : "Non-member"}
                   </Badge>
-                  <span className="text-sm text-muted-foreground">{patient_info.medical_aid_number}</span>
+                  <span className="text-xs sm:text-sm text-muted-foreground">{patient_info.medical_aid_number}</span>
                 </div>
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setActiveTab("profile")}>
-                <Settings className="w-4 h-4 mr-2" />
-                Settings
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Button variant="outline" size="sm" onClick={() => setActiveTab("profile")} className="flex-1 sm:flex-none">
+                <Settings className="w-4 h-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Settings</span>
+                <span className="sm:hidden">Settings</span>
               </Button>
-              <Button variant="outline" size="sm" onClick={onLogout}>
+              <Button variant="outline" size="sm" onClick={onLogout} className="flex-1 sm:flex-none">
                 Logout
               </Button>
             </div>
@@ -145,73 +146,92 @@ export function PatientPortalDashboard({ patientId, onLogout }: PatientPortalDas
         </div>
       </header>
 
-      <div className="container mx-auto p-6 space-y-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="appointments">Appointments</TabsTrigger>
-            <TabsTrigger value="health">Health Records</TabsTrigger>
-            <TabsTrigger value="reports">Medical Reports</TabsTrigger>
-            <TabsTrigger value="notifications">
-              <div className="flex items-center gap-2">
-                Notifications
+      <div className="container mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-6 space-y-4 sm:space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
+          {/* Mobile: Tabs in 3-column grid that wraps, Desktop: Full 7-column */}
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-1 sm:gap-0 h-auto p-1 bg-muted/50">
+            <TabsTrigger value="overview" className="text-xs sm:text-sm py-2">
+              <span className="hidden sm:inline">Overview</span>
+              <span className="sm:hidden">Home</span>
+            </TabsTrigger>
+            <TabsTrigger value="appointments" className="text-xs sm:text-sm py-2">
+              <span className="hidden sm:inline">Appointments</span>
+              <span className="sm:hidden">Appts</span>
+            </TabsTrigger>
+            <TabsTrigger value="health" className="text-xs sm:text-sm py-2">
+              <span className="hidden sm:inline">Health Records</span>
+              <span className="sm:hidden">Health</span>
+            </TabsTrigger>
+            <TabsTrigger value="reports" className="text-xs sm:text-sm py-2">
+              <span className="hidden sm:inline">Medical Reports</span>
+              <span className="sm:hidden">Reports</span>
+            </TabsTrigger>
+            <TabsTrigger value="notifications" className="text-xs sm:text-sm py-2">
+              <div className="flex items-center gap-1">
+                <span className="hidden sm:inline">Notifications</span>
+                <span className="sm:hidden">Alert</span>
                 {notifications && notifications.length > 0 && (
-                  <Badge variant="destructive" className="text-xs px-1 py-0 min-w-[1.25rem] h-5">
+                  <Badge variant="destructive" className="text-xs px-1 py-0 min-w-[1.25rem] h-4 ml-0.5">
                     {notifications.length}
                   </Badge>
                 )}
               </div>
             </TabsTrigger>
-            <TabsTrigger value="feedback">Feedback</TabsTrigger>
-            <TabsTrigger value="profile">Profile</TabsTrigger>
+            <TabsTrigger value="feedback" className="text-xs sm:text-sm py-2 hidden sm:inline-flex">
+              <span>Feedback</span>
+            </TabsTrigger>
+            <TabsTrigger value="profile" className="text-xs sm:text-sm py-2">
+              <span className="hidden sm:inline">Profile</span>
+              <span className="sm:hidden">Profile</span>
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-6">
+          <TabsContent value="overview" className="space-y-4 sm:space-y-6">
             {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-blue-600" />
-                    <div>
-                      <p className="text-2xl font-bold">{upcoming_appointments?.length || 0}</p>
-                      <p className="text-sm text-muted-foreground">Upcoming Appointments</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+              <Card className="shadow-sm">
+                <CardContent className="pt-4 sm:pt-6">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <Calendar className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xl sm:text-2xl font-bold">{upcoming_appointments?.length || 0}</p>
+                      <p className="text-xs sm:text-sm text-muted-foreground">Upcoming Appts</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-2">
-                    <Activity className="w-5 h-5 text-green-600" />
-                    <div>
-                      <p className="text-2xl font-bold">{health_summary.total_visits}</p>
-                      <p className="text-sm text-muted-foreground">Total Visits</p>
+              <Card className="shadow-sm">
+                <CardContent className="pt-4 sm:pt-6">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <Activity className="w-5 h-5 text-green-600 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xl sm:text-2xl font-bold">{health_summary.total_visits}</p>
+                      <p className="text-xs sm:text-sm text-muted-foreground">Total Visits</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-2">
-                    <Heart className="w-5 h-5 text-red-600" />
-                    <div>
-                      <p className="text-2xl font-bold">{health_summary.recent_diagnoses?.length || 0}</p>
-                      <p className="text-sm text-muted-foreground">Recent Diagnoses</p>
+              <Card className="shadow-sm">
+                <CardContent className="pt-4 sm:pt-6">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <Heart className="w-5 h-5 text-red-600 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xl sm:text-2xl font-bold">{health_summary.recent_diagnoses?.length || 0}</p>
+                      <p className="text-xs sm:text-sm text-muted-foreground">Diagnoses</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-2">
-                    <Bell className="w-5 h-5 text-orange-600" />
-                    <div>
-                      <p className="text-2xl font-bold">{notifications?.length || 0}</p>
-                      <p className="text-sm text-muted-foreground">Notifications</p>
+              <Card className="shadow-sm">
+                <CardContent className="pt-4 sm:pt-6">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <Bell className="w-5 h-5 text-orange-600 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xl sm:text-2xl font-bold">{notifications?.length || 0}</p>
+                      <p className="text-xs sm:text-sm text-muted-foreground">Notifications</p>
                     </div>
                   </div>
                 </CardContent>
