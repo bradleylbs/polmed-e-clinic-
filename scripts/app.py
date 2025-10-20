@@ -6979,7 +6979,10 @@ def get_patient_visit_history(patient_id: int):
     try:
         # Verify token matches requested patient ID
         if request.patient_id != patient_id:
+            logger.warning(f"Access denied: token patient {request.patient_id} != requested {patient_id}")
             return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        logger.info(f"Retrieving visit history for patient {patient_id}")
         
         # Get patient visits - corrected query (no location_id join, use location string directly)
         visits_query = """
@@ -6990,7 +6993,7 @@ def get_patient_visit_history(patient_id: int):
                (SELECT COUNT(*) FROM visit_workflow_progress vwp 
                 WHERE vwp.visit_id = pv.id AND vwp.completed_at IS NOT NULL) as completed_stages,
                (SELECT COUNT(*) FROM workflow_stages) as total_stages,
-               CONCAT(u.first_name, ' ', u.last_name) as doctor_name
+               COALESCE(CONCAT(u.first_name, ' ', u.last_name), 'Not Assigned') as doctor_name
         FROM patient_visits pv
         LEFT JOIN users u ON pv.doctor_id = u.id
         WHERE pv.patient_id = %s
@@ -6998,7 +7001,9 @@ def get_patient_visit_history(patient_id: int):
         LIMIT 100
         """
         
+        logger.debug(f"Executing query for patient {patient_id}")
         visits = DatabaseManager.execute_query(visits_query, (patient_id,), fetch=True) or []
+        logger.info(f"Query returned {len(visits)} visits for patient {patient_id}")
         
         if not visits:
             logger.info(f"No visits found for patient {patient_id}")
@@ -7011,42 +7016,48 @@ def get_patient_visit_history(patient_id: int):
         # Format visits data
         visits_data = []
         for visit in visits:
-            # Parse visit date and time
-            visit_datetime = None
-            if visit['visit_date']:
-                try:
-                    visit_datetime = datetime.combine(
-                        visit['visit_date'],
-                        visit['visit_time'] if visit['visit_time'] else time(0, 0)
-                    ).isoformat()
-                except Exception as dt_err:
-                    logger.warning(f"Error combining date/time for visit {visit['id']}: {dt_err}")
-                    visit_datetime = visit['visit_date'].isoformat() if visit['visit_date'] else None
-            
-            completed_stages = visit['completed_stages'] or 0
-            total_stages = visit['total_stages'] or 0
-            progress_pct = round((completed_stages / max(total_stages, 1)) * 100) if total_stages > 0 else 0
-            
-            visits_data.append({
-                'id': visit['id'],
-                'visit_id': visit['id'],  # Some clients expect visit_id
-                'visit_date': visit['visit_date'].isoformat() if visit['visit_date'] else None,
-                'visit_time': visit['visit_time'].isoformat() if visit['visit_time'] else None,
-                'visit_datetime': visit_datetime,
-                'chief_complaint': visit['chief_complaint'] or '',
-                'is_completed': bool(visit['is_completed']),
-                'completed_at': visit['completed_at'].isoformat() if visit['completed_at'] else None,
-                'location_name': visit['location'] or 'Unknown Location',
-                'location': visit['location'] or 'Unknown',
-                'doctor_name': visit['doctor_name'] or 'Not Assigned',
-                'completed_stages': completed_stages,
-                'total_stages': total_stages,
-                'progress_percentage': progress_pct,
-                'created_at': visit['created_at'].isoformat() if visit['created_at'] else None,
-                'updated_at': visit['updated_at'].isoformat() if visit['updated_at'] else None
-            })
+            try:
+                # Parse visit date and time
+                visit_datetime = None
+                if visit['visit_date']:
+                    try:
+                        visit_datetime = datetime.combine(
+                            visit['visit_date'],
+                            visit['visit_time'] if visit['visit_time'] else time(0, 0)
+                        ).isoformat()
+                    except Exception as dt_err:
+                        logger.warning(f"Error combining date/time for visit {visit['id']}: {dt_err}")
+                        visit_datetime = visit['visit_date'].isoformat() if visit['visit_date'] else None
+                
+                completed_stages = visit['completed_stages'] or 0
+                total_stages = visit['total_stages'] or 0
+                progress_pct = round((completed_stages / max(total_stages, 1)) * 100) if total_stages > 0 else 0
+                
+                visit_record = {
+                    'id': visit['id'],
+                    'visit_id': visit['id'],  # Some clients expect visit_id
+                    'visit_date': visit['visit_date'].isoformat() if visit['visit_date'] else None,
+                    'visit_time': visit['visit_time'].isoformat() if visit['visit_time'] else None,
+                    'visit_datetime': visit_datetime,
+                    'chief_complaint': visit['chief_complaint'] or '',
+                    'is_completed': bool(visit['is_completed']),
+                    'completed_at': visit['completed_at'].isoformat() if visit['completed_at'] else None,
+                    'location_name': visit['location'] or 'Unknown Location',
+                    'location': visit['location'] or 'Unknown',
+                    'doctor_name': visit['doctor_name'] or 'Not Assigned',
+                    'completed_stages': completed_stages,
+                    'total_stages': total_stages,
+                    'progress_percentage': progress_pct,
+                    'created_at': visit['created_at'].isoformat() if visit['created_at'] else None,
+                    'updated_at': visit['updated_at'].isoformat() if visit['updated_at'] else None
+                }
+                visits_data.append(visit_record)
+            except Exception as visit_err:
+                logger.error(f"Error formatting visit {visit.get('id', 'unknown')}: {str(visit_err)}", exc_info=True)
+                # Skip this visit and continue with others
+                continue
         
-        logger.info(f"Retrieved {len(visits_data)} visits for patient {patient_id}")
+        logger.info(f"Successfully formatted {len(visits_data)} visits for patient {patient_id}")
         return jsonify({
             'success': True,
             'data': visits_data,
@@ -7186,33 +7197,34 @@ def get_patient_test_results(patient_id: int):
 @app.route('/api/patient-portal/medical-reports/<int:patient_id>', methods=['GET'])
 @patient_portal_token_required
 def get_patient_medical_reports(patient_id: int):
-    """Get patient's medical reports combining visits and medical records"""
+    """Get patient's medical reports from completed clinic visits with clinical notes"""
     try:
         # Verify token matches requested patient ID
         if request.patient_id != patient_id:
+            logger.warning(f"Access denied: token patient {request.patient_id} != requested {patient_id}")
             return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        logger.info(f"Retrieving medical reports for patient {patient_id}")
         
         # Get query parameters for filtering
         status = request.args.get('status')  # 'completed' or 'pending'
         from_date = request.args.get('from_date')
         to_date = request.args.get('to_date')
         
-        # Build base query to get medical reports (visits with associated medical records)
+        # Build base query to get visits with their clinical notes
+        # Note: patient_visits uses 'location' as VARCHAR, not location_id
         query = """
         SELECT DISTINCT
             pv.id as visit_id,
             pv.visit_date,
+            pv.visit_time,
             pv.chief_complaint,
+            pv.location,
             pv.is_completed,
-            l.location_name,
-            l.city,
-            l.province,
-            u.first_name as provider_first,
-            u.last_name as provider_last,
+            COALESCE(CONCAT(u.first_name, ' ', u.last_name), 'Not Assigned') as doctor_name,
             pv.created_at,
             pv.updated_at
         FROM patient_visits pv
-        LEFT JOIN locations l ON pv.location_id = l.id
         LEFT JOIN users u ON pv.doctor_id = u.id
         WHERE pv.patient_id = %s
         """
@@ -7236,52 +7248,136 @@ def get_patient_medical_reports(patient_id: int):
         
         query += " ORDER BY pv.visit_date DESC LIMIT 200"
         
+        logger.debug(f"Executing query: {query} with params {params}")
         visits = DatabaseManager.execute_query(query, params, fetch=True) or []
+        logger.info(f"Found {len(visits)} visits for patient {patient_id}")
         
         # Format reports data
         reports_data = []
         for visit in visits:
-            # Get medical records (diagnoses) for this visit
-            diagnoses = []
-            diag_query = """
-            SELECT mr.icd10_code, mr.description, mr.status
-            FROM medical_records mr
-            WHERE mr.visit_id = %s
-            ORDER BY mr.created_at DESC
-            """
-            diag_results = DatabaseManager.execute_query(diag_query, (visit['visit_id'],), fetch=True) or []
-            
-            for diag in diag_results:
-                diagnoses.append({
-                    'code': diag['icd10_code'],
-                    'description': diag['description'],
-                    'status': diag['status']
+            try:
+                visit_id = visit['visit_id']
+                
+                # Get clinical notes (assessment, diagnosis, treatment, counseling, closure) for this visit
+                notes_query = """
+                SELECT cn.id, cn.note_type, cn.content, cn.icd10_codes, 
+                       cn.medications_prescribed, cn.follow_up_required, cn.follow_up_date,
+                       cn.created_at, COALESCE(CONCAT(u.first_name, ' ', u.last_name), 'System') as created_by_name
+                FROM clinical_notes cn
+                LEFT JOIN users u ON cn.created_by = u.id
+                WHERE cn.visit_id = %s
+                ORDER BY cn.note_type DESC, cn.created_at DESC
+                """
+                
+                clinical_notes = DatabaseManager.execute_query(notes_query, (visit_id,), fetch=True) or []
+                logger.debug(f"Retrieved {len(clinical_notes)} clinical notes for visit {visit_id}")
+                
+                # Organize notes by type
+                notes_by_type = {}
+                for note in clinical_notes:
+                    note_type = note['note_type'] or 'Other'
+                    if note_type not in notes_by_type:
+                        notes_by_type[note_type] = []
+                    notes_by_type[note_type].append(note)
+                
+                # Build comprehensive report from clinical workflow
+                report_content = {
+                    'assessment': None,
+                    'diagnosis': None,
+                    'treatment': None,
+                    'counseling': None,
+                    'closure': None,
+                }
+                
+                icd10_codes = []
+                medications = []
+                follow_up_required = False
+                follow_up_date = None
+                
+                # Extract information from each note type
+                for note_type, notes_list in notes_by_type.items():
+                    if notes_list:
+                        latest_note = notes_list[0]
+                        report_content[note_type.lower() if note_type.lower() in report_content else 'closure'] = {
+                            'content': latest_note['content'],
+                            'created_at': latest_note['created_at'].isoformat() if latest_note['created_at'] else None,
+                            'created_by': latest_note['created_by_name'],
+                            'follow_up_required': bool(latest_note['follow_up_required']),
+                            'follow_up_date': latest_note['follow_up_date'].isoformat() if latest_note['follow_up_date'] else None,
+                        }
+                        
+                        # Collect ICD-10 codes
+                        if latest_note['icd10_codes']:
+                            try:
+                                if isinstance(latest_note['icd10_codes'], str):
+                                    codes_list = latest_note['icd10_codes'].split(',')
+                                    icd10_codes.extend([c.strip() for c in codes_list if c.strip()])
+                                else:
+                                    icd10_codes.extend(latest_note['icd10_codes'])
+                            except Exception as code_err:
+                                logger.warning(f"Error parsing ICD-10 codes: {code_err}")
+                        
+                        # Collect medications
+                        if latest_note['medications_prescribed']:
+                            try:
+                                meds_data = latest_note['medications_prescribed']
+                                if isinstance(meds_data, str):
+                                    meds_data = json.loads(meds_data)
+                                if isinstance(meds_data, list):
+                                    medications.extend(meds_data)
+                                else:
+                                    medications.append(meds_data)
+                            except Exception as med_err:
+                                logger.warning(f"Error parsing medications: {med_err}")
+                        
+                        # Track follow-up
+                        if latest_note['follow_up_required']:
+                            follow_up_required = True
+                            follow_up_date = latest_note['follow_up_date'].isoformat() if latest_note['follow_up_date'] else None
+                
+                # Remove None values and flatten ICD-10 codes
+                report_content = {k: v for k, v in report_content.items() if v is not None}
+                icd10_codes = list(set(icd10_codes))  # Remove duplicates
+                
+                reports_data.append({
+                    'id': visit_id,
+                    'visit_id': visit_id,
+                    'visit_date': visit['visit_date'].isoformat() if visit['visit_date'] else None,
+                    'visit_time': visit['visit_time'].isoformat() if visit['visit_time'] else None,
+                    'location': visit['location'] or 'Unknown Location',
+                    'chief_complaint': visit['chief_complaint'] or '',
+                    'is_completed': bool(visit['is_completed']),
+                    'doctor_name': visit['doctor_name'],
+                    'report_type': 'clinical_visit_summary',
+                    'clinical_notes': report_content,
+                    'icd10_codes': icd10_codes,
+                    'medications': medications,
+                    'follow_up_required': follow_up_required,
+                    'follow_up_date': follow_up_date,
+                    'created_at': visit['created_at'].isoformat() if visit['created_at'] else None,
+                    'updated_at': visit['updated_at'].isoformat() if visit['updated_at'] else None
                 })
-            
-            reports_data.append({
-                'id': visit['visit_id'],
-                'visit_id': visit['visit_id'],
-                'visit_date': visit['visit_date'].isoformat() if visit['visit_date'] else None,
-                'location_name': visit['location_name'],
-                'city': visit['city'],
-                'province': visit['province'],
-                'chief_complaint': visit['chief_complaint'],
-                'is_completed': bool(visit['is_completed']),
-                'report_type': 'visit_summary',
-                'diagnoses': diagnoses,
-                'provider': f"{visit['provider_first']} {visit['provider_last']}" if visit['provider_first'] else None,
-                'created_at': visit['created_at'].isoformat() if visit['created_at'] else None,
-                'updated_at': visit['updated_at'].isoformat() if visit['updated_at'] else None
-            })
+                logger.debug(f"Successfully formatted report for visit {visit_id}")
+            except Exception as visit_err:
+                logger.error(f"Error processing visit {visit.get('visit_id', 'unknown')}: {str(visit_err)}", exc_info=True)
+                # Skip this visit and continue with others
+                continue
+        
+        logger.info(f"Successfully formatted {len(reports_data)} medical reports for patient {patient_id}")
         
         return jsonify({
             'success': True,
-            'data': reports_data
+            'data': reports_data,
+            'count': len(reports_data)
         }), 200
         
     except Exception as e:
-        logger.error(f"Get patient medical reports error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+        logger.error(f"Get patient medical reports error for patient {patient_id}: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': 'Failed to retrieve medical reports',
+            'details': str(e) if app.debug else None
+        }), 500
 
 
 @app.route('/api/patient-portal/medical-records/<int:patient_id>', methods=['GET'])
