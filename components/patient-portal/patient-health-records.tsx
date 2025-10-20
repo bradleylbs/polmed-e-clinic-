@@ -60,21 +60,42 @@ export function PatientHealthRecords({ patientId }: PatientHealthRecordsProps) {
       setLoading(true)
       setError(null)
 
-      const [visitsResponse, documentsResponse] = await Promise.all([
-        patientPortalService.getPatientVisitHistory(patientId),
-        patientPortalService.getPatientDocuments(patientId),
-      ])
+      // Fetch visits from service (with dashboard fallback)
+      const visitsResponse = await patientPortalService.getPatientVisitHistory(patientId)
+      
+      // Fetch documents
+      const documentsResponse = await patientPortalService.getPatientDocuments(patientId)
 
       if (visitsResponse.success && visitsResponse.data) {
-        setVisits(visitsResponse.data)
+        // Transform visit data to match VisitRecord interface
+        const transformedVisits = (visitsResponse.data || []).map((visit: any) => ({
+          id: visit.id || visit.visit_id,
+          visit_id: visit.visit_id || visit.id,
+          visit_date: visit.visit_date || visit.appointment_date,
+          location_name: visit.location_name || "Mobile Clinic",
+          chief_complaint: visit.chief_complaint || visit.reason_for_visit,
+          is_completed: visit.is_completed || visit.status === "completed",
+          completed_stages: visit.completed_stages,
+          total_stages: visit.total_stages,
+        }))
+        setVisits(transformedVisits)
       }
 
       if (documentsResponse.success && documentsResponse.data) {
-        setDocuments(documentsResponse.data)
+        const transformedDocs = (documentsResponse.data || []).map((doc: any) => ({
+          id: doc.id,
+          document_name: doc.document_name || doc.file_name,
+          document_type: doc.document_type,
+          upload_date: doc.upload_date || doc.created_at,
+          created_at: doc.created_at,
+          file_size: doc.file_size || doc.size,
+          download_url: doc.download_url,
+        }))
+        setDocuments(transformedDocs)
       }
 
       if (!visitsResponse.success && !documentsResponse.success) {
-        setError("Failed to load health records")
+        setError("Failed to load health records. Please try again later.")
         toast({
           title: "Error",
           description: "Failed to load health records",
@@ -84,6 +105,7 @@ export function PatientHealthRecords({ patientId }: PatientHealthRecordsProps) {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Failed to load health records"
       setError(errorMsg)
+      console.error("Error fetching health records:", err)
       toast({
         title: "Error",
         description: errorMsg,

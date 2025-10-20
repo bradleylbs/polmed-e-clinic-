@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
-import { Eye, EyeOff, Mail, Lock, Stethoscope, Shield, Heart, AlertCircle, ArrowRight, ArrowLeft, Home } from "lucide-react"
+import { Eye, EyeOff, Mail, Lock, Stethoscope, Shield, Heart, AlertCircle, ArrowRight, ArrowLeft } from "lucide-react"
 import { patientPortalService } from "@/lib/patient-portal-service"
 import { useToast } from "@/hooks/use-toast"
 
@@ -82,9 +82,9 @@ export function PatientPortalLogin({ onLogin, onRegister }: PatientPortalLoginPr
   if (showForgotPassword) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
-        {/* Header with Back Button and Logo Navigation */}
+        {/* Header with Back Button */}
         <div className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-xl border-b border-border/50">
-          <div className="container mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+          <div className="container mx-auto max-w-7xl px-4 py-4 flex items-center justify-start">
             {/* Back Button */}
             <button
               onClick={() => {
@@ -97,28 +97,6 @@ export function PatientPortalLogin({ onLogin, onRegister }: PatientPortalLoginPr
               <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
               <span className="text-sm font-medium hidden sm:inline">Back</span>
             </button>
-
-            {/* Logo - Links to Landing Page */}
-            <Link href="/landing" className="flex items-center transition-all hover:scale-105 duration-300">
-              <Image
-                src="/polmed_logo.png"
-                alt="POLMED"
-                width={140}
-                height={46}
-                className="h-10 w-auto"
-                priority
-              />
-            </Link>
-
-            {/* Home Button */}
-            <Link
-              href="/landing"
-              className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors duration-300 group"
-              aria-label="Go to home"
-            >
-              <span className="text-sm font-medium hidden sm:inline">Home</span>
-              <Home className="w-5 h-5 group-hover:scale-110 transition-transform" />
-            </Link>
           </div>
         </div>
 
@@ -192,7 +170,7 @@ export function PatientPortalLogin({ onLogin, onRegister }: PatientPortalLoginPr
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
       {/* Header with Back Button and Logo Navigation */}
       <div className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-xl border-b border-border/50">
-        <div className="container mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+        <div className="container mx-auto max-w-7xl px-4 py-4 flex items-center justify-start">
           {/* Back Button */}
           <button
             onClick={() => router.back()}
@@ -202,28 +180,6 @@ export function PatientPortalLogin({ onLogin, onRegister }: PatientPortalLoginPr
             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
             <span className="text-sm font-medium hidden sm:inline">Back</span>
           </button>
-
-          {/* Logo - Links to Landing Page */}
-          <Link href="/landing" className="flex items-center transition-all hover:scale-105 duration-300">
-            <Image
-              src="/polmed_logo.png"
-              alt="POLMED"
-              width={140}
-              height={46}
-              className="h-10 w-auto"
-              priority
-            />
-          </Link>
-
-          {/* Home Button */}
-          <Link
-            href="/landing"
-            className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors duration-300 group"
-            aria-label="Go to home"
-          >
-            <span className="text-sm font-medium hidden sm:inline">Home</span>
-            <Home className="w-5 h-5 group-hover:scale-110 transition-transform" />
-          </Link>
         </div>
       </div>
 

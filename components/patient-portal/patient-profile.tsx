@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,6 +39,7 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
   const [isEditing, setIsEditing] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState("personal")
   const { toast } = useToast()
 
   // Form state
@@ -56,7 +57,7 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
     confirm_password: "",
   })
 
-  // Privacy settings
+  // Privacy settings with default values
   const [privacySettings, setPrivacySettings] = useState({
     share_data_with_researchers: false,
     receive_health_tips: true,
@@ -64,6 +65,19 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
     receive_marketing_emails: false,
     allow_emergency_contact_access: true,
   })
+
+  // Load privacy settings from localStorage on component mount
+  useEffect(() => {
+    try {
+      const savedPrivacySettings = localStorage.getItem("patient_privacy_settings")
+      if (savedPrivacySettings) {
+        const parsed = JSON.parse(savedPrivacySettings)
+        setPrivacySettings((prev) => ({ ...prev, ...parsed }))
+      }
+    } catch (error) {
+      console.error("Error loading privacy settings from localStorage:", error)
+    }
+  }, [])
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -182,24 +196,9 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Profile Settings</h2>
-        <div className="flex gap-2">
-          {isEditing ? (
-            <>
-              <Button variant="outline" onClick={() => setIsEditing(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSaveProfile} disabled={loading}>
-                <Save className="w-4 h-4 mr-2" />
-                Save Changes
-              </Button>
-            </>
-          ) : (
-            <Button onClick={() => setIsEditing(true)}>Edit Profile</Button>
-          )}
-        </div>
       </div>
 
-      <Tabs defaultValue="personal" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="personal">Personal Info</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
@@ -209,11 +208,26 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
         <TabsContent value="personal" className="space-y-6">
           {/* Personal Information */}
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
               <CardTitle className="flex items-center gap-2">
                 <User className="w-5 h-5" />
                 Personal Information
               </CardTitle>
+              <div className="flex gap-2">
+                {isEditing ? (
+                  <>
+                    <Button variant="outline" onClick={() => setIsEditing(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleSaveProfile} disabled={loading}>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Changes
+                    </Button>
+                  </>
+                ) : (
+                  <Button onClick={() => setIsEditing(true)}>Edit Profile</Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -410,72 +424,92 @@ export function PatientProfile({ patientId, patientData }: PatientProfileProps) 
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Share data with researchers</Label>
-                    <p className="text-sm text-muted-foreground">
+              <div className="space-y-5">
+                {/* Privacy Setting 1 */}
+                <div className="flex items-start justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <div className="flex-1">
+                    <Label className="text-base font-medium cursor-pointer">Share data with researchers</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
                       Allow anonymized health data to be used for medical research
                     </p>
                   </div>
-                  <Switch
-                    checked={privacySettings.share_data_with_researchers}
-                    onCheckedChange={(checked) => handlePrivacyChange("share_data_with_researchers", checked)}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Receive health tips</Label>
-                    <p className="text-sm text-muted-foreground">Get personalized health tips and wellness advice</p>
+                  <div className="ml-4 flex-shrink-0">
+                    <Switch
+                      checked={privacySettings.share_data_with_researchers}
+                      onCheckedChange={(checked) => handlePrivacyChange("share_data_with_researchers", checked)}
+                      className="!m-0"
+                    />
                   </div>
-                  <Switch
-                    checked={privacySettings.receive_health_tips}
-                    onCheckedChange={(checked) => handlePrivacyChange("receive_health_tips", checked)}
-                  />
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Appointment reminders</Label>
-                    <p className="text-sm text-muted-foreground">
+                {/* Privacy Setting 2 */}
+                <div className="flex items-start justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <div className="flex-1">
+                    <Label className="text-base font-medium cursor-pointer">Receive health tips</Label>
+                    <p className="text-sm text-muted-foreground mt-1">Get personalized health tips and wellness advice</p>
+                  </div>
+                  <div className="ml-4 flex-shrink-0">
+                    <Switch
+                      checked={privacySettings.receive_health_tips}
+                      onCheckedChange={(checked) => handlePrivacyChange("receive_health_tips", checked)}
+                      className="!m-0"
+                    />
+                  </div>
+                </div>
+
+                {/* Privacy Setting 3 */}
+                <div className="flex items-start justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <div className="flex-1">
+                    <Label className="text-base font-medium cursor-pointer">Appointment reminders</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
                       Receive SMS and email reminders for upcoming appointments
                     </p>
                   </div>
-                  <Switch
-                    checked={privacySettings.receive_appointment_reminders}
-                    onCheckedChange={(checked) => handlePrivacyChange("receive_appointment_reminders", checked)}
-                  />
+                  <div className="ml-4 flex-shrink-0">
+                    <Switch
+                      checked={privacySettings.receive_appointment_reminders}
+                      onCheckedChange={(checked) => handlePrivacyChange("receive_appointment_reminders", checked)}
+                      className="!m-0"
+                    />
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Marketing emails</Label>
-                    <p className="text-sm text-muted-foreground">
+                {/* Privacy Setting 4 */}
+                <div className="flex items-start justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <div className="flex-1">
+                    <Label className="text-base font-medium cursor-pointer">Marketing emails</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
                       Receive promotional emails about new services and features
                     </p>
                   </div>
-                  <Switch
-                    checked={privacySettings.receive_marketing_emails}
-                    onCheckedChange={(checked) => handlePrivacyChange("receive_marketing_emails", checked)}
-                  />
+                  <div className="ml-4 flex-shrink-0">
+                    <Switch
+                      checked={privacySettings.receive_marketing_emails}
+                      onCheckedChange={(checked) => handlePrivacyChange("receive_marketing_emails", checked)}
+                      className="!m-0"
+                    />
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Emergency contact access</Label>
-                    <p className="text-sm text-muted-foreground">
+                {/* Privacy Setting 5 */}
+                <div className="flex items-start justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <div className="flex-1">
+                    <Label className="text-base font-medium cursor-pointer">Emergency contact access</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
                       Allow emergency contacts to access your basic health information
                     </p>
                   </div>
-                  <Switch
-                    checked={privacySettings.allow_emergency_contact_access}
-                    onCheckedChange={(checked) => handlePrivacyChange("allow_emergency_contact_access", checked)}
-                  />
+                  <div className="ml-4 flex-shrink-0">
+                    <Switch
+                      checked={privacySettings.allow_emergency_contact_access}
+                      onCheckedChange={(checked) => handlePrivacyChange("allow_emergency_contact_access", checked)}
+                      className="!m-0"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <Button onClick={handleSavePrivacySettings} disabled={loading}>
+              <Button onClick={handleSavePrivacySettings} disabled={loading} className="w-full sm:w-auto">
                 <Save className="w-4 h-4 mr-2" />
                 Save Privacy Settings
               </Button>
