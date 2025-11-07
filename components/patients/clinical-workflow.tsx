@@ -213,11 +213,18 @@ const SPECIALIST_ROLE_KEYS = new Set([
 
 const SPECIALIST_ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   dentist: Sparkles,
+  dental_consultation: Sparkles,
   optometrist: Eye,
+  optometry_assessment: Eye,
   audiologist: Activity,
+  audiology_assessment: Activity,
   gynaecologist: Target,
+  gynaecology_consultation: Target,
   ultrasound: Zap,
+  ultrasound_scan: Zap,
   psychology: Brain,
+  psychology_session: Brain,
+  psychologist: Brain,
 }
 
 type SpecialistDropdownType = "severity" | "laterality" | "grade"
@@ -688,6 +695,16 @@ const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
     requiredDropdowns: ["severity"],
   },
 }
+
+Object.assign(SPECIALIST_NOTE_CONFIG, {
+  dental_consultation: SPECIALIST_NOTE_CONFIG.dentist,
+  optometry_assessment: SPECIALIST_NOTE_CONFIG.optometrist,
+  audiology_assessment: SPECIALIST_NOTE_CONFIG.audiologist,
+  gynaecology_consultation: SPECIALIST_NOTE_CONFIG.gynaecologist,
+  ultrasound_scan: SPECIALIST_NOTE_CONFIG.ultrasound,
+  psychology_session: SPECIALIST_NOTE_CONFIG.psychology,
+  psychologist: SPECIALIST_NOTE_CONFIG.psychology,
+})
 
 const formatSpecialistLabel = (value: string) =>
   value
