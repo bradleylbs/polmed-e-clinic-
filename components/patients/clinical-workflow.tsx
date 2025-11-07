@@ -227,6 +227,9 @@ const SPECIALIST_ICON_MAP: Record<string, React.ComponentType<{ className?: stri
   psychologist: Brain,
 }
 
+const TEMPLATE_CUSTOM_VALUE = "__palmed-template-custom__"
+const SELECT_EMPTY_VALUE = "__palmed-empty__"
+
 type SpecialistDropdownType = "severity" | "laterality" | "grade"
 
 interface SpecialistDropdownConfig {
@@ -2654,16 +2657,7 @@ export function ClinicalWorkflow({
       const helperState = helperPopoverOpen[step.specialistType] || {}
 
       const handleTemplateSelect = (value: string) => {
-        if (!config) {
-          setSpecialistNoteDraft(step.specialistType!, {
-            ...noteDraft,
-            selectedTemplate: undefined,
-            noteType: step.noteType,
-          })
-          return
-        }
-
-        if (!value) {
+        if (!config || value === TEMPLATE_CUSTOM_VALUE || !value) {
           setSpecialistNoteDraft(step.specialistType!, {
             ...noteDraft,
             selectedTemplate: undefined,
@@ -2693,7 +2687,7 @@ export function ClinicalWorkflow({
       }
 
       const handleDropdownChange = (dropdown: SpecialistDropdownConfig, value: string) => {
-        const normalized = value === "" ? undefined : value
+        const normalized = value === SELECT_EMPTY_VALUE ? undefined : value
         const updatedContent = upsertStructuredLine(noteDraft.content, dropdown.label, normalized)
         const baseDraft: SpecialistNoteDraft = {
           ...noteDraft,
@@ -2718,6 +2712,11 @@ export function ClinicalWorkflow({
 
       const placeholder =
         config?.placeholder || `Document the ${step.title.toLowerCase()} findings, interventions, and plans.`
+
+      const templateSelectValue =
+        noteDraft.selectedTemplate && noteDraft.selectedTemplate.length > 0
+          ? noteDraft.selectedTemplate
+          : TEMPLATE_CUSTOM_VALUE
 
       return (
         <div className="space-y-6">
@@ -2791,14 +2790,14 @@ export function ClinicalWorkflow({
             <div className="space-y-2">
               <Label className="text-xs font-medium text-muted-foreground">Templates</Label>
               <Select
-                value={noteDraft.selectedTemplate ?? ""}
+                value={templateSelectValue}
                 onValueChange={handleTemplateSelect}
               >
                 <SelectTrigger className="h-9 text-sm">
                   <SelectValue placeholder="Choose a template or keep custom note" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Custom note</SelectItem>
+                  <SelectItem value={TEMPLATE_CUSTOM_VALUE}>Custom note</SelectItem>
                   {templates.map((template) => (
                     <SelectItem key={template.value} value={template.value}>
                       {template.label}
@@ -2813,15 +2812,16 @@ export function ClinicalWorkflow({
             <div className="grid gap-3 md:grid-cols-3">
               {dropdowns.map((dropdown) => {
                 const currentValue = readDropdownValue(noteDraft, dropdown.field)
+                const selectValue = currentValue && currentValue.length > 0 ? currentValue : SELECT_EMPTY_VALUE
                 return (
                   <div key={`${step.specialistType}-dropdown-${dropdown.field}`} className="space-y-2">
                     <Label className="text-xs font-medium text-muted-foreground">{dropdown.label}</Label>
-                    <Select value={currentValue} onValueChange={(value) => handleDropdownChange(dropdown, value)}>
+                    <Select value={selectValue} onValueChange={(value) => handleDropdownChange(dropdown, value)}>
                       <SelectTrigger className="h-9 text-sm">
                         <SelectValue placeholder={`Select ${dropdown.label.toLowerCase()}`} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Not captured</SelectItem>
+                        <SelectItem value={SELECT_EMPTY_VALUE}>Not captured</SelectItem>
                         {dropdown.options.map((option) => (
                           <SelectItem key={`${dropdown.field}-${option}`} value={option}>
                             {option}
