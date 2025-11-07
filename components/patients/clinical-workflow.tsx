@@ -37,7 +37,7 @@ import {
   Clipboard,
 } from "lucide-react"
 import { ReferralModal } from "./referral-modal"
-import { apiService, type SmartSuggestionRecord } from "@/lib/api-service"
+import { apiService, type CreateClinicalNoteRequest, type SmartSuggestionRecord } from "@/lib/api-service"
 import { offlineManager } from "@/lib/offline-manager"
 import { useToast } from "@/components/ui/use-toast"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
@@ -78,6 +78,9 @@ interface WorkflowStep {
   status: "pending" | "in-progress" | "completed"
   completedBy?: string
   completedAt?: string
+  isSpecialist?: boolean
+  specialistType?: string
+  noteType?: string
 }
 
 interface ClinicalWorkflowProps {
@@ -86,6 +89,30 @@ interface ClinicalWorkflowProps {
   userRole: string
   username: string
   onWorkflowComplete: () => void
+}
+
+interface SpecialistDefinition {
+  specialist_type: string
+  label: string
+  role: string
+  note_type: string
+}
+
+interface SpecialistNoteDraft {
+  content: string
+  followUpRequired?: boolean
+  followUpDate?: string
+  noteType?: string
+}
+
+interface WorkflowStatusSnapshot {
+  completed: boolean
+  completedAt?: string | null
+  role?: string
+  noteType?: string
+  isSpecialist?: boolean
+  specialistType?: string
+  title?: string
 }
 
 interface VitalAlert {
@@ -118,6 +145,7 @@ interface WorkflowSubmissionPayload {
   investigations: string[]
   selectedICD10Codes: Array<{ code: string; description: string }>
   persistVitals?: boolean
+  specialistNotes?: Record<string, SpecialistNoteDraft>
 }
 
 interface QueuedWorkflowSubmission {
@@ -154,20 +182,67 @@ const writeOfflineWorkflowQueue = (entries: QueuedWorkflowSubmission[]) => {
   }
 }
 
-const WORKFLOW_DEPENDENCIES: Record<WorkflowStep["id"], WorkflowStep["id"][]> = {
-  registration: [],
-  nursing: ["registration"],
-  doctor: ["nursing"],
-  counseling: ["doctor"],
-  closure: ["nursing", "doctor", "counseling"],
-}
-
 const ROLE_LABELS: Record<string, string> = {
   administrator: "Administrator",
   clerk: "Admin Clerk",
   nurse: "Nurse",
   doctor: "Doctor",
   social_worker: "Social Worker",
+  social_work: "Social Worker",
+  dentist: "Dentist",
+  optometrist: "Optometrist",
+  audiologist: "Audiologist",
+  gynaecologist: "Gynaecologist",
+  ultrasound: "Ultrasound",
+  psychologist: "Psychologist",
+}
+
+const SPECIALIST_ROLE_KEYS = new Set([
+  "dentist",
+  "optometrist",
+  "audiologist",
+  "gynaecologist",
+  "ultrasound",
+  "psychologist",
+])
+
+const SPECIALIST_ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  dentist: Sparkles,
+  optometrist: Eye,
+  audiologist: Activity,
+  gynaecologist: Target,
+  ultrasound: Zap,
+  psychology: Brain,
+}
+
+const formatSpecialistLabel = (value: string) =>
+  value
+    .split(/[_\s-]+/)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ")
+
+const arraysEqual = (a: string[], b: string[]) => {
+  if (a.length !== b.length) return false
+  return a.every((value, index) => value === b[index])
+}
+
+const orderSpecialists = (keys: string[], catalog: SpecialistDefinition[]) => {
+  const uniqueKeys = Array.from(new Set(keys))
+  if (!catalog.length) {
+    return uniqueKeys.sort()
+  }
+
+  const ordering = new Map<string, number>()
+  catalog.forEach((entry, index) => ordering.set(entry.specialist_type, index))
+
+  return uniqueKeys.sort((a, b) => {
+    const aIndex = ordering.has(a) ? ordering.get(a)! : Number.MAX_SAFE_INTEGER
+    const bIndex = ordering.has(b) ? ordering.get(b)! : Number.MAX_SAFE_INTEGER
+    if (aIndex === bIndex) {
+      return a.localeCompare(b)
+    }
+    return aIndex - bIndex
+  })
 }
 
 const normalizeRoleValue = (role?: string | null) => (role ? role.toLowerCase().replace(/\s+/g, "_") : "")
@@ -179,13 +254,37 @@ const rolesAlign = (stepRole: string, activeRole: string) => {
   if (normalizedActive === normalizedStep) return true
   if (normalizedActive === "social_work" && normalizedStep === "social_worker") return true
   if (normalizedActive === "social_worker" && normalizedStep === "social_work") return true
+  if (normalizedActive === "doctor" && SPECIALIST_ROLE_KEYS.has(normalizedStep)) return true
   return false
 }
 
-const listIncompleteDependencies = (stepId: WorkflowStep["id"], steps: WorkflowStep[]) =>
-  (WORKFLOW_DEPENDENCIES[stepId] || []).filter(
+const BASE_WORKFLOW_DEPENDENCIES: Record<string, WorkflowStep["id"][]> = {
+  registration: [],
+  nursing: ["registration"],
+  doctor: ["nursing"],
+  counseling: ["doctor"],
+  closure: ["nursing", "doctor", "counseling"],
+}
+
+const getStepDependencies = (step: WorkflowStep, steps: WorkflowStep[]) => {
+  if (!step) return []
+  if (step.isSpecialist && step.specialistType) {
+    return ["doctor"]
+  }
+  if (step.id === "closure") {
+    const specialistIds = steps.filter((s) => s.isSpecialist).map((s) => s.id)
+    return [...BASE_WORKFLOW_DEPENDENCIES.closure, ...specialistIds]
+  }
+  return BASE_WORKFLOW_DEPENDENCIES[step.id] || []
+}
+
+const listIncompleteDependencies = (stepId: WorkflowStep["id"], steps: WorkflowStep[]) => {
+  const step = steps.find((s) => s.id === stepId)
+  if (!step) return []
+  return getStepDependencies(step, steps).filter(
     (dependency) => steps.find((s) => s.id === dependency)?.status !== "completed",
   )
+}
 
 const canAccessStepForRole = (
   step: WorkflowStep | undefined,
@@ -198,6 +297,144 @@ const canAccessStepForRole = (
   if (!rolesAlign(step.role, activeRole)) return false
   if (allowCompleted && step.status === "completed") return true
   return listIncompleteDependencies(step.id, steps).length === 0
+}
+
+interface ComposeWorkflowArgs {
+  userRole: string
+  selectedSpecialists: string[]
+  specialistCatalog: SpecialistDefinition[]
+  statusLookup: Record<string, WorkflowStatusSnapshot>
+  previousSteps: WorkflowStep[]
+}
+
+const composeWorkflowSteps = ({
+  userRole,
+  selectedSpecialists,
+  specialistCatalog,
+  statusLookup,
+  previousSteps,
+}: ComposeWorkflowArgs): WorkflowStep[] => {
+  const orderedSelection = orderSpecialists(selectedSpecialists, specialistCatalog)
+
+  const baseSteps: WorkflowStep[] = [
+    {
+      id: "registration",
+      title: "Patient Check-in",
+      icon: UserCheck,
+      role: "clerk",
+      status: "completed",
+      completedBy: "System",
+      completedAt: previousSteps.find((s) => s.id === "registration")?.completedAt ?? new Date().toISOString(),
+    },
+    {
+      id: "nursing",
+      title: "Nursing Assessment",
+      icon: Heart,
+      role: "nurse",
+      status: "pending",
+    },
+    {
+      id: "doctor",
+      title: "Doctor Consultation",
+      icon: Stethoscope,
+      role: "doctor",
+      status: "pending",
+    },
+  ]
+
+  const specialistSteps: WorkflowStep[] = orderedSelection.map((specialistType) => {
+    const catalogEntry = specialistCatalog.find((entry) => entry.specialist_type === specialistType)
+    const role = catalogEntry?.role ?? specialistType
+    const noteType = catalogEntry?.note_type ?? formatSpecialistLabel(specialistType)
+    const label = catalogEntry?.label ?? formatSpecialistLabel(specialistType)
+    const Icon = SPECIALIST_ICON_MAP[specialistType] ?? Clipboard
+
+    return {
+      id: `specialist:${specialistType}`,
+      title: label,
+      icon: Icon,
+      role,
+      status: "pending",
+      isSpecialist: true,
+      specialistType,
+      noteType,
+    }
+  })
+
+  const tailSteps: WorkflowStep[] = [
+    {
+      id: "counseling",
+      title: "Counseling Session",
+      icon: Users,
+      role: "social_worker",
+      status: "pending",
+    },
+    {
+      id: "closure",
+      title: "File Closure",
+      icon: CheckCircle,
+      role: "doctor",
+      status: "pending",
+    },
+  ]
+
+  const steps = [...baseSteps, ...specialistSteps, ...tailSteps]
+
+  // Apply server-provided status overrides
+  const statusApplied: WorkflowStep[] = steps.map((step) => {
+    const snapshot = statusLookup[step.id]
+    if (!snapshot) {
+      return step
+    }
+
+    const nextStatus: WorkflowStep["status"] = snapshot.completed ? "completed" : step.status
+
+    return {
+      ...step,
+      role: snapshot.role || step.role,
+      noteType: snapshot.noteType || step.noteType,
+      status: nextStatus,
+      completedAt: snapshot.completedAt ?? step.completedAt,
+    }
+  })
+
+  // Preserve locally completed steps when server data is absent
+  const reconciled: WorkflowStep[] = statusApplied.map((step) => {
+    const previous = previousSteps.find((prev) => prev.id === step.id)
+    if (previous && previous.status === "completed" && step.status !== "completed") {
+      return {
+        ...step,
+        status: "completed",
+        completedAt: step.completedAt ?? previous.completedAt,
+        completedBy: step.completedBy ?? previous.completedBy,
+      }
+    }
+    if (previous && previous.status === "in-progress" && step.status === "pending") {
+      return { ...step, status: "in-progress" }
+    }
+    return step
+  })
+
+  // Reset any lingering in-progress markers before recomputing
+  const cleaned: WorkflowStep[] = reconciled.map((step) =>
+    step.status === "in-progress"
+      ? {
+          ...step,
+          status: "pending",
+        }
+      : step,
+  )
+
+  const firstActionable = cleaned.findIndex(
+    (step) =>
+      step.status !== "completed" && canAccessStepForRole(step, cleaned, userRole, { allowCompleted: false }),
+  )
+
+  if (firstActionable >= 0) {
+    cleaned[firstActionable] = { ...cleaned[firstActionable], status: "in-progress" }
+  }
+
+  return cleaned
 }
 
 export function ClinicalWorkflow({
@@ -268,45 +505,182 @@ export function ClinicalWorkflow({
   const [selectedICD10Codes, setSelectedICD10Codes] = useState<Array<{ code: string; description: string }>>([])
   const searchTimeoutRef = useRef<NodeJS.Timeout>()
 
-  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([
-    {
-      id: "registration",
-      title: "Patient Check-in",
-      icon: UserCheck,
-      role: "clerk",
-      status: "completed",
-      completedBy: "System",
-      completedAt: new Date().toISOString(),
-    },
-    {
-      id: "nursing",
-      title: "Nursing Assessment",
-      icon: Heart,
-      role: "nurse",
-      status: userRole === "nurse" ? "in-progress" : "pending",
-    },
-    {
-      id: "doctor",
-      title: "Doctor Consultation",
-      icon: Stethoscope,
-      role: "doctor",
-      status: "pending",
-    },
-    {
-      id: "counseling",
-      title: "Counseling Session",
-      icon: Users,
-      role: "social_worker",
-      status: "pending",
-    },
-    {
-      id: "closure",
-      title: "File Closure",
-      icon: CheckCircle,
-      role: "doctor",
-      status: "pending",
-    },
-  ])
+  const [specialistCatalog, setSpecialistCatalog] = useState<SpecialistDefinition[]>([])
+  const [selectedSpecialists, setSelectedSpecialists] = useState<string[]>([])
+  const [specialistNotes, setSpecialistNotes] = useState<Record<string, SpecialistNoteDraft>>({})
+  const [workflowStatusById, setWorkflowStatusById] = useState<Record<string, WorkflowStatusSnapshot>>({})
+  const lastSyncedSpecialistsRef = useRef<string[] | null>(null)
+  const syncingSpecialistsRef = useRef(false)
+
+  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>(() =>
+    composeWorkflowSteps({
+      userRole,
+      selectedSpecialists: [],
+      specialistCatalog: [],
+      statusLookup: {},
+      previousSteps: [],
+    }),
+  )
+
+  useEffect(() => {
+    setWorkflowSteps((prev) =>
+      composeWorkflowSteps({
+        userRole,
+        selectedSpecialists,
+        specialistCatalog,
+        statusLookup: workflowStatusById,
+        previousSteps: prev,
+      }),
+    )
+  }, [userRole, selectedSpecialists, specialistCatalog, workflowStatusById])
+
+  useEffect(() => {
+    let isMounted = true
+    apiService
+      .getSpecialistCatalog()
+      .then((response) => {
+        if (!isMounted) return
+        if (response.success && Array.isArray(response.data)) {
+          setSpecialistCatalog(response.data)
+        } else if (!response.success && response.error) {
+          toast({ title: "Unable to load specialists", description: response.error, variant: "destructive" })
+        }
+      })
+      .catch((error) => {
+        if (isMounted) {
+          console.warn("Failed to fetch specialist catalog", error)
+          toast({
+            title: "Unable to load specialists",
+            description: "Specialist catalog could not be retrieved.",
+            variant: "destructive",
+          })
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [toast])
+
+  useEffect(() => {
+    if (!specialistCatalog.length) return
+    setSelectedSpecialists((prev) => orderSpecialists(prev, specialistCatalog))
+  }, [specialistCatalog])
+
+  useEffect(() => {
+    setSpecialistNotes((prev) => {
+      const next = { ...prev }
+      let mutated = false
+      Object.keys(next).forEach((key) => {
+        if (!selectedSpecialists.includes(key)) {
+          delete next[key]
+          mutated = true
+        }
+      })
+      return mutated ? next : prev
+    })
+  }, [selectedSpecialists])
+
+  useEffect(() => {
+    if (!visitId) return
+
+    const orderedSelection = orderSpecialists(selectedSpecialists, specialistCatalog)
+    const lastSynced = lastSyncedSpecialistsRef.current
+
+    if (lastSynced === null) {
+      return
+    }
+
+    if (lastSynced && arraysEqual(lastSynced, orderedSelection)) {
+      return
+    }
+
+    if (syncingSpecialistsRef.current) {
+      return
+    }
+
+    let isActive = true
+    syncingSpecialistsRef.current = true
+
+    apiService
+      .updateVisitSpecialists(visitId, orderedSelection)
+      .then((response) => {
+        if (!isActive) return
+
+        if (response.success && Array.isArray(response.data?.specialist_stages)) {
+          const reconciled = orderSpecialists(response.data.specialist_stages, specialistCatalog)
+          lastSyncedSpecialistsRef.current = reconciled
+          if (!arraysEqual(reconciled, orderedSelection)) {
+            setSelectedSpecialists(reconciled)
+          }
+        } else if (response.success) {
+          lastSyncedSpecialistsRef.current = orderedSelection
+        } else {
+          toast({
+            title: "Unable to update visit specialists",
+            description: response.error || "The specialist assignment could not be saved.",
+            variant: "destructive",
+          })
+        }
+      })
+      .catch((error) => {
+        if (!isActive) return
+        console.warn("Failed to update visit specialists", error)
+        toast({
+          title: "Unable to update visit specialists",
+          description: "An unexpected error occurred while saving specialist assignments.",
+          variant: "destructive",
+        })
+      })
+      .finally(() => {
+        syncingSpecialistsRef.current = false
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [visitId, selectedSpecialists, specialistCatalog, toast])
+
+  const normalizedUserRole = normalizeRoleValue(userRole)
+  const canEditSpecialistSelection = ["administrator", "doctor", "nurse", "clerk"].includes(normalizedUserRole)
+
+  const toggleSpecialistSelection = (specialistType: string) => {
+    if (!canEditSpecialistSelection) return
+    setSelectedSpecialists((prev) => {
+      const exists = prev.includes(specialistType)
+      const next = exists ? prev.filter((value) => value !== specialistType) : [...prev, specialistType]
+      return orderSpecialists(next, specialistCatalog)
+    })
+  }
+
+  const selectedSpecialistCount = selectedSpecialists.length
+
+  const setSpecialistNoteDraft = (specialistType: string, draft: SpecialistNoteDraft) => {
+    setSpecialistNotes((prev) => ({
+      ...prev,
+      [specialistType]: {
+        ...(prev[specialistType] || {}),
+        ...draft,
+      },
+    }))
+  }
+
+  const updateSpecialistNoteField = (
+    specialistType: string,
+    field: keyof SpecialistNoteDraft,
+    value: SpecialistNoteDraft[typeof field],
+  ) => {
+    setSpecialistNotes((prev) => {
+      const existing = prev[specialistType] || { content: "" }
+      return {
+        ...prev,
+        [specialistType]: {
+          ...existing,
+          [field]: value,
+        },
+      }
+    })
+  }
 
   useEffect(() => {
     const current = workflowSteps[currentStep]
@@ -761,6 +1135,30 @@ export function ClinicalWorkflow({
         investigations: [...investigations],
         selectedICD10Codes: selectedICD10Codes.map((code) => ({ ...code })),
         persistVitals: false,
+        specialistNotes: {},
+      }
+
+      if (currentStepData.isSpecialist && currentStepData.specialistType) {
+        const specialistType = currentStepData.specialistType
+        const noteDraft = specialistNotes[specialistType]
+        const content = noteDraft?.content?.trim()
+        if (!content) {
+          toast({
+            title: "Add specialist notes",
+            description: `Document findings for ${currentStepData.title} before completing the stage.`,
+            variant: "destructive",
+          })
+          return
+        }
+
+        submissionPayload.specialistNotes = {
+          [specialistType]: {
+            content,
+            noteType: currentStepData.noteType,
+            followUpRequired: noteDraft?.followUpRequired,
+            followUpDate: noteDraft?.followUpDate,
+          },
+        }
       }
 
       if (currentStepData.id === "doctor") {
@@ -984,11 +1382,14 @@ export function ClinicalWorkflow({
       let workingVisitId = providedVisitId ?? null
 
       if (!workingVisitId) {
-        const created = await apiService.createVisit(numericPatientId, {})
+        const created = await apiService.createVisit(numericPatientId, {
+          specialists: selectedSpecialists,
+        })
         if (!created.success || !created.data?.visit_id) {
           throw new Error(created.error || "Unable to create a visit record.")
         }
         workingVisitId = created.data.visit_id
+        lastSyncedSpecialistsRef.current = selectedSpecialists
       }
 
       const warnings: string[] = []
@@ -1112,6 +1513,31 @@ export function ClinicalWorkflow({
         }
       }
 
+      if (stepId.startsWith("specialist:")) {
+        const specialistType = stepId.split(":")[1]
+        const draft = payload.specialistNotes?.[specialistType]
+        const content = draft?.content?.trim()
+        if (!draft || !content) {
+          throw new Error("Add specialist notes before saving.")
+        }
+
+        const fallbackNoteType =
+          specialistCatalog.find((entry) => entry.specialist_type === specialistType)?.note_type ||
+          formatSpecialistLabel(specialistType)
+
+        const response = await apiService.createClinicalNote(workingVisitId, {
+          note_type: (draft.noteType || fallbackNoteType) as CreateClinicalNoteRequest["note_type"],
+          content,
+          follow_up_required: Boolean(draft.followUpRequired),
+          follow_up_date:
+            draft.followUpRequired && draft.followUpDate ? draft.followUpDate : undefined,
+        })
+
+        if (!response.success) {
+          throw new Error(response.error || "Failed to sync specialist note.")
+        }
+      }
+
       if (stepId === "counseling") {
         const content =
           [
@@ -1149,7 +1575,7 @@ export function ClinicalWorkflow({
 
       return { visitId: workingVisitId, warnings }
     },
-    [],
+    [selectedSpecialists, specialistCatalog],
   )
 
   const processOfflineQueue = useCallback(async () => {
@@ -1334,43 +1760,97 @@ export function ClinicalWorkflow({
         }
 
         // Sync workflow from backend
-        const wf = await apiService.getWorkflowStatus(vId)
-        if (wf.success && Array.isArray(wf.data)) {
-          const stageToId: Record<string, WorkflowStep["id"]> = {
-            Registration: "registration",
-            "Nursing Assessment": "nursing",
-            "Doctor Consultation": "doctor",
-            "Counseling Session": "counseling",
-            "File Closure": "closure",
-          }
+        const workflow = await apiService.getWorkflowStatus(vId)
+        if (workflow.success && Array.isArray(workflow.data)) {
+          const selectedKeys: string[] = []
+          const statusMap: Record<string, WorkflowStatusSnapshot> = {}
 
-          const completionById: Record<string, { completed: boolean; completedAt?: string | null }> = {}
-          for (const w of wf.data as any[]) {
-            const id = stageToId[w.stage]
-            if (id) {
-              completionById[id] = { completed: !!w.completed, completedAt: w.completed_at || null }
+          for (const stage of workflow.data as any[]) {
+            const stageName = String(stage.stage || "")
+            const specialistType = stage.specialist_type
+            const normalizedStage = stageName.toLowerCase()
+
+            if (specialistType) {
+              selectedKeys.push(specialistType)
+              const stepId = `specialist:${specialistType}`
+              statusMap[stepId] = {
+                completed: Boolean(stage.completed),
+                completedAt: stage.completed_at,
+                role: stage.role,
+                noteType: stage.note_type,
+                isSpecialist: true,
+                specialistType,
+                title: stageName,
+              }
+              continue
+            }
+
+            if (normalizedStage.includes("registration")) {
+              statusMap.registration = {
+                completed: Boolean(stage.completed),
+                completedAt: stage.completed_at,
+                title: stageName,
+              }
+            } else if (normalizedStage.includes("nursing")) {
+              statusMap.nursing = {
+                completed: Boolean(stage.completed),
+                completedAt: stage.completed_at,
+                title: stageName,
+                role: "nurse",
+              }
+            } else if (normalizedStage.includes("doctor")) {
+              statusMap.doctor = {
+                completed: Boolean(stage.completed),
+                completedAt: stage.completed_at,
+                title: stageName,
+                role: "doctor",
+              }
+            } else if (normalizedStage.includes("counsel")) {
+              statusMap.counseling = {
+                completed: Boolean(stage.completed),
+                completedAt: stage.completed_at,
+                title: stageName,
+                role: "social_worker",
+              }
+            } else if (normalizedStage.includes("closure")) {
+              statusMap.closure = {
+                completed: Boolean(stage.completed),
+                completedAt: stage.completed_at,
+                title: stageName,
+                role: "doctor",
+              }
             }
           }
 
-          const nextSteps: WorkflowStep[] = workflowSteps.map((s) => {
-            const info = completionById[s.id]
-            if (info?.completed) {
-              return { ...s, status: "completed", completedAt: info.completedAt || s.completedAt }
-            }
-            return { ...s, status: "pending" }
+          setWorkflowStatusById(statusMap)
+
+          const orderedKeys = orderSpecialists(selectedKeys, specialistCatalog)
+          if (!arraysEqual(orderedKeys, selectedSpecialists)) {
+            setSelectedSpecialists(orderedKeys)
+            lastSyncedSpecialistsRef.current = orderedKeys
+          }
+
+          setWorkflowSteps((prev) =>
+            composeWorkflowSteps({
+              userRole,
+              selectedSpecialists: orderedKeys,
+              specialistCatalog,
+              statusLookup: statusMap,
+              previousSteps: prev,
+            }),
+          )
+
+          const recomposed = composeWorkflowSteps({
+            userRole,
+            selectedSpecialists: orderedKeys,
+            specialistCatalog,
+            statusLookup: statusMap,
+            previousSteps: workflowSteps,
           })
 
-          const firstOwnedNotCompleted = nextSteps.findIndex((s) =>
-            s.status !== "completed" && canAccessStepForRole(s, nextSteps, userRole, { allowCompleted: false }),
-          )
-          if (firstOwnedNotCompleted >= 0) {
-            nextSteps[firstOwnedNotCompleted] = { ...nextSteps[firstOwnedNotCompleted], status: "in-progress" }
-          }
-
-          setWorkflowSteps(nextSteps)
-
-          const firstActionableLocalIdx = nextSteps.findIndex(
-            (s) => s.status !== "completed" && canAccessStepForRole(s, nextSteps, userRole, { allowCompleted: false }),
+          const firstActionableLocalIdx = recomposed.findIndex((step) =>
+            step.status !== "completed" &&
+            canAccessStepForRole(step, recomposed, userRole, { allowCompleted: false }),
           )
           if (firstActionableLocalIdx >= 0) {
             setCurrentStep(firstActionableLocalIdx)
@@ -1565,6 +2045,79 @@ export function ClinicalWorkflow({
   }
 
   const getStepContent = (step: WorkflowStep) => {
+    if (step.isSpecialist && step.specialistType) {
+      const noteDraft: SpecialistNoteDraft = specialistNotes[step.specialistType] || {
+        content: "",
+        followUpRequired: false,
+        followUpDate: "",
+        noteType: step.noteType,
+      }
+
+      const Icon = SPECIALIST_ICON_MAP[step.specialistType] ?? Clipboard
+
+      return (
+        <div className="space-y-6">
+          <div className="flex items-center gap-2">
+            <Icon className="h-5 w-5 text-primary" />
+            <div>
+              <h3 className="text-lg font-semibold">{step.title}</h3>
+              <p className="text-xs text-muted-foreground">Capture findings for this specialist stage.</p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Consultation Notes</Label>
+            <Textarea
+              rows={8}
+              placeholder={`Document the ${step.title.toLowerCase()} findings, interventions, and plans.`}
+              value={noteDraft.content}
+              onChange={(event) =>
+                setSpecialistNoteDraft(step.specialistType!, {
+                  ...noteDraft,
+                  noteType: step.noteType,
+                  content: event.target.value,
+                })
+              }
+            />
+          </div>
+
+          <div className="space-y-4 rounded-lg border p-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id={`${step.specialistType}-follow-up`}
+                checked={Boolean(noteDraft.followUpRequired)}
+                onCheckedChange={(checked) =>
+                  updateSpecialistNoteField(step.specialistType!, "followUpRequired", Boolean(checked))
+                }
+              />
+              <Label htmlFor={`${step.specialistType}-follow-up`} className="text-sm">
+                Follow-up required
+              </Label>
+            </div>
+
+            {noteDraft.followUpRequired && (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <Label className="text-xs font-medium">Follow-up date</Label>
+                  <Input
+                    type="date"
+                    value={noteDraft.followUpDate || ""}
+                    onChange={(event) =>
+                      updateSpecialistNoteField(step.specialistType!, "followUpDate", event.target.value)
+                    }
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-medium">Note type</Label>
+                  <Input value={step.noteType || "Specialist"} readOnly className="bg-muted" />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    }
+
     switch (step.id) {
       case "nursing": {
         const nursingStep = workflowSteps.find((s) => s.id === "nursing")
@@ -2843,6 +3396,52 @@ export function ClinicalWorkflow({
         <CardDescription>Patient ID: {patientId}</CardDescription>
       </CardHeader>
       <CardContent>
+        {specialistCatalog.length > 0 && (
+          <div className="mb-6 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold">Specialist Workflow Stages</h3>
+                <p className="text-xs text-muted-foreground">
+                  Select additional specialists required for this visit. Each selection inserts a workflow stage
+                  after the doctor consultation.
+                </p>
+              </div>
+              <Badge variant="secondary">
+                {selectedSpecialistCount} {selectedSpecialistCount === 1 ? "stage" : "stages"} selected
+              </Badge>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {specialistCatalog.map((entry) => {
+                const specialistType = entry.specialist_type
+                const checked = selectedSpecialists.includes(specialistType)
+                const Icon = SPECIALIST_ICON_MAP[specialistType] ?? Clipboard
+                const disabled = !canEditSpecialistSelection && !checked
+                return (
+                  <Button
+                    key={specialistType}
+                    type="button"
+                    size="sm"
+                    variant={checked ? "default" : "outline"}
+                    className="flex items-center gap-2"
+                    disabled={disabled}
+                    onClick={() => toggleSpecialistSelection(specialistType)}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span>{entry.label}</span>
+                  </Button>
+                )
+              })}
+            </div>
+
+            {!canEditSpecialistSelection && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Specialist assignments are read-only for your role.
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Workflow Progress */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">

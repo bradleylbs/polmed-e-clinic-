@@ -20,6 +20,80 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'palmed-clinic-secret-key-2025')
+
+# Specialist workflow metadata (stage id -> role, label, note type)
+SPECIALIST_DEFINITIONS: Dict[str, Dict[str, str]] = {
+    'dentist': {
+        'role': 'dentist',
+        'label': 'Dental Consultation',
+        'note_type': 'Dentist',
+    },
+    'optometrist': {
+        'role': 'optometrist',
+        'label': 'Optometry Assessment',
+        'note_type': 'Optometrist',
+    },
+    'audiologist': {
+        'role': 'audiologist',
+        'label': 'Audiology Assessment',
+        'note_type': 'Audiologist',
+    },
+    'gynaecologist': {
+        'role': 'gynaecologist',
+        'label': 'Gynaecology Consultation',
+        'note_type': 'Gynaecologist',
+    },
+    'ultrasound': {
+        'role': 'ultrasound',
+        'label': 'Ultrasound Scan',
+        'note_type': 'Ultrasound',
+    },
+    'psychology': {
+        'role': 'psychologist',
+        'label': 'Psychology Session',
+        'note_type': 'Psychology',
+    },
+}
+SPECIALIST_STAGE_ORDER: List[str] = [
+    'dentist',
+    'optometrist',
+    'audiologist',
+    'gynaecologist',
+    'ultrasound',
+    'psychology',
+]
+SPECIALIST_ROLE_NAMES: Set[str] = {definition['role'] for definition in SPECIALIST_DEFINITIONS.values()}
+SPECIALIST_LOOKUP: Dict[str, str] = {}
+SPECIALIST_NOTE_LOOKUP: Dict[str, str] = {}
+for specialist_key, specialist_def in SPECIALIST_DEFINITIONS.items():
+    alias_values = {
+        specialist_key,
+        specialist_def['role'],
+        specialist_def['label'],
+        specialist_def['note_type'],
+    }
+    for alias in alias_values:
+        normalized_alias = str(alias).strip().lower().replace(' ', '_')
+        SPECIALIST_LOOKUP[normalized_alias] = specialist_key
+    SPECIALIST_NOTE_LOOKUP[specialist_def['note_type']] = specialist_key
+
+TRUTHY_FLAG_VALUES: Set[Any] = {
+    True,
+    1,
+    '1',
+    'true',
+    'True',
+    'TRUE',
+    'yes',
+    'Yes',
+    'YES',
+    'on',
+    'On',
+    'ON',
+    'y',
+    'Y',
+}
+
 # Allow CORS from configured frontends (comma-separated) or common localhost defaults
 # Prefer CORS_ALLOWED_ORIGINS (pipeline/app settings) but support legacy FRONTEND_ORIGINS
 cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS') or os.environ.get('FRONTEND_ORIGINS')
@@ -76,6 +150,179 @@ if DB_SSL_CA and not DB_SSL_DISABLED:
     DB_CONFIG['ssl_ca'] = DB_SSL_CA
 
 _table_columns_cache: Dict[str, Set[str]] = {}
+
+
+def _ensure_specialist_table() -> None:
+    """Create visit_specialists table if it does not already exist."""
+    if getattr(_ensure_specialist_table, '_done', False):
+        return
+    try:
+        DatabaseManager.execute_query(
+            """
+            CREATE TABLE IF NOT EXISTS visit_specialists (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                visit_id INT NOT NULL,
+                specialist_type VARCHAR(50) NOT NULL,
+                required TINYINT(1) NOT NULL DEFAULT 1,
+                completed_at DATETIME NULL,
+                completed_by INT NULL,
+                notes TEXT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_visit_specialist (visit_id, specialist_type)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+    except Exception as exc:
+        logger.error(f"Failed to ensure visit_specialists table: {exc}")
+    finally:
+        _ensure_specialist_table._done = True
+
+
+def _get_visit_specialists(visit_id: int) -> List[Dict[str, Any]]:
+    _ensure_specialist_table()
+    rows = DatabaseManager.execute_query(
+        """
+        SELECT visit_id, specialist_type, required, completed_at, completed_by, notes, created_at, updated_at
+        FROM visit_specialists
+        WHERE visit_id = %s
+        """,
+        (visit_id,),
+        fetch=True,
+    )
+    return rows or []
+
+
+def _set_visit_specialists(visit_id: int, required_types: Set[str], *, user_id: int) -> None:
+    _ensure_specialist_table()
+
+    existing = {row['specialist_type']: row for row in _get_visit_specialists(visit_id)}
+    now = datetime.utcnow()
+
+    for specialist_type, definition in SPECIALIST_DEFINITIONS.items():
+        should_require = specialist_type in required_types
+        if specialist_type in existing:
+            DatabaseManager.execute_query(
+                """
+                UPDATE visit_specialists
+                SET required = %s,
+                    notes = CASE WHEN %s = 0 THEN NULL ELSE notes END,
+                    completed_at = CASE WHEN %s = 0 THEN NULL ELSE completed_at END,
+                    updated_at = %s
+                WHERE visit_id = %s AND specialist_type = %s
+                """,
+                (1 if should_require else 0, 1 if should_require else 0, 1 if should_require else 0, now, visit_id, specialist_type)
+            )
+        elif should_require:
+            DatabaseManager.execute_query(
+                """
+                INSERT INTO visit_specialists (visit_id, specialist_type, required, created_at, updated_at)
+                VALUES (%s, %s, 1, %s, %s)
+                """,
+                (visit_id, specialist_type, now, now)
+            )
+
+
+def _mark_specialist_completed(
+    visit_id: int,
+    specialist_type: str,
+    *,
+    user_id: int,
+    notes: Optional[str] = None,
+    follow_up_required: Optional[bool] = None,
+    follow_up_date: Optional[str] = None,
+    record_note: bool = True,
+) -> bool:
+    if specialist_type not in SPECIALIST_DEFINITIONS:
+        return False
+
+    _ensure_specialist_table()
+
+    result = DatabaseManager.execute_query(
+        """
+        UPDATE visit_specialists
+        SET completed_at = %s,
+            completed_by = %s,
+            notes = %s,
+            updated_at = %s
+        WHERE visit_id = %s AND specialist_type = %s AND required = 1
+        """,
+        (datetime.utcnow(), user_id, notes, datetime.utcnow(), visit_id, specialist_type)
+    )
+
+    if not result:
+        return False
+
+    if not record_note:
+        return True
+
+    # Persist a clinical note for auditability if table supports it
+    try:
+        available_columns = _get_table_columns('clinical_notes')
+        required_columns = {'visit_id', 'note_type', 'content', 'created_by'}
+        if required_columns.issubset(available_columns):
+            insert_columns = ['visit_id', 'note_type', 'content', 'created_by']
+            insert_values: List[Any] = [visit_id, SPECIALIST_DEFINITIONS[specialist_type]['note_type'], notes or 'Specialist stage completed.', user_id]
+            placeholders = ['%s', '%s', '%s', '%s']
+
+            if 'follow_up_required' in available_columns and follow_up_required is not None:
+                insert_columns.append('follow_up_required')
+                placeholders.append('%s')
+                insert_values.append(1 if follow_up_required else 0)
+
+            if 'follow_up_date' in available_columns and follow_up_date:
+                try:
+                    parsed_date = datetime.strptime(str(follow_up_date)[:10], '%Y-%m-%d').date()
+                    insert_columns.append('follow_up_date')
+                    placeholders.append('%s')
+                    insert_values.append(parsed_date)
+                except ValueError:
+                    logger.warning(f"Invalid follow-up date supplied for specialist note: {follow_up_date}")
+
+            DatabaseManager.execute_query(
+                f"INSERT INTO clinical_notes ({', '.join(insert_columns)}) VALUES ({', '.join(placeholders)})",
+                tuple(insert_values)
+            )
+    except Exception as exc:
+        logger.warning(f"Failed to record specialist clinical note: {exc}")
+
+    return True
+
+
+def _parse_specialist_selection(payload: Any) -> Set[str]:
+    """Normalize specialist selections from mixed payload formats."""
+    selected: Set[str] = set()
+
+    def _maybe_add(value: Any, should_include: bool = True) -> None:
+        if not should_include:
+            return
+        normalized = SPECIALIST_LOOKUP.get(str(value).strip().lower().replace(' ', '_'))
+        if normalized:
+            selected.add(normalized)
+
+    truthy_values = {'true', '1', 'yes', 'y', 'on'}
+
+    if isinstance(payload, dict):
+        for key, flag in payload.items():
+            include = False
+            if isinstance(flag, bool):
+                include = flag
+            elif isinstance(flag, (int, float)):
+                include = bool(flag)
+            elif isinstance(flag, str):
+                include = flag.strip().lower() in truthy_values
+            _maybe_add(key, include)
+    elif isinstance(payload, (list, tuple, set)):
+        for item in payload:
+            _maybe_add(item, True)
+    elif isinstance(payload, str):
+        parts = [p for p in re.split(r'[;,]', payload) if p.strip()]
+        if len(parts) <= 1:
+            parts = payload.split()
+        for part in parts:
+            _maybe_add(part, True)
+
+    return selected
 
 
 def _get_table_columns(table_name: str) -> Set[str]:
@@ -1493,6 +1740,28 @@ def create_patient_visit(patient_id: int):
     try:
         data = request.get_json(silent=True) or {}
 
+        requested_specialists: Set[str] = set()
+        specialist_fields = [
+            data.get('specialists'),
+            data.get('required_specialists'),
+            data.get('specialist_selection'),
+        ]
+        for field in specialist_fields:
+            if field:
+                requested_specialists.update(_parse_specialist_selection(field))
+
+        for specialist_key in SPECIALIST_DEFINITIONS.keys():
+            for suffix in ('', '_required', '_needed', '_selected'):
+                flag_value = data.get(f"{specialist_key}{suffix}")
+                if flag_value is None:
+                    continue
+                include = flag_value in TRUTHY_FLAG_VALUES
+                if isinstance(flag_value, str):
+                    stripped = flag_value.strip()
+                    include = stripped in TRUTHY_FLAG_VALUES or stripped.lower() in {'true', 'yes', 'on'}
+                if include:
+                    requested_specialists.add(specialist_key)
+
         # Accept optional values, otherwise default to current date/time
         visit_date = data.get('visit_date') or datetime.now(timezone.utc).date()
         visit_time = data.get('visit_time') or datetime.now(timezone.utc).strftime('%H:%M:%S')
@@ -1580,6 +1849,11 @@ def create_patient_visit(patient_id: int):
         # Log visit creation activity
         if new_visit_id:
             try:
+                _set_visit_specialists(new_visit_id, requested_specialists, user_id=request.current_user['id'])
+            except Exception as specialist_err:
+                logger.error(f"Failed to persist specialist configuration for visit {new_visit_id}: {specialist_err}")
+
+            try:
                 # Get patient name for audit log
                 patient_info = DatabaseManager.execute_query(
                     "SELECT first_name, last_name FROM patients WHERE id = %s",
@@ -1595,10 +1869,11 @@ def create_patient_visit(patient_id: int):
                 new_values = json.dumps({
                     'patient_id': patient_id,
                     'patient_name': patient_name,
-                    'visit_date': visit_date.isoformat(),
-                    'visit_time': visit_time.strftime('%H:%M:%S'),
+                    'visit_date': visit_date.isoformat() if hasattr(visit_date, 'isoformat') else str(visit_date),
+                    'visit_time': visit_time.strftime('%H:%M:%S') if hasattr(visit_time, 'strftime') else str(visit_time),
                     'location': location,
-                    'chief_complaint': chief_complaint
+                    'chief_complaint': chief_complaint,
+                    'specialist_stages': sorted(requested_specialists)
                 })
                 DatabaseManager.execute_query(log_query, (
                     request.current_user['id'],
@@ -1612,7 +1887,10 @@ def create_patient_visit(patient_id: int):
         return jsonify({
             'success': True,
             'message': 'Visit created successfully',
-            'data': {'visit_id': new_visit_id}
+            'data': {
+                'visit_id': new_visit_id,
+                'specialist_stages': sorted(requested_specialists)
+            }
         }), 201
 
     except Exception as e:
@@ -1858,7 +2136,7 @@ def get_clinical_notes(visit_id: int):
 
 @app.route('/api/visits/<int:visit_id>/clinical-notes', methods=['POST'])
 @token_required
-@role_required(['administrator', 'doctor', 'nurse', 'social_work', 'social_worker'])
+@role_required(['administrator', 'doctor', 'nurse', 'social_work', 'social_worker'] + list(SPECIALIST_ROLE_NAMES))
 def create_clinical_note(visit_id: int):
     """Create a clinical note with enhanced features"""
     try:
@@ -1874,9 +2152,11 @@ def create_clinical_note(visit_id: int):
         if not note_type or not content:
             return jsonify({'success': False, 'error': 'note_type and content are required'}), 400
         
-        valid_note_types = ['Assessment', 'Diagnosis', 'Treatment', 'Referral', 'Counseling', 'Closure']
+        base_note_types = {'Assessment', 'Diagnosis', 'Treatment', 'Referral', 'Counseling', 'Closure'}
+        specialist_note_types = {definition['note_type'] for definition in SPECIALIST_DEFINITIONS.values()}
+        valid_note_types = base_note_types.union(specialist_note_types)
         if note_type not in valid_note_types:
-            return jsonify({'success': False, 'error': f'note_type must be one of: {valid_note_types}'}), 400
+            return jsonify({'success': False, 'error': f'note_type must be one of: {sorted(valid_note_types)}'}), 400
         
         # Normalise optional payloads
         if isinstance(icd10_codes, str):
@@ -1969,6 +2249,39 @@ def create_clinical_note(visit_id: int):
         )
         
         if result:
+            if note_type in specialist_note_types:
+                specialist_key = SPECIALIST_NOTE_LOOKUP.get(note_type)
+                if specialist_key:
+                    user_role = str(request.current_user.get('role_name', '')).strip().lower().replace(' ', '_')
+                    required_role = SPECIALIST_DEFINITIONS[specialist_key]['role']
+                    allowed_specialist_roles = {required_role, 'administrator', 'doctor'}
+                    if user_role in allowed_specialist_roles:
+                        try:
+                            completion_success = _mark_specialist_completed(
+                                visit_id,
+                                specialist_key,
+                                user_id=request.current_user['id'],
+                                notes=content,
+                                follow_up_required=bool_follow_up,
+                                follow_up_date=str(follow_up_date_value) if follow_up_date_value else str(follow_up_date) if follow_up_date else None,
+                                record_note=False,
+                            )
+                            if not completion_success:
+                                logger.warning(
+                                    "Unable to mark specialist stage %s as complete for visit %s", specialist_key, visit_id
+                                )
+                        except Exception as specialist_err:
+                            logger.error(
+                                "Failed to update specialist completion for %s on visit %s: %s",
+                                specialist_key,
+                                visit_id,
+                                specialist_err,
+                            )
+                    else:
+                        logger.info(
+                            "User role %s not permitted to close specialist stage %s", user_role, specialist_key
+                        )
+
             return jsonify({
                 'success': True,
                 'message': 'Clinical note created successfully',
@@ -2444,9 +2757,105 @@ def provide_suggestion_feedback(suggestion_id: int):
 # ENHANCED WORKFLOW STATUS TRACKING
 # ============================================================================
 
+
+@app.route('/api/workflow/specialists/catalog', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'] + list(SPECIALIST_ROLE_NAMES))
+def get_specialist_catalog():
+    """Expose the configured specialist workflow metadata for frontend consumption."""
+    try:
+        catalog: List[Dict[str, Any]] = []
+        ordered = list(SPECIALIST_STAGE_ORDER)
+        for specialist_key in ordered:
+            definition = SPECIALIST_DEFINITIONS.get(specialist_key)
+            if not definition:
+                continue
+            catalog.append({
+                'specialist_type': specialist_key,
+                'label': definition['label'],
+                'role': definition['role'],
+                'note_type': definition['note_type'],
+            })
+
+        for specialist_key, definition in SPECIALIST_DEFINITIONS.items():
+            if specialist_key in ordered:
+                continue
+            catalog.append({
+                'specialist_type': specialist_key,
+                'label': definition['label'],
+                'role': definition['role'],
+                'note_type': definition['note_type'],
+            })
+
+        return jsonify({'success': True, 'data': catalog}), 200
+    except Exception as err:
+        logger.error(f"Failed to list specialist catalog: {err}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/visits/<int:visit_id>/workflow/specialists', methods=['PUT', 'PATCH'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk'] + list(SPECIALIST_ROLE_NAMES))
+def configure_visit_specialists(visit_id: int):
+    """Update the specialist stages required for a visit."""
+    try:
+        visit_exists = DatabaseManager.execute_query(
+            "SELECT id FROM patient_visits WHERE id = %s",
+            (visit_id,),
+            fetch=True,
+        )
+        if not visit_exists:
+            return jsonify({'success': False, 'error': 'Visit not found'}), 404
+
+        data = request.get_json(silent=True) or {}
+
+        requested_specialists: Set[str] = set()
+        selection_fields = [
+            data.get('specialists'),
+            data.get('required_specialists'),
+            data.get('specialist_selection'),
+        ]
+        for field in selection_fields:
+            if field:
+                requested_specialists.update(_parse_specialist_selection(field))
+
+        for specialist_key in SPECIALIST_DEFINITIONS.keys():
+            for suffix in ('', '_required', '_needed', '_selected'):
+                flag_value = data.get(f"{specialist_key}{suffix}")
+                if flag_value is None:
+                    continue
+                include = flag_value in TRUTHY_FLAG_VALUES
+                if isinstance(flag_value, str):
+                    stripped = flag_value.strip()
+                    include = stripped in TRUTHY_FLAG_VALUES or stripped.lower() in {'true', 'yes', 'on'}
+                if include:
+                    requested_specialists.add(specialist_key)
+
+        _set_visit_specialists(visit_id, requested_specialists, user_id=request.current_user['id'])
+
+        specialist_rows = _get_visit_specialists(visit_id)
+        configured = [row for row in specialist_rows if row.get('required')]
+
+        def _ordering_key(spec_key: str) -> tuple:
+            base_index = SPECIALIST_STAGE_ORDER.index(spec_key) if spec_key in SPECIALIST_STAGE_ORDER else len(SPECIALIST_STAGE_ORDER)
+            return (base_index, spec_key)
+
+        sorted_keys = sorted({row['specialist_type'] for row in configured}, key=_ordering_key)
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'visit_id': visit_id,
+                'specialist_stages': sorted_keys,
+            }
+        }), 200
+    except Exception as err:
+        logger.error(f"Failed to configure visit specialists for visit {visit_id}: {err}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 @app.route('/api/visits/<int:visit_id>/workflow/status', methods=['GET'])
 @token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'] + list(SPECIALIST_ROLE_NAMES))
 def get_visit_workflow_status(visit_id: int):
     """Return high-level workflow status for a visit"""
     try:
@@ -2490,6 +2899,52 @@ def get_visit_workflow_status(visit_id: int):
         )
         doctor_latest = doctor_row[0].get('latest') if doctor_row else None
         doctor_done = bool(doctor_latest)
+
+        # Specialist stages: check visit_specialists entries flagged as required
+        specialist_rows = _get_visit_specialists(visit_id)
+        required_specialists = {
+            row['specialist_type']: row
+            for row in specialist_rows
+            if row.get('required') and row.get('specialist_type') in SPECIALIST_DEFINITIONS
+        }
+
+        specialist_stages: List[Dict[str, Any]] = []
+        seen_specialists: Set[str] = set()
+        for specialist_key in SPECIALIST_STAGE_ORDER:
+            if specialist_key not in required_specialists:
+                continue
+            row = required_specialists[specialist_key]
+            definition = SPECIALIST_DEFINITIONS[specialist_key]
+            specialist_stages.append({
+                'stage': definition['label'],
+                'specialist_type': specialist_key,
+                'role': definition['role'],
+                'note_type': definition['note_type'],
+                'required': True,
+                'is_specialist': True,
+                'completed': bool(row.get('completed_at')),
+                'completed_at': _to_jsonable(row.get('completed_at')) if row.get('completed_at') else None,
+                'completed_by': row.get('completed_by'),
+                'notes': row.get('notes'),
+            })
+            seen_specialists.add(specialist_key)
+
+        for specialist_key, row in required_specialists.items():
+            if specialist_key in seen_specialists:
+                continue
+            definition = SPECIALIST_DEFINITIONS[specialist_key]
+            specialist_stages.append({
+                'stage': definition['label'],
+                'specialist_type': specialist_key,
+                'role': definition['role'],
+                'note_type': definition['note_type'],
+                'required': True,
+                'is_specialist': True,
+                'completed': bool(row.get('completed_at')),
+                'completed_at': _to_jsonable(row.get('completed_at')) if row.get('completed_at') else None,
+                'completed_by': row.get('completed_by'),
+                'notes': row.get('notes'),
+            })
 
         # Counseling Session: only count Counseling notes created by a Social Worker
         counseling_row = DatabaseManager.execute_query(
@@ -2537,6 +2992,11 @@ def get_visit_workflow_status(visit_id: int):
                 'completed': bool(doctor_done),
                 'completed_at': _to_jsonable(doctor_latest) if doctor_done else None,
             },
+        ]
+
+        workflow.extend(specialist_stages)
+
+        workflow.extend([
             {
                 'stage': 'Counseling Session',
                 'completed': bool(counseling_done),
@@ -2547,7 +3007,7 @@ def get_visit_workflow_status(visit_id: int):
                 'completed': bool(closure_done),
                 'completed_at': _to_jsonable(closure_latest) if closure_done else None,
             },
-        ]
+        ])
 
         return jsonify({'success': True, 'data': workflow}), 200
     except Exception as e:

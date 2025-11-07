@@ -315,7 +315,19 @@ export type UpdateUserRequest = Partial<User> & {
 export interface ClinicalNote {
   id: number
   visit_id: number
-  note_type: "Assessment" | "Diagnosis" | "Treatment" | "Referral" | "Counseling" | "Closure"
+  note_type:
+    | "Assessment"
+    | "Diagnosis"
+    | "Treatment"
+    | "Referral"
+    | "Counseling"
+    | "Closure"
+    | "Dentist"
+    | "Optometrist"
+    | "Audiologist"
+    | "Gynaecologist"
+    | "Ultrasound"
+    | "Psychology"
   content: string
   icd10_codes?: string[]
   medications_prescribed?: string[]
@@ -332,6 +344,30 @@ export interface CreateClinicalNoteRequest {
   medications_prescribed?: string[]
   follow_up_required?: boolean
   follow_up_date?: string
+}
+
+export interface SpecialistCatalogEntry {
+  specialist_type: string
+  label: string
+  role: string
+  note_type: string
+}
+
+export interface VisitSpecialistConfiguration {
+  visit_id: number
+  specialist_stages: string[]
+}
+
+export interface CreateVisitRequest {
+  visit_date?: string
+  visit_time?: string
+  route_id?: number
+  location?: string
+  chief_complaint?: string
+  specialists?: Array<string> | Record<string, boolean> | string
+  required_specialists?: Array<string> | Record<string, boolean> | string
+  specialist_selection?: Array<string> | Record<string, boolean> | string
+  [key: string]: unknown
 }
 
 export type SmartSuggestionType = "icd10" | "medication" | "investigation" | "all"
@@ -588,16 +624,7 @@ class ApiService {
   }
 
   // ==================== VISITS AND VITAL SIGNS ====================
-  async createVisit(
-    patientId: number,
-    payload: {
-      visit_date?: string
-      visit_time?: string
-      route_id?: number
-      location?: string
-      chief_complaint?: string
-    } = {},
-  ): Promise<ApiResponse<{ visit_id: number }>> {
+  async createVisit(patientId: number, payload: CreateVisitRequest = {}): Promise<ApiResponse<{ visit_id: number }>> {
     return this.request<{ visit_id: number }>(`/patients/${patientId}/visits`, {
       method: "POST",
       body: JSON.stringify(payload),
@@ -1043,8 +1070,22 @@ class ApiService {
   }
 
   // ==================== CLINICAL NOTES AND WORKFLOW ====================
+  async getSpecialistCatalog(): Promise<ApiResponse<SpecialistCatalogEntry[]>> {
+    return this.request<SpecialistCatalogEntry[]>("/workflow/specialists/catalog")
+  }
+
   async getWorkflowStatus(visitId: number): Promise<ApiResponse<any>> {
     return this.request<any>(`/visits/${visitId}/workflow/status`)
+  }
+
+  async updateVisitSpecialists(
+    visitId: number,
+    specialists: string[],
+  ): Promise<ApiResponse<VisitSpecialistConfiguration>> {
+    return this.request<VisitSpecialistConfiguration>(`/visits/${visitId}/workflow/specialists`, {
+      method: "PUT",
+      body: JSON.stringify({ specialists }),
+    })
   }
 
   async getClinicalNotes(visitId: number): Promise<ApiResponse<ClinicalNote[]>> {

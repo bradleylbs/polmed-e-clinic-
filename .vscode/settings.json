@@ -9,5 +9,6 @@
   "tailwindCSS.emmetCompletions": true,
   "editor.quickSuggestions": {
     "strings": true
-  }
+  },
+  "github.copilot.nextEditSuggestions.enabled": true
 }
