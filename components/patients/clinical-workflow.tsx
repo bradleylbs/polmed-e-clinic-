@@ -2627,8 +2627,13 @@ export function ClinicalWorkflow({
       }
 
       const Icon = SPECIALIST_ICON_MAP[step.specialistType] ?? Clipboard
-      const config = SPECIALIST_NOTE_CONFIG[step.specialistType]
-      const guidanceSections = config?.guidance ?? []
+  const config = SPECIALIST_NOTE_CONFIG[step.specialistType]
+  const quickSnippets = config?.quickSnippets ?? []
+  const templates = config?.templates ?? []
+  const dropdowns = config?.dropdowns ?? []
+  const procedures = config?.procedures ?? []
+  const medications = config?.medications ?? []
+  const guidanceSections = config?.guidance ?? []
       const helperState = helperPopoverOpen[step.specialistType] || {}
 
       const handleTemplateSelect = (value: string) => {
@@ -2650,7 +2655,7 @@ export function ClinicalWorkflow({
           return
         }
 
-        const template = config.templates.find((item) => item.value === value)
+        const template = templates.find((item) => item.value === value)
         if (!template) return
 
         setSpecialistNoteDraft(step.specialistType!, {
@@ -2745,11 +2750,11 @@ export function ClinicalWorkflow({
             />
           </div>
 
-          {config?.quickSnippets.length ? (
+          {quickSnippets.length ? (
             <div className="space-y-2">
               <Label className="text-xs font-medium text-muted-foreground">Quick-fill snippets</Label>
               <div className="flex flex-wrap gap-2">
-                {config.quickSnippets.map((snippet) => (
+                {quickSnippets.map((snippet) => (
                   <Button
                     key={`${step.specialistType}-snippet-${snippet.label}`}
                     type="button"
@@ -2765,7 +2770,7 @@ export function ClinicalWorkflow({
             </div>
           ) : null}
 
-          {config?.templates.length ? (
+          {templates.length ? (
             <div className="space-y-2">
               <Label className="text-xs font-medium text-muted-foreground">Templates</Label>
               <Select
@@ -2777,7 +2782,7 @@ export function ClinicalWorkflow({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Custom note</SelectItem>
-                  {config.templates.map((template) => (
+                  {templates.map((template) => (
                     <SelectItem key={template.value} value={template.value}>
                       {template.label}
                     </SelectItem>
@@ -2787,9 +2792,9 @@ export function ClinicalWorkflow({
             </div>
           ) : null}
 
-          {config?.dropdowns.length ? (
+          {dropdowns.length ? (
             <div className="grid gap-3 md:grid-cols-3">
-              {config.dropdowns.map((dropdown) => {
+              {dropdowns.map((dropdown) => {
                 const currentValue = readDropdownValue(noteDraft, dropdown.field)
                 return (
                   <div key={`${step.specialistType}-dropdown-${dropdown.field}`} className="space-y-2">
@@ -2813,11 +2818,11 @@ export function ClinicalWorkflow({
             </div>
           ) : null}
 
-          {(config?.procedures.length || config?.medications.length) && (
+          {(procedures.length > 0 || medications.length > 0) && (
             <div className="space-y-2">
               <Label className="text-xs font-medium text-muted-foreground">Auto-complete helpers</Label>
               <div className="flex flex-wrap gap-2">
-                {config?.procedures.length ? (
+                {procedures.length ? (
                   <Popover
                     open={helperState.procedures ?? false}
                     onOpenChange={(open) => updateHelperPopoverState(step.specialistType!, "procedures", open)}
@@ -2833,7 +2838,7 @@ export function ClinicalWorkflow({
                         <CommandList>
                           <CommandEmpty>No procedures found.</CommandEmpty>
                           <CommandGroup heading="Procedures">
-                            {config.procedures.map((procedure) => (
+                            {procedures.map((procedure) => (
                               <CommandItem
                                 key={`${step.specialistType}-procedure-${procedure}`}
                                 value={procedure}
@@ -2849,7 +2854,7 @@ export function ClinicalWorkflow({
                   </Popover>
                 ) : null}
 
-                {config?.medications.length ? (
+                {medications.length ? (
                   <Popover
                     open={helperState.medications ?? false}
                     onOpenChange={(open) => updateHelperPopoverState(step.specialistType!, "medications", open)}
@@ -2865,7 +2870,7 @@ export function ClinicalWorkflow({
                         <CommandList>
                           <CommandEmpty>No medications found.</CommandEmpty>
                           <CommandGroup heading="Medications">
-                            {config.medications.map((medication) => (
+                            {medications.map((medication) => (
                               <CommandItem
                                 key={`${step.specialistType}-medication-${medication}`}
                                 value={medication}
