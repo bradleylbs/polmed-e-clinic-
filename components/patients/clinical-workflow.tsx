@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   UserCheck,
   Heart,
@@ -103,6 +104,10 @@ interface SpecialistNoteDraft {
   followUpRequired?: boolean
   followUpDate?: string
   noteType?: string
+  severity?: string
+  laterality?: string
+  grade?: string
+  selectedTemplate?: string
 }
 
 interface WorkflowStatusSnapshot {
@@ -215,6 +220,475 @@ const SPECIALIST_ICON_MAP: Record<string, React.ComponentType<{ className?: stri
   psychology: Brain,
 }
 
+type SpecialistDropdownType = "severity" | "laterality" | "grade"
+
+interface SpecialistDropdownConfig {
+  field: SpecialistDropdownType
+  label: string
+  options: string[]
+  required?: boolean
+}
+
+interface SpecialistQuickSnippet {
+  label: string
+  content: string
+}
+
+interface SpecialistTemplateConfig {
+  label: string
+  value: string
+  content: string
+}
+
+interface SpecialistNoteConfig {
+  placeholder: string
+  guidance: Array<{ title: string; items: string[] }>
+  quickSnippets: SpecialistQuickSnippet[]
+  templates: SpecialistTemplateConfig[]
+  procedures: string[]
+  medications: string[]
+  dropdowns: SpecialistDropdownConfig[]
+  requiredSections: string[]
+  requiredDropdowns?: SpecialistDropdownType[]
+}
+
+const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
+  dentist: {
+    placeholder: [
+      "Chief Complaint: Toothache, bleeding gums, routine check-up",
+      "Examination: Dentition status, caries (tooth numbers), gingival health, occlusion",
+      "Assessment: Dental caries, gingivitis, periodontitis, malocclusion",
+      "Treatment: Scaling, fillings, extractions, oral hygiene counseling",
+    ].join("\n"),
+    guidance: [
+      {
+        title: "Chief Complaint",
+        items: ['"Toothache, bleeding gums, routine check-up"'],
+      },
+      {
+        title: "Examination",
+        items: ["Dentition status", "Caries (tooth numbers)", "Gingival health", "Occlusion"],
+      },
+      {
+        title: "Assessment",
+        items: ["Dental caries", "Gingivitis", "Periodontitis", "Malocclusion"],
+      },
+      {
+        title: "Treatment",
+        items: ["Scaling", "Fillings", "Extractions", "Oral hygiene counseling"],
+      },
+    ],
+    quickSnippets: [
+      {
+        label: "Document multiple caries",
+        content:
+          "Assessment: Multiple carious lesions involving molars 36 and 37.\nTreatment: Composite restorations planned with local anesthesia.",
+      },
+      {
+        label: "Oral hygiene counseling",
+        content:
+          "Treatment: Provided oral hygiene counseling covering twice-daily brushing, interdental cleaning, and fluoride rinse.",
+      },
+      {
+        label: "Bleeding gums",
+        content:
+          "Chief Complaint: Patient reports bleeding gums when brushing for the past two weeks.",
+      },
+    ],
+    templates: [
+      {
+        label: "Normal oral exam",
+        value: "dentist-normal",
+        content:
+          "Chief Complaint: Routine dental check-up.\nExamination: Dentition intact, no active caries. Gingiva pink without bleeding. Occlusion stable.\nAssessment: Healthy oral cavity.\nTreatment: Reinforced oral hygiene and six-month recall.",
+      },
+      {
+        label: "Routine scaling completed",
+        value: "dentist-scaling",
+        content:
+          "Chief Complaint: Plaque build-up and bleeding gums.\nExamination: Generalized plaque with mild calculus along mandibular anterior teeth.\nAssessment: Gingivitis secondary to plaque accumulation.\nTreatment: Full mouth scaling completed; reviewed oral hygiene techniques.",
+      },
+      {
+        label: "Multiple caries",
+        value: "dentist-caries",
+        content:
+          "Chief Complaint: Toothache affecting lower left quadrant.\nExamination: Carious lesions noted on teeth 36, 37 with percussion tenderness.\nAssessment: Dental caries with reversible pulpitis.\nTreatment: Planned sequential restorations and desensitizing regimen; analgesics as required.",
+      },
+    ],
+    procedures: ["Scaling", "Fillings", "Extractions", "Oral hygiene counseling"],
+    medications: [
+      "Chlorhexidine 0.12% rinse twice daily",
+      "Ibuprofen 400mg three times daily for 3 days",
+      "Amoxicillin 500mg three times daily for 5 days",
+    ],
+    dropdowns: [
+      { field: "severity", label: "Caries severity", options: ["Mild", "Moderate", "Severe"], required: true },
+      { field: "laterality", label: "Arch", options: ["Upper", "Lower", "Both"] },
+      { field: "grade", label: "Periodontal grade", options: ["Grade I", "Grade II", "Grade III"] },
+    ],
+    requiredSections: ["Chief Complaint", "Examination", "Assessment", "Treatment"],
+    requiredDropdowns: ["severity"],
+  },
+  optometrist: {
+    placeholder: [
+      "Chief Complaint: Blurred vision, eye strain, routine eye test",
+      "Examination: Visual acuity, refraction, intraocular pressure (IOP), fundoscopy findings",
+      "Assessment: Myopia, hyperopia, astigmatism, presbyopia, glaucoma suspect",
+      "Treatment: Spectacle prescription, referral to ophthalmology",
+    ].join("\n"),
+    guidance: [
+      {
+        title: "Chief Complaint",
+        items: ['"Blurred vision, eye strain, routine eye test"'],
+      },
+      {
+        title: "Examination",
+        items: ["Visual acuity (6/6, 6/9, etc.)", "Refraction", "IOP", "Fundoscopy findings"],
+      },
+      {
+        title: "Assessment",
+        items: ["Myopia", "Hyperopia", "Astigmatism", "Presbyopia", "Glaucoma suspect"],
+      },
+      {
+        title: "Treatment",
+        items: ["Spectacle prescription", "Referral to ophthalmology"],
+      },
+    ],
+    quickSnippets: [
+      {
+        label: "Refractive error corrected",
+        content:
+          "Assessment: Refractive error corrected with updated spectacle prescription.\nTreatment: Provided new script and adaptation guidance.",
+      },
+      {
+        label: "Elevated IOP",
+        content:
+          "Assessment: Elevated intraocular pressure noted; glaucoma suspect.\nTreatment: Referred to ophthalmology for definitive assessment.",
+      },
+      {
+        label: "Eye strain advice",
+        content:
+          "Treatment: Discussed ergonomic adjustments and 20-20-20 rule for digital eye strain.",
+      },
+    ],
+    templates: [
+      {
+        label: "Normal vision",
+        value: "optometrist-normal",
+        content:
+          "Chief Complaint: Routine vision screening.\nExamination: Visual acuity 6/6 bilaterally, refraction stable, IOP within normal range, fundoscopy unremarkable.\nAssessment: Stable vision status.\nTreatment: Reassurance and annual review.",
+      },
+      {
+        label: "Refractive error corrected",
+        value: "optometrist-refractive",
+        content:
+          "Chief Complaint: Progressive blur at distance.\nExamination: Visual acuity 6/12 improving to 6/6 with -1.50 DS both eyes; IOP 15 mmHg.\nAssessment: Bilateral myopia.\nTreatment: Issued updated spectacle prescription; advised regular breaks from screen use.",
+      },
+      {
+        label: "Elevated IOP - refer",
+        value: "optometrist-iop",
+        content:
+          "Chief Complaint: Routine eye check.\nExamination: Visual acuity 6/9 improving to 6/6, IOP 24 mmHg OD / 23 mmHg OS, optic discs with enlarged cup-to-disc ratio.\nAssessment: Glaucoma suspect.\nTreatment: Referred to ophthalmology; counselled regarding urgency and symptom monitoring.",
+      },
+    ],
+    procedures: ["Spectacle prescription", "Refer to ophthalmology", "Visual hygiene counseling"],
+    medications: ["Artificial tears QID", "Timolol 0.5% drops BID", "Latanoprost 0.005% nocte"],
+    dropdowns: [
+      { field: "severity", label: "Severity", options: ["Mild", "Moderate", "Severe"], required: true },
+      { field: "laterality", label: "Laterality", options: ["Right eye", "Left eye", "Both eyes"], required: true },
+      { field: "grade", label: "Glaucoma risk", options: ["Low", "Moderate", "High"] },
+    ],
+    requiredSections: ["Chief Complaint", "Examination", "Assessment", "Treatment"],
+    requiredDropdowns: ["severity", "laterality"],
+  },
+  audiologist: {
+    placeholder: [
+      "Chief Complaint: Hearing loss, tinnitus, ear fullness",
+      "Examination: Otoscopy findings, pure tone audiometry results, tympanometry",
+      "Assessment: Conductive/sensorineural hearing loss (mild/moderate/severe)",
+      "Treatment: Hearing aid recommendation, ear wax removal, ENT referral",
+    ].join("\n"),
+    guidance: [
+      {
+        title: "Chief Complaint",
+        items: ['"Hearing loss, tinnitus, ear fullness"'],
+      },
+      {
+        title: "Examination",
+        items: ["Otoscopy findings", "Pure tone audiometry results", "Tympanometry"],
+      },
+      {
+        title: "Assessment",
+        items: ["Conductive hearing loss", "Sensorineural hearing loss", "Mixed loss"],
+      },
+      {
+        title: "Treatment",
+        items: ["Hearing aid recommendation", "Ear wax removal", "ENT referral"],
+      },
+    ],
+    quickSnippets: [
+      {
+        label: "Bilateral hearing loss",
+        content:
+          "Assessment: Bilateral mild-to-moderate sensorineural hearing loss confirmed on audiogram.\nTreatment: Discussed hearing aid trial and communication strategies.",
+      },
+      {
+        label: "Wax impaction",
+        content:
+          "Examination: Impacted cerumen observed right ear with flat tympanogram.\nTreatment: Performed ear wax removal; planned repeat audiometry post-clearance.",
+      },
+      {
+        label: "Tinnitus counseling",
+        content:
+          "Treatment: Provided tinnitus counseling with sound therapy recommendations and ENT referral for further evaluation.",
+      },
+    ],
+    templates: [
+      {
+        label: "Normal hearing",
+        value: "audiologist-normal",
+        content:
+          "Chief Complaint: Routine occupational hearing screening.\nExamination: Otoscopy clear bilaterally; pure tone thresholds within normal limits.\nAssessment: Normal hearing sensitivity.\nTreatment: Advised annual monitoring and hearing protection.",
+      },
+      {
+        label: "Bilateral hearing loss",
+        value: "audiologist-loss",
+        content:
+          "Chief Complaint: Difficulty following conversations in noise.\nExamination: Otoscopy unremarkable; audiogram shows bilateral moderate sloping SNHL; tympanometry type A.\nAssessment: Bilateral sensorineural hearing loss.\nTreatment: Recommended bilateral behind-the-ear hearing aids and communication strategies handout.",
+      },
+      {
+        label: "Wax impaction",
+        value: "audiologist-wax",
+        content:
+          "Chief Complaint: Sudden ear fullness on right side.\nExamination: Impacted cerumen right ear; tympanogram type B.\nAssessment: Conductive hearing loss secondary to cerumen impaction.\nTreatment: Completed ear wax removal; scheduled repeat audiogram in one week.",
+      },
+    ],
+    procedures: ["Hearing aid counseling", "Pure tone audiometry", "Ear wax removal", "ENT referral"],
+    medications: ["Cerumenolytic drops nightly x5", "Short course oral steroids (if indicated)", "No medication required"],
+    dropdowns: [
+      { field: "severity", label: "Loss severity", options: ["Mild", "Moderate", "Moderately severe", "Severe"] },
+      { field: "laterality", label: "Laterality", options: ["Right", "Left", "Bilateral"] },
+      { field: "grade", label: "Tympanogram", options: ["Type A", "Type B", "Type C"] },
+    ],
+    requiredSections: ["Chief Complaint", "Examination", "Assessment", "Treatment"],
+  },
+  gynaecologist: {
+    placeholder: [
+      "Chief Complaint: Menstrual irregularity, pelvic pain, contraception, pregnancy",
+      "Examination: Menstrual history (LMP, cycle), pelvic exam, Pap smear, pregnancy test",
+      "Assessment: Dysmenorrhea, PCOS, fibroids, normal pregnancy",
+      "Treatment: Contraception counseling, hormonal therapy, prenatal care",
+    ].join("\n"),
+    guidance: [
+      {
+        title: "Chief Complaint",
+        items: ['"Menstrual irregularity, pelvic pain, contraception, pregnancy"'],
+      },
+      {
+        title: "Examination",
+        items: ["Menstrual history (LMP, cycle)", "Pelvic exam", "Pap smear", "Pregnancy test"],
+      },
+      {
+        title: "Assessment",
+        items: ["Dysmenorrhea", "PCOS", "Fibroids", "Normal pregnancy"],
+      },
+      {
+        title: "Treatment",
+        items: ["Contraception counseling", "Hormonal therapy", "Prenatal care"],
+      },
+    ],
+    quickSnippets: [
+      {
+        label: "Antenatal visit",
+        content:
+          "Assessment: Normal intrauterine pregnancy at 20 weeks with reassuring fetal heart rate.\nTreatment: Reviewed antenatal plan, supplements, and danger signs.",
+      },
+      {
+        label: "PCOS counseling",
+        content:
+          "Treatment: Provided lifestyle counseling for PCOS management; discussed contraceptive options and follow-up ultrasound.",
+      },
+      {
+        label: "Pelvic pain workup",
+        content:
+          "Examination: Pelvic exam revealed uterine tenderness; ordered pelvic ultrasound and STI screening.",
+      },
+    ],
+    templates: [
+      {
+        label: "Normal gynae exam",
+        value: "gynae-normal",
+        content:
+          "Chief Complaint: Routine family planning visit.\nExamination: Menstrual cycles regular; pelvic exam normal; Pap smear up to date.\nAssessment: Well woman visit.\nTreatment: Continued contraception counseling and yearly follow-up.",
+      },
+      {
+        label: "Antenatal visit",
+        value: "gynae-antenatal",
+        content:
+          "Chief Complaint: Routine antenatal review at 24 weeks.\nExamination: Fundal height appropriate, fetal heart 150 bpm, urine negative for protein/glucose.\nAssessment: Uncomplicated pregnancy.\nTreatment: Continued prenatal care, supplements, and next visit in 4 weeks.",
+      },
+      {
+        label: "Family planning",
+        value: "gynae-family",
+        content:
+          "Chief Complaint: Desire for contraception.\nExamination: LMP 28 days ago, pelvic exam normal.\nAssessment: Contraceptive counseling visit.\nTreatment: Initiated combined oral contraceptive; counselled on adherence and warning signs.",
+      },
+    ],
+    procedures: ["Contraception counseling", "Hormonal therapy initiation", "Prenatal care review", "Pap smear"],
+    medications: ["Combined oral contraceptive daily", "Prenatal vitamins OD", "Progesterone-only pill"],
+    dropdowns: [
+      { field: "severity", label: "Symptom severity", options: ["Mild", "Moderate", "Severe"] },
+      { field: "laterality", label: "Pelvic laterality", options: ["Right adnexa", "Left adnexa", "Bilateral", "Not applicable"] },
+      { field: "grade", label: "Pregnancy risk", options: ["Low", "Medium", "High"] },
+    ],
+    requiredSections: ["Chief Complaint", "Examination", "Assessment", "Treatment"],
+  },
+  ultrasound: {
+    placeholder: [
+      "Chief Complaint: Pregnancy dating, abdominal pain, organ assessment",
+      "Examination: Scan type, gestational age, fetal biometry, organ visualization",
+      "Assessment: Normal intrauterine pregnancy, abdominal pathology",
+      "Treatment: Report findings, obstetric follow-up, surgical referral",
+    ].join("\n"),
+    guidance: [
+      {
+        title: "Chief Complaint",
+        items: ['"Pregnancy dating, abdominal pain, organ assessment"'],
+      },
+      {
+        title: "Examination",
+        items: ["Scan type", "Gestational age", "Fetal biometry", "Organ visualization"],
+      },
+      {
+        title: "Assessment",
+        items: ["Normal intrauterine pregnancy", "Abdominal pathology"],
+      },
+      {
+        title: "Treatment",
+        items: ["Report findings", "Obstetric follow-up", "Surgical referral if needed"],
+      },
+    ],
+    quickSnippets: [
+      {
+        label: "Normal obstetric scan",
+        content:
+          "Assessment: Single live intrauterine pregnancy with biometrics consistent with dates.\nTreatment: Routine obstetric follow-up advised.",
+      },
+      {
+        label: "Gallstones detected",
+        content:
+          "Assessment: Multiple gallstones visualised without cholecystitis features.\nTreatment: Referred to general surgery for elective management.",
+      },
+      {
+        label: "Liver assessment",
+        content:
+          "Examination: Liver homogeneous, no focal lesions; portal vein flow normal.",
+      },
+    ],
+    templates: [
+      {
+        label: "Normal obstetric scan",
+        value: "ultrasound-obstetric",
+        content:
+          "Chief Complaint: Pregnancy dating scan.\nExamination: Transabdominal ultrasound; GA 18+4 weeks; fetal biometry within normal range; placenta posterior.\nAssessment: Normal intrauterine pregnancy.\nTreatment: Continue routine antenatal care; follow-up at 24 weeks.",
+      },
+      {
+        label: "Gallstones detected",
+        value: "ultrasound-gallstones",
+        content:
+          "Chief Complaint: Right upper quadrant pain.\nExamination: Abdominal ultrasound showing gallstones with acoustic shadowing; no ductal dilatation.\nAssessment: Cholelithiasis without cholecystitis.\nTreatment: Discussed findings; referred to general surgery for elective review.",
+      },
+      {
+        label: "Liver assessment",
+        value: "ultrasound-liver",
+        content:
+          "Chief Complaint: Elevated liver enzymes.\nExamination: Hepatic ultrasound reveals normal echotexture, no focal lesions, patent hepatic vasculature.\nAssessment: Normal hepatic ultrasound.\nTreatment: Findings relayed to referring clinician; follow-up as clinically indicated.",
+      },
+    ],
+    procedures: ["Obstetric follow-up", "Surgical referral", "Detailed organ assessment"],
+    medications: ["No medication required", "Analgesia as per referring clinician"],
+    dropdowns: [
+      { field: "severity", label: "Findings severity", options: ["Normal", "Mild deviation", "Significant deviation"], required: true },
+      { field: "laterality", label: "Laterality", options: ["Right", "Left", "Bilateral", "Midline", "Not applicable"] },
+      { field: "grade", label: "Recommendation urgency", options: ["Routine", "Soon", "Urgent"] },
+    ],
+    requiredSections: ["Chief Complaint", "Examination", "Assessment", "Treatment"],
+    requiredDropdowns: ["severity"],
+  },
+  psychology: {
+    placeholder: [
+      "Chief Complaint: Depression, anxiety, behavioral issues, trauma",
+      "Examination: Mental status exam (appearance, mood, thought content, cognition)",
+      "Assessment: Depression (mild/moderate/severe), anxiety disorder, PTSD",
+      "Treatment: CBT initiated, psychotherapy sessions, psychiatric referral",
+    ].join("\n"),
+    guidance: [
+      {
+        title: "Chief Complaint",
+        items: ['"Depression, anxiety, behavioral issues, trauma"'],
+      },
+      {
+        title: "Examination",
+        items: ["Mental status exam", "Appearance", "Mood", "Thought content", "Cognition"],
+      },
+      {
+        title: "Assessment",
+        items: ["Depression (mild/moderate/severe)", "Anxiety disorder", "PTSD"],
+      },
+      {
+        title: "Treatment",
+        items: ["CBT initiated", "Psychotherapy sessions", "Psychiatric referral"],
+      },
+    ],
+    quickSnippets: [
+      {
+        label: "Anxiety assessment",
+        content:
+          "Assessment: Generalised anxiety disorder features with persistent worry.\nTreatment: Initiated CBT plan focusing on relaxation and cognitive restructuring.",
+      },
+      {
+        label: "Crisis intervention",
+        content:
+          "Treatment: Conducted crisis intervention session; established safety plan and arranged urgent psychiatric consultation.",
+      },
+      {
+        label: "Normal mental status",
+        content:
+          "Examination: Mental status exam reveals well-groomed appearance, euthymic mood, coherent thought processes, intact cognition.",
+      },
+    ],
+    templates: [
+      {
+        label: "Normal mental status",
+        value: "psychology-normal",
+        content:
+          "Chief Complaint: Stress related to workload.\nExamination: Mental status exam within normal limits.\nAssessment: Adjustment disorder.\nTreatment: Initiated supportive psychotherapy and stress-management techniques.",
+      },
+      {
+        label: "Anxiety assessment",
+        value: "psychology-anxiety",
+        content:
+          "Chief Complaint: Persistent anxiety and restlessness.\nExamination: MSE notable for anxious affect, no psychosis, cognition intact.\nAssessment: Generalised anxiety disorder.\nTreatment: Started CBT, provided breathing exercises, and scheduled weekly sessions.",
+      },
+      {
+        label: "Crisis intervention",
+        value: "psychology-crisis",
+        content:
+          "Chief Complaint: Acute distress following traumatic event.\nExamination: MSE with labile affect, intrusive memories, no suicidal ideation.\nAssessment: Acute stress reaction.\nTreatment: Delivered crisis intervention, safety plan, and referral to psychiatry for medication review.",
+      },
+    ],
+    procedures: ["CBT session", "Psychotherapy follow-up", "Psychiatric referral", "Safety planning"],
+    medications: ["Psychiatric referral for pharmacotherapy", "Sleep hygiene strategies", "Relaxation techniques"],
+    dropdowns: [
+      { field: "severity", label: "Symptom severity", options: ["Mild", "Moderate", "Severe", "Crisis"], required: true },
+      { field: "laterality", label: "Presentation focus", options: ["Individual", "Family", "Group", "Not applicable"] },
+      { field: "grade", label: "Risk level", options: ["Low", "Medium", "High"] },
+    ],
+    requiredSections: ["Chief Complaint", "Examination", "Assessment", "Treatment"],
+    requiredDropdowns: ["severity"],
+  },
+}
+
 const formatSpecialistLabel = (value: string) =>
   value
     .split(/[_\s-]+/)
@@ -243,6 +717,59 @@ const orderSpecialists = (keys: string[], catalog: SpecialistDefinition[]) => {
     }
     return aIndex - bIndex
   })
+}
+
+const appendSnippetUnique = (content: string, snippet: string) => {
+  if (!snippet) return content
+  if (!content) return snippet.trim()
+  const normalizedContent = content.toLowerCase()
+  if (normalizedContent.includes(snippet.trim().toLowerCase())) {
+    return content
+  }
+  return `${content.trim()}\n\n${snippet.trim()}`.trim()
+}
+
+const upsertStructuredLine = (content: string, label: string, value?: string) => {
+  const lines = content.split(/\r?\n/)
+  const filtered = lines.filter((line) => !line.trim().toLowerCase().startsWith(`${label.toLowerCase()}:`)).filter((line) => line.trim().length > 0)
+
+  if (!value || value === "") {
+    return filtered.join("\n").trim()
+  }
+
+  return [`${label}: ${value}`, ...filtered].join("\n").trim()
+}
+
+const readDropdownValue = (draft: SpecialistNoteDraft | undefined, field: SpecialistDropdownType): string => {
+  if (!draft) return ""
+  switch (field) {
+    case "severity":
+      return draft.severity ?? ""
+    case "laterality":
+      return draft.laterality ?? ""
+    case "grade":
+      return draft.grade ?? ""
+    default:
+      return ""
+  }
+}
+
+const applyDropdownValue = (
+  draft: SpecialistNoteDraft,
+  field: SpecialistDropdownType,
+  value?: string,
+): SpecialistNoteDraft => {
+  const normalized = value && value.trim().length > 0 ? value : undefined
+  switch (field) {
+    case "severity":
+      return { ...draft, severity: normalized }
+    case "laterality":
+      return { ...draft, laterality: normalized }
+    case "grade":
+      return { ...draft, grade: normalized }
+    default:
+      return draft
+  }
 }
 
 const normalizeRoleValue = (role?: string | null) => (role ? role.toLowerCase().replace(/\s+/g, "_") : "")
@@ -511,6 +1038,7 @@ export function ClinicalWorkflow({
   const [workflowStatusById, setWorkflowStatusById] = useState<Record<string, WorkflowStatusSnapshot>>({})
   const lastSyncedSpecialistsRef = useRef<string[] | null>(null)
   const syncingSpecialistsRef = useRef(false)
+  const [helperPopoverOpen, setHelperPopoverOpen] = useState<Record<string, { procedures?: boolean; medications?: boolean }>>({})
 
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>(() =>
     composeWorkflowSteps({
@@ -1151,6 +1679,41 @@ export function ClinicalWorkflow({
           return
         }
 
+        const config = SPECIALIST_NOTE_CONFIG[specialistType]
+        if (config) {
+          const normalizedContent = content.toLowerCase()
+          const missingSections = config.requiredSections.filter(
+            (section) => !normalizedContent.includes(section.toLowerCase()),
+          )
+          if (missingSections.length) {
+            toast({
+              title: "Complete required sections",
+              description: `Include: ${missingSections.join(", ")}.`,
+              variant: "destructive",
+            })
+            return
+          }
+
+          const requiredDropdowns = config.requiredDropdowns ?? []
+          if (requiredDropdowns.length) {
+            const dropdownLabelMap = new Map(config.dropdowns.map((dropdown) => [dropdown.field, dropdown.label]))
+            const missingDropdowns = requiredDropdowns.filter((field) => {
+              const value = readDropdownValue(noteDraft, field)
+              return !value || !value.trim()
+            })
+
+            if (missingDropdowns.length) {
+              const missingLabels = missingDropdowns.map((field) => dropdownLabelMap.get(field) || field)
+              toast({
+                title: "Select structured details",
+                description: `Complete: ${missingLabels.join(", ")}.`,
+                variant: "destructive",
+              })
+              return
+            }
+          }
+        }
+
         submissionPayload.specialistNotes = {
           [specialistType]: {
             content,
@@ -1366,6 +1929,16 @@ export function ClinicalWorkflow({
     },
     [],
   )
+
+  const updateHelperPopoverState = (specialistType: string, kind: "procedures" | "medications", open: boolean) => {
+    setHelperPopoverOpen((prev) => ({
+      ...prev,
+      [specialistType]: {
+        ...(prev[specialistType] || {}),
+        [kind]: open,
+      },
+    }))
+  }
 
   const submitStepToServer = useCallback(
     async ({
@@ -2054,6 +2627,75 @@ export function ClinicalWorkflow({
       }
 
       const Icon = SPECIALIST_ICON_MAP[step.specialistType] ?? Clipboard
+      const config = SPECIALIST_NOTE_CONFIG[step.specialistType]
+      const guidanceSections = config?.guidance ?? []
+      const helperState = helperPopoverOpen[step.specialistType] || {}
+
+      const handleTemplateSelect = (value: string) => {
+        if (!config) {
+          setSpecialistNoteDraft(step.specialistType!, {
+            ...noteDraft,
+            selectedTemplate: undefined,
+            noteType: step.noteType,
+          })
+          return
+        }
+
+        if (!value) {
+          setSpecialistNoteDraft(step.specialistType!, {
+            ...noteDraft,
+            selectedTemplate: undefined,
+            noteType: step.noteType,
+          })
+          return
+        }
+
+        const template = config.templates.find((item) => item.value === value)
+        if (!template) return
+
+        setSpecialistNoteDraft(step.specialistType!, {
+          ...noteDraft,
+          content: template.content,
+          selectedTemplate: value,
+          noteType: step.noteType,
+        })
+      }
+
+      const handleQuickSnippet = (snippet: string) => {
+        const updated = appendSnippetUnique(noteDraft.content, snippet)
+        setSpecialistNoteDraft(step.specialistType!, {
+          ...noteDraft,
+          content: updated,
+          noteType: step.noteType,
+        })
+      }
+
+      const handleDropdownChange = (dropdown: SpecialistDropdownConfig, value: string) => {
+        const normalized = value === "" ? undefined : value
+        const updatedContent = upsertStructuredLine(noteDraft.content, dropdown.label, normalized)
+        const baseDraft: SpecialistNoteDraft = {
+          ...noteDraft,
+          content: updatedContent,
+          noteType: step.noteType,
+        }
+        const nextDraft = applyDropdownValue(baseDraft, dropdown.field, normalized)
+        setSpecialistNoteDraft(step.specialistType!, nextDraft)
+      }
+
+      const handleAutoCompleteInsert = (kind: "procedures" | "medications", entry: string) => {
+        const heading = kind === "procedures" ? "Treatment" : "Medication"
+        const snippet = `${heading}: ${entry}`
+        const updated = appendSnippetUnique(noteDraft.content, snippet)
+        setSpecialistNoteDraft(step.specialistType!, {
+          ...noteDraft,
+          content: updated,
+          noteType: step.noteType,
+        })
+        updateHelperPopoverState(step.specialistType!, kind, false)
+      }
+
+      const placeholder =
+        config?.placeholder || `Document the ${step.title.toLowerCase()} findings, interventions, and plans.`
 
       return (
         <div className="space-y-6">
@@ -2065,11 +2707,33 @@ export function ClinicalWorkflow({
             </div>
           </div>
 
+          {guidanceSections.length > 0 && (
+            <Alert className="bg-muted/40 border-primary/30">
+              <AlertDescription className="text-xs leading-relaxed space-y-2">
+                <span className="block font-semibold text-primary">Medical consultation checklist</span>
+                {guidanceSections.map((section) => (
+                  <div key={`${step.specialistType}-guide-${section.title}`}>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {section.title}
+                    </p>
+                    <ul className="ml-4 mt-1 space-y-1 list-disc">
+                      {section.items.map((item, index) => (
+                        <li key={`${step.specialistType}-guide-${section.title}-${index}`} className="text-[11px]">
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="space-y-2">
             <Label className="text-sm font-medium">Consultation Notes</Label>
             <Textarea
               rows={8}
-              placeholder={`Document the ${step.title.toLowerCase()} findings, interventions, and plans.`}
+              placeholder={placeholder}
               value={noteDraft.content}
               onChange={(event) =>
                 setSpecialistNoteDraft(step.specialistType!, {
@@ -2080,6 +2744,145 @@ export function ClinicalWorkflow({
               }
             />
           </div>
+
+          {config?.quickSnippets.length ? (
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground">Quick-fill snippets</Label>
+              <div className="flex flex-wrap gap-2">
+                {config.quickSnippets.map((snippet) => (
+                  <Button
+                    key={`${step.specialistType}-snippet-${snippet.label}`}
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="h-8 px-3 text-xs"
+                    onClick={() => handleQuickSnippet(snippet.content)}
+                  >
+                    {snippet.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {config?.templates.length ? (
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground">Templates</Label>
+              <Select
+                value={noteDraft.selectedTemplate ?? ""}
+                onValueChange={handleTemplateSelect}
+              >
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="Choose a template or keep custom note" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Custom note</SelectItem>
+                  {config.templates.map((template) => (
+                    <SelectItem key={template.value} value={template.value}>
+                      {template.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+
+          {config?.dropdowns.length ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              {config.dropdowns.map((dropdown) => {
+                const currentValue = readDropdownValue(noteDraft, dropdown.field)
+                return (
+                  <div key={`${step.specialistType}-dropdown-${dropdown.field}`} className="space-y-2">
+                    <Label className="text-xs font-medium text-muted-foreground">{dropdown.label}</Label>
+                    <Select value={currentValue} onValueChange={(value) => handleDropdownChange(dropdown, value)}>
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder={`Select ${dropdown.label.toLowerCase()}`} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Not captured</SelectItem>
+                        {dropdown.options.map((option) => (
+                          <SelectItem key={`${dropdown.field}-${option}`} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )
+              })}
+            </div>
+          ) : null}
+
+          {(config?.procedures.length || config?.medications.length) && (
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground">Auto-complete helpers</Label>
+              <div className="flex flex-wrap gap-2">
+                {config?.procedures.length ? (
+                  <Popover
+                    open={helperState.procedures ?? false}
+                    onOpenChange={(open) => updateHelperPopoverState(step.specialistType!, "procedures", open)}
+                  >
+                    <PopoverTrigger asChild>
+                      <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-xs">
+                        Insert procedure
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search procedures..." />
+                        <CommandList>
+                          <CommandEmpty>No procedures found.</CommandEmpty>
+                          <CommandGroup heading="Procedures">
+                            {config.procedures.map((procedure) => (
+                              <CommandItem
+                                key={`${step.specialistType}-procedure-${procedure}`}
+                                value={procedure}
+                                onSelect={() => handleAutoCompleteInsert("procedures", procedure)}
+                              >
+                                {procedure}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                ) : null}
+
+                {config?.medications.length ? (
+                  <Popover
+                    open={helperState.medications ?? false}
+                    onOpenChange={(open) => updateHelperPopoverState(step.specialistType!, "medications", open)}
+                  >
+                    <PopoverTrigger asChild>
+                      <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-xs">
+                        Insert medication
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search medications..." />
+                        <CommandList>
+                          <CommandEmpty>No medications found.</CommandEmpty>
+                          <CommandGroup heading="Medications">
+                            {config.medications.map((medication) => (
+                              <CommandItem
+                                key={`${step.specialistType}-medication-${medication}`}
+                                value={medication}
+                                onSelect={() => handleAutoCompleteInsert("medications", medication)}
+                              >
+                                {medication}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                ) : null}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-4 rounded-lg border p-4">
             <div className="flex items-center space-x-2">
