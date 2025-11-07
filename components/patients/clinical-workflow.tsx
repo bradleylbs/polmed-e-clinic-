@@ -108,6 +108,7 @@ interface SpecialistNoteDraft {
   laterality?: string
   grade?: string
   selectedTemplate?: string
+  structuredSections?: Partial<Record<string, string>>
 }
 
 interface WorkflowStatusSnapshot {
@@ -708,6 +709,79 @@ Object.assign(SPECIALIST_NOTE_CONFIG, {
   psychology_session: SPECIALIST_NOTE_CONFIG.psychology,
   psychologist: SPECIALIST_NOTE_CONFIG.psychology,
 })
+
+type DentistSectionKey = "chiefComplaint" | "history" | "examination" | "diagnostics" | "procedure" | "plan"
+
+const DENTIST_SECTION_ORDER: DentistSectionKey[] = [
+  "chiefComplaint",
+  "history",
+  "examination",
+  "diagnostics",
+  "procedure",
+  "plan",
+]
+
+const DENTIST_SECTION_LABELS: Record<DentistSectionKey, string> = {
+  chiefComplaint: "Chief Complaint",
+  history: "History",
+  examination: "Examination",
+  diagnostics: "Assessment",
+  procedure: "Procedure",
+  plan: "Treatment",
+}
+
+const DENTIST_SECTION_DISPLAY_LABELS: Record<DentistSectionKey, string> = {
+  chiefComplaint: "Chief Complaint",
+  history: "Medical & Dental History",
+  examination: "Clinical Examination",
+  diagnostics: "Assessment & Diagnostics",
+  procedure: "Procedures Performed",
+  plan: "Management & Follow-up Plan",
+}
+
+const DENTIST_LABEL_TO_KEY: Record<string, DentistSectionKey> = DENTIST_SECTION_ORDER.reduce(
+  (acc, key) => {
+    acc[DENTIST_SECTION_LABELS[key].toLowerCase()] = key
+    return acc
+  },
+  {} as Record<string, DentistSectionKey>,
+)
+
+const composeDentistStructuredContent = (
+  sections: Partial<Record<DentistSectionKey, string>>,
+): string => {
+  return DENTIST_SECTION_ORDER.map((key) => {
+    const value = sections[key]?.trim()
+    if (!value) return null
+    return `${DENTIST_SECTION_LABELS[key]}:\n${value}`
+  })
+    .filter(Boolean)
+    .join("\n\n")
+}
+
+const parseDentistStructuredContent = (
+  content?: string,
+): Partial<Record<DentistSectionKey, string>> => {
+  const result: Partial<Record<DentistSectionKey, string>> = {}
+  if (!content) return result
+  const normalized = content.replace(/\r\n/g, "\n").trim()
+  if (!normalized) return result
+
+  const blocks = normalized.split(/\n\s*\n/)
+  for (const block of blocks) {
+    const lines = block.split("\n")
+    if (!lines.length) continue
+    const header = lines[0]?.replace(/:\s*$/, "").trim().toLowerCase()
+    if (!header) continue
+    const key = DENTIST_LABEL_TO_KEY[header]
+    if (!key) continue
+    const body = lines.slice(1).join("\n").trim()
+    if (body) {
+      result[key] = body
+    }
+  }
+  return result
+}
 
 const formatSpecialistLabel = (value: string) =>
   value
@@ -2647,14 +2721,20 @@ export function ClinicalWorkflow({
       }
 
       const Icon = SPECIALIST_ICON_MAP[step.specialistType] ?? Clipboard
-  const config = SPECIALIST_NOTE_CONFIG[step.specialistType]
-  const quickSnippets = config?.quickSnippets ?? []
-  const templates = config?.templates ?? []
-  const dropdowns = config?.dropdowns ?? []
-  const procedures = config?.procedures ?? []
-  const medications = config?.medications ?? []
-  const guidanceSections = config?.guidance ?? []
+      const config = SPECIALIST_NOTE_CONFIG[step.specialistType]
+      const quickSnippets = config?.quickSnippets ?? []
+      const templates = config?.templates ?? []
+      const dropdowns = config?.dropdowns ?? []
+      const procedures = config?.procedures ?? []
+      const medications = config?.medications ?? []
+      const guidanceSections = config?.guidance ?? []
       const helperState = helperPopoverOpen[step.specialistType] || {}
+      const normalizedSpecialistType =
+        step.specialistType === "dental_consultation" ? "dentist" : step.specialistType
+      const isDentist = normalizedSpecialistType === "dentist"
+      const dentistSections = isDentist
+        ? noteDraft.structuredSections ?? parseDentistStructuredContent(noteDraft.content)
+        : null
 
       const handleTemplateSelect = (value: string) => {
         if (!config || value === TEMPLATE_CUSTOM_VALUE || !value) {
@@ -2669,6 +2749,19 @@ export function ClinicalWorkflow({
         const template = templates.find((item) => item.value === value)
         if (!template) return
 
+        if (isDentist) {
+          const parsedTemplateSections = parseDentistStructuredContent(template.content)
+          const structuredContent = composeDentistStructuredContent(parsedTemplateSections)
+          setSpecialistNoteDraft(step.specialistType!, {
+            ...noteDraft,
+            structuredSections: parsedTemplateSections,
+            content: structuredContent,
+            selectedTemplate: value,
+            noteType: step.noteType,
+          })
+          return
+        }
+
         setSpecialistNoteDraft(step.specialistType!, {
           ...noteDraft,
           content: template.content,
@@ -2678,6 +2771,25 @@ export function ClinicalWorkflow({
       }
 
       const handleQuickSnippet = (snippet: string) => {
+        if (isDentist) {
+          const currentSections: Partial<Record<DentistSectionKey, string>> = {
+            ...(dentistSections ?? {}),
+          }
+          const existingPlan = currentSections.plan?.trim()
+          const mergedPlan = existingPlan?.length
+            ? `${existingPlan}\n\n${snippet.trim()}`
+            : snippet.trim()
+          currentSections.plan = mergedPlan.trim()
+          const structuredContent = composeDentistStructuredContent(currentSections)
+          setSpecialistNoteDraft(step.specialistType!, {
+            ...noteDraft,
+            structuredSections: currentSections,
+            content: structuredContent,
+            noteType: step.noteType,
+          })
+          return
+        }
+
         const updated = appendSnippetUnique(noteDraft.content, snippet)
         setSpecialistNoteDraft(step.specialistType!, {
           ...noteDraft,
@@ -2694,11 +2806,42 @@ export function ClinicalWorkflow({
           content: updatedContent,
           noteType: step.noteType,
         }
+
+        if (isDentist) {
+          const nextSections = parseDentistStructuredContent(updatedContent)
+          const dentistDraft: SpecialistNoteDraft = {
+            ...baseDraft,
+            structuredSections: nextSections,
+          }
+          const nextDraft = applyDropdownValue(dentistDraft, dropdown.field, normalized)
+          setSpecialistNoteDraft(step.specialistType!, nextDraft)
+          return
+        }
+
         const nextDraft = applyDropdownValue(baseDraft, dropdown.field, normalized)
         setSpecialistNoteDraft(step.specialistType!, nextDraft)
       }
 
       const handleAutoCompleteInsert = (kind: "procedures" | "medications", entry: string) => {
+        if (isDentist) {
+          const currentSections: Partial<Record<DentistSectionKey, string>> = {
+            ...(dentistSections ?? {}),
+          }
+          const targetKey: DentistSectionKey = kind === "procedures" ? "procedure" : "plan"
+          const existing = currentSections[targetKey]?.trim()
+          const snippet = kind === "procedures" ? `Procedure: ${entry}` : `Medication: ${entry}`
+          currentSections[targetKey] = existing?.length ? `${existing}\n${snippet}` : snippet
+          const structuredContent = composeDentistStructuredContent(currentSections)
+          setSpecialistNoteDraft(step.specialistType!, {
+            ...noteDraft,
+            structuredSections: currentSections,
+            content: structuredContent,
+            noteType: step.noteType,
+          })
+          updateHelperPopoverState(step.specialistType!, kind, false)
+          return
+        }
+
         const heading = kind === "procedures" ? "Treatment" : "Medication"
         const snippet = `${heading}: ${entry}`
         const updated = appendSnippetUnique(noteDraft.content, snippet)
@@ -2717,6 +2860,462 @@ export function ClinicalWorkflow({
         noteDraft.selectedTemplate && noteDraft.selectedTemplate.length > 0
           ? noteDraft.selectedTemplate
           : TEMPLATE_CUSTOM_VALUE
+
+      if (isDentist) {
+        const getDentistSectionValue = (key: DentistSectionKey) => (
+          dentistSections?.[key] ?? ""
+        )
+
+        const updateDentistSection = (key: DentistSectionKey, nextValue: string) => {
+          const currentSections: Partial<Record<DentistSectionKey, string>> = {
+            ...(dentistSections ?? {}),
+          }
+          const trimmed = nextValue.trim()
+          if (trimmed.length) {
+            currentSections[key] = nextValue
+          } else {
+            delete currentSections[key]
+          }
+          const structuredContent = composeDentistStructuredContent(currentSections)
+          setSpecialistNoteDraft(step.specialistType!, {
+            ...noteDraft,
+            structuredSections: currentSections,
+            content: structuredContent,
+            noteType: step.noteType,
+          })
+        }
+
+        const dentistSummary = composeDentistStructuredContent(dentistSections ?? {})
+        const vitalAlerts = generateVitalAlerts()
+        const followUpDisplay = noteDraft.followUpDate
+          ? new Date(noteDraft.followUpDate).toLocaleDateString("en-ZA", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })
+          : "Not scheduled"
+
+        return (
+          <div className="space-y-6">
+            <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-6 shadow-lg">
+              <div className="absolute inset-0 bg-grid-white/5 [mask-image:radial-gradient(white,transparent_85%)]" />
+              <div className="relative flex flex-col gap-5">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h3 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                      {patientName}
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      ID: {patientId} • {new Date().toLocaleDateString("en-ZA", {
+                        weekday: "short",
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline" className="bg-background/50 backdrop-blur-sm border-primary/30">
+                      <Sparkles className="w-3 h-3 mr-1" />
+                      Dental Consultation
+                    </Badge>
+                    {noteDraft.selectedTemplate ? (
+                      <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
+                        Template: {templates.find((tpl) => tpl.value === noteDraft.selectedTemplate)?.label || "Custom"}
+                      </Badge>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-xl border border-primary/30 bg-white/70 p-4 shadow-sm">
+                    <p className="text-xs text-muted-foreground">Next Follow-up</p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">{followUpDisplay}</p>
+                  </div>
+                  <div className="rounded-xl border border-primary/30 bg-white/70 p-4 shadow-sm">
+                    <p className="text-xs text-muted-foreground">Caries Severity</p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">{noteDraft.severity || "Not captured"}</p>
+                  </div>
+                  <div className="rounded-xl border border-primary/30 bg-white/70 p-4 shadow-sm">
+                    <p className="text-xs text-muted-foreground">Arch</p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">{noteDraft.laterality || "Not captured"}</p>
+                  </div>
+                  <div className="rounded-xl border border-primary/30 bg-white/70 p-4 shadow-sm">
+                    <p className="text-xs text-muted-foreground">Vitals Snapshot</p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">
+                      {vitalSigns.bloodPressureSystolic && vitalSigns.bloodPressureDiastolic
+                        ? `${vitalSigns.bloodPressureSystolic}/${vitalSigns.bloodPressureDiastolic} mmHg`
+                        : vitalSigns.pulse
+                          ? `${vitalSigns.pulse} bpm`
+                          : "No vitals recorded"}
+                    </p>
+                  </div>
+                </div>
+
+                {vitalAlerts.length > 0 ? (
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {vitalAlerts.slice(0, 3).map((alert, index) => (
+                      <div
+                        key={index}
+                        className={`rounded-xl border p-3 text-xs shadow-sm transition-all ${
+                          alert.severity === "critical"
+                            ? "border-red-400 bg-red-50"
+                            : alert.severity === "caution"
+                              ? "border-yellow-400 bg-yellow-50"
+                              : "border-emerald-400 bg-emerald-50"
+                        }`}
+                      >
+                        <p className="font-semibold text-foreground">{alert.parameter}</p>
+                        <p className="mt-1 text-sm">{alert.value}</p>
+                        <p className="text-[11px] text-muted-foreground">Ref: {alert.reference}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            {guidanceSections.length > 0 && (
+              <Alert className="bg-muted/40 border-primary/30">
+                <AlertDescription className="text-xs leading-relaxed space-y-2">
+                  <span className="block font-semibold text-primary">Dental consultation checklist</span>
+                  {guidanceSections.map((section) => (
+                    <div key={`${step.specialistType}-guide-${section.title}`}>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {section.title}
+                      </p>
+                      <ul className="ml-4 mt-1 space-y-1 list-disc">
+                        {section.items.map((item, index) => (
+                          <li key={`${step.specialistType}-guide-${section.title}-${index}`} className="text-[11px]">
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <Tabs defaultValue="assessment" className="w-full">
+              <TabsList className="grid w-full grid-cols-4 h-auto p-1 bg-muted/50 backdrop-blur-sm rounded-xl">
+                <TabsTrigger value="assessment" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg">
+                  <Clipboard className="w-4 h-4 mr-2" />
+                  Assessment
+                </TabsTrigger>
+                <TabsTrigger value="diagnostics" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg">
+                  <Search className="w-4 h-4 mr-2" />
+                  Diagnostics
+                </TabsTrigger>
+                <TabsTrigger value="treatment" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg">
+                  <Stethoscope className="w-4 h-4 mr-2" />
+                  Treatment
+                </TabsTrigger>
+                <TabsTrigger value="summary" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg">
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Summary
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="assessment" className="space-y-4 mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Clipboard className="w-4 h-4" />
+                      Subjective & History
+                    </CardTitle>
+                    <CardDescription>Capture the presenting complaint and relevant background.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium">{DENTIST_SECTION_DISPLAY_LABELS.chiefComplaint}</Label>
+                      <Textarea
+                        rows={3}
+                        placeholder="Patient reports sensitivity to cold drinks, bleeding when brushing..."
+                        value={getDentistSectionValue("chiefComplaint")}
+                        onChange={(event) => updateDentistSection("chiefComplaint", event.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">{DENTIST_SECTION_DISPLAY_LABELS.history}</Label>
+                      <Textarea
+                        rows={4}
+                        placeholder="Medical history, previous dental interventions, medications, allergies..."
+                        value={getDentistSectionValue("history")}
+                        onChange={(event) => updateDentistSection("history", event.target.value)}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="diagnostics" className="space-y-4 mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Search className="w-4 h-4" />
+                      Examination & Assessment
+                    </CardTitle>
+                    <CardDescription>Document objective findings and diagnostic impressions.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium">{DENTIST_SECTION_DISPLAY_LABELS.examination}</Label>
+                      <Textarea
+                        rows={4}
+                        placeholder="Extra-oral and intra-oral findings, periodontal status, charting..."
+                        value={getDentistSectionValue("examination")}
+                        onChange={(event) => updateDentistSection("examination", event.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">{DENTIST_SECTION_DISPLAY_LABELS.diagnostics}</Label>
+                      <Textarea
+                        rows={4}
+                        placeholder="Provisional / definitive diagnosis, radiographic interpretation, risk assessment..."
+                        value={getDentistSectionValue("diagnostics")}
+                        onChange={(event) => updateDentistSection("diagnostics", event.target.value)}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {dropdowns.length ? (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm font-semibold">Structured Fields</CardTitle>
+                      <CardDescription>Select standardized descriptors for quick reference.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid gap-3 md:grid-cols-3">
+                        {dropdowns.map((dropdown) => {
+                          const currentValue = readDropdownValue(noteDraft, dropdown.field)
+                          const selectValue = currentValue && currentValue.length > 0 ? currentValue : SELECT_EMPTY_VALUE
+                          return (
+                            <div key={`${step.specialistType}-dropdown-${dropdown.field}`} className="space-y-2">
+                              <Label className="text-xs font-medium text-muted-foreground">{dropdown.label}</Label>
+                              <Select value={selectValue} onValueChange={(value) => handleDropdownChange(dropdown, value)}>
+                                <SelectTrigger className="h-9 text-sm">
+                                  <SelectValue placeholder={`Select ${dropdown.label.toLowerCase()}`} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value={SELECT_EMPTY_VALUE}>Not captured</SelectItem>
+                                  {dropdown.options.map((option) => (
+                                    <SelectItem key={`${dropdown.field}-${option}`} value={option}>
+                                      {option}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </TabsContent>
+
+              <TabsContent value="treatment" className="space-y-4 mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Stethoscope className="w-4 h-4" />
+                      Procedures & Plan
+                    </CardTitle>
+                    <CardDescription>Outline procedures performed and post-operative guidance.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {templates.length ? (
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium text-muted-foreground">Templates</Label>
+                        <Select value={templateSelectValue} onValueChange={handleTemplateSelect}>
+                          <SelectTrigger className="h-9 text-sm">
+                            <SelectValue placeholder="Choose a template or keep custom note" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={TEMPLATE_CUSTOM_VALUE}>Custom note</SelectItem>
+                            {templates.map((template) => (
+                              <SelectItem key={template.value} value={template.value}>
+                                {template.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : null}
+
+                    {quickSnippets.length ? (
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium text-muted-foreground">Quick-fill snippets</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {quickSnippets.map((snippet) => (
+                            <Button
+                              key={`${step.specialistType}-snippet-${snippet.label}`}
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              className="h-8 px-3 text-xs"
+                              onClick={() => handleQuickSnippet(snippet.content)}
+                            >
+                              {snippet.label}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div>
+                      <Label className="text-sm font-medium">{DENTIST_SECTION_DISPLAY_LABELS.procedure}</Label>
+                      <Textarea
+                        rows={4}
+                        placeholder="Scaling completed, composite restoration teeth 36 & 37, local anaesthetic used..."
+                        value={getDentistSectionValue("procedure")}
+                        onChange={(event) => updateDentistSection("procedure", event.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">{DENTIST_SECTION_DISPLAY_LABELS.plan}</Label>
+                      <Textarea
+                        rows={4}
+                        placeholder="Oral hygiene instructions, analgesia, recall schedule, referral notes..."
+                        value={getDentistSectionValue("plan")}
+                        onChange={(event) => updateDentistSection("plan", event.target.value)}
+                      />
+                    </div>
+
+                    {(procedures.length > 0 || medications.length > 0) && (
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium text-muted-foreground">Auto-complete helpers</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {procedures.length ? (
+                            <Popover
+                              open={helperState.procedures ?? false}
+                              onOpenChange={(open) => updateHelperPopoverState(step.specialistType!, "procedures", open)}
+                            >
+                              <PopoverTrigger asChild>
+                                <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-xs">
+                                  Insert procedure
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-64 p-0" align="start">
+                                <Command>
+                                  <CommandInput placeholder="Search procedures..." />
+                                  <CommandList>
+                                    <CommandEmpty>No procedures found.</CommandEmpty>
+                                    <CommandGroup heading="Procedures">
+                                      {procedures.map((procedure) => (
+                                        <CommandItem
+                                          key={`${step.specialistType}-procedure-${procedure}`}
+                                          value={procedure}
+                                          onSelect={() => handleAutoCompleteInsert("procedures", procedure)}
+                                        >
+                                          {procedure}
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
+                          ) : null}
+
+                          {medications.length ? (
+                            <Popover
+                              open={helperState.medications ?? false}
+                              onOpenChange={(open) => updateHelperPopoverState(step.specialistType!, "medications", open)}
+                            >
+                              <PopoverTrigger asChild>
+                                <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-xs">
+                                  Insert medication
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-64 p-0" align="start">
+                                <Command>
+                                  <CommandInput placeholder="Search medications..." />
+                                  <CommandList>
+                                    <CommandEmpty>No medications found.</CommandEmpty>
+                                    <CommandGroup heading="Medications">
+                                      {medications.map((medication) => (
+                                        <CommandItem
+                                          key={`${step.specialistType}-medication-${medication}`}
+                                          value={medication}
+                                          onSelect={() => handleAutoCompleteInsert("medications", medication)}
+                                        >
+                                          {medication}
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="summary" className="space-y-4 mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      Consultation Summary Preview
+                    </CardTitle>
+                    <CardDescription>Review the structured note that will be stored for this visit.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {dentistSummary ? (
+                      <Textarea value={dentistSummary} readOnly rows={10} className="font-mono text-xs bg-muted" />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Start documenting in the tabs above to generate a structured dental note summary.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+
+            <div className="space-y-4 rounded-lg border p-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id={`${step.specialistType}-follow-up`}
+                  checked={Boolean(noteDraft.followUpRequired)}
+                  onCheckedChange={(checked) =>
+                    updateSpecialistNoteField(step.specialistType!, "followUpRequired", Boolean(checked))
+                  }
+                />
+                <Label htmlFor={`${step.specialistType}-follow-up`} className="text-sm">
+                  Follow-up required
+                </Label>
+              </div>
+
+              {noteDraft.followUpRequired && (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div>
+                    <Label className="text-xs font-medium">Follow-up date</Label>
+                    <Input
+                      type="date"
+                      value={noteDraft.followUpDate || ""}
+                      onChange={(event) =>
+                        updateSpecialistNoteField(step.specialistType!, "followUpDate", event.target.value)
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium">Note type</Label>
+                    <Input value={step.noteType || "Specialist"} readOnly className="bg-muted" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      }
 
       return (
         <div className="space-y-6">
