@@ -63,6 +63,7 @@ interface ClinicalNotes {
   icd10Codes: string
   followUpRequired: boolean
   followUpDate: string
+  followUpInstructions?: string
   counselingNotes: string
   mentalHealthScreening: string
   referrals: string
@@ -106,6 +107,51 @@ interface Medication {
   dosage: string
   frequency: string
   duration: string
+}
+
+const OFFLINE_COMPLETION_STORAGE_KEY = "palmed-offline-workflow-submissions"
+
+interface WorkflowSubmissionPayload {
+  vitalSigns: VitalSigns
+  clinicalNotes: ClinicalNotes
+  medications: Medication[]
+  investigations: string[]
+  selectedICD10Codes: Array<{ code: string; description: string }>
+  persistVitals?: boolean
+}
+
+interface QueuedWorkflowSubmission {
+  id: string
+  patientId: number
+  visitId?: number | null
+  stepId: WorkflowStep["id"]
+  createdAt: number
+  username: string
+  payload: WorkflowSubmissionPayload
+}
+
+const readOfflineWorkflowQueue = (): QueuedWorkflowSubmission[] => {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = window.localStorage.getItem(OFFLINE_COMPLETION_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      return parsed
+    }
+  } catch (error) {
+    console.warn("Failed to read offline workflow queue", error)
+  }
+  return []
+}
+
+const writeOfflineWorkflowQueue = (entries: QueuedWorkflowSubmission[]) => {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(OFFLINE_COMPLETION_STORAGE_KEY, JSON.stringify(entries))
+  } catch (error) {
+    console.warn("Failed to persist offline workflow queue", error)
+  }
 }
 
 const WORKFLOW_DEPENDENCIES: Record<WorkflowStep["id"], WorkflowStep["id"][]> = {
@@ -188,6 +234,7 @@ export function ClinicalWorkflow({
     icd10Codes: "",
     followUpRequired: false,
     followUpDate: "",
+    followUpInstructions: "",
     counselingNotes: "",
     mentalHealthScreening: "",
     referrals: "",
@@ -205,6 +252,8 @@ export function ClinicalWorkflow({
   const smartSuggestionAbortRef = useRef<AbortController | null>(null)
   const smartSuggestionRequestIdRef = useRef(0)
   const [activeInput, setActiveInput] = useState<string>("")
+  const processingOfflineQueueRef = useRef(false)
+  const syncFromServerRef = useRef<(() => Promise<void>) | null>(null)
 
   // Summary data for File Closure
   const [clinicalSummary, setClinicalSummary] = useState<{ notes: any[]; referrals: any[] }>({
@@ -672,8 +721,8 @@ export function ClinicalWorkflow({
 
     const doComplete = async () => {
       setCompletingStep(true)
-      const updatedSteps = [...workflowSteps]
-      const currentStepData = updatedSteps[currentStep]
+
+      const currentStepData = workflowSteps[currentStep]
       if (!currentStepData) {
         toast({
           title: "No step selected",
@@ -683,9 +732,9 @@ export function ClinicalWorkflow({
         return
       }
 
-      const unmetDependencies = listIncompleteDependencies(currentStepData.id, updatedSteps)
+      const unmetDependencies = listIncompleteDependencies(currentStepData.id, workflowSteps)
       if (unmetDependencies.length > 0) {
-        const dependencyTitles = updatedSteps
+        const dependencyTitles = workflowSteps
           .filter((step) => unmetDependencies.includes(step.id))
           .map((step) => step.title)
         toast({
@@ -696,7 +745,7 @@ export function ClinicalWorkflow({
         return
       }
 
-      if (!canAccessStepForRole(currentStepData, updatedSteps, userRole, { allowCompleted: false })) {
+      if (!canAccessStepForRole(currentStepData, workflowSteps, userRole, { allowCompleted: false })) {
         toast({
           title: "Step unavailable",
           description: "This stage is not assigned to you or is not yet unlocked.",
@@ -705,127 +754,130 @@ export function ClinicalWorkflow({
         return
       }
 
-      // Ensure a visit exists for note posting
-      let vId = visitId
-      if (!vId) {
-        const created = await apiService.createVisit(Number(patientId), {})
-        if (!created.success || !created.data?.visit_id) {
+      const submissionPayload: WorkflowSubmissionPayload = {
+        vitalSigns: { ...vitalSigns },
+        clinicalNotes: { ...clinicalNotes },
+        medications: medications.map((med) => ({ ...med })),
+        investigations: [...investigations],
+        selectedICD10Codes: selectedICD10Codes.map((code) => ({ ...code })),
+        persistVitals: false,
+      }
+
+      if (currentStepData.id === "doctor") {
+        const diagSegments: string[] = []
+        if (submissionPayload.clinicalNotes.icd10Codes)
+          diagSegments.push(`ICD-10: ${submissionPayload.clinicalNotes.icd10Codes}`)
+        if (submissionPayload.clinicalNotes.doctorDiagnosis)
+          diagSegments.push(`Diagnosis: ${submissionPayload.clinicalNotes.doctorDiagnosis}`)
+        const diagContent = diagSegments.join("\n")
+
+        const treatmentSegments: string[] = []
+        if (submissionPayload.clinicalNotes.treatmentPlan)
+          treatmentSegments.push(`Treatment: ${submissionPayload.clinicalNotes.treatmentPlan}`)
+        if (submissionPayload.medications.length > 0) {
+          treatmentSegments.push(
+            `Medications: ${submissionPayload.medications
+              .map((m) => `${m.name} ${m.dosage} ${m.frequency} for ${m.duration}`)
+              .join(", ")}`,
+          )
+        }
+        if (submissionPayload.investigations.length > 0) {
+          treatmentSegments.push(`Investigations: ${submissionPayload.investigations.join(", ")}`)
+        }
+        if (submissionPayload.clinicalNotes.referrals) {
+          treatmentSegments.push(`Referrals: ${submissionPayload.clinicalNotes.referrals}`)
+        }
+        if (submissionPayload.clinicalNotes.followUpInstructions) {
+          treatmentSegments.push(`Follow-up instructions: ${submissionPayload.clinicalNotes.followUpInstructions}`)
+        }
+        const treatContent = treatmentSegments.join("\n")
+
+        if (!diagContent && !treatContent) {
           toast({
-            title: "Failed to start visit",
-            description: created.error || "Unable to create a visit record.",
+            title: "Nothing to save",
+            description: "Add a Diagnosis and/or Treatment before saving.",
             variant: "destructive",
           })
           return
         }
-        vId = created.data.visit_id
-        setVisitId(vId)
       }
 
-      // Persist step result as a clinical note when applicable
-      try {
-        let saved = true
-        if (currentStepData.id === "nursing") {
-          // Save nursing assessment note
-          const content = clinicalNotes.nursingAssessment?.trim() || "Nursing assessment completed."
-          const res = await apiService.createClinicalNote(vId!, { note_type: "Assessment", content })
-          saved = !!res.success
-          if (!saved) {
-            toast({ title: "Warning", description: "Vital signs saved but could not save nursing notes.", variant: "default" })
-          }
-        } else if (currentStepData.id === "doctor") {
-          const parseList = (s?: string) =>
-            (s || "")
-              .split(",")
-              .map((x) => x.trim())
-              .filter((x) => x.length > 0)
+      const isOffline = typeof navigator !== "undefined" && !offlineManager.getConnectionStatus?.()
+      const updatedSteps = [...workflowSteps]
 
-          const diagContent = [
-            clinicalNotes.icd10Codes && `ICD-10: ${clinicalNotes.icd10Codes}`,
-            clinicalNotes.doctorDiagnosis && `Diagnosis: ${clinicalNotes.doctorDiagnosis}`,
-          ]
-            .filter(Boolean)
-            .join("\n")
+      if (isOffline) {
+        submissionPayload.persistVitals = currentStepData.id === "nursing"
+        queueOfflineSubmission({
+          patientId: Number(patientId),
+          visitId,
+          stepId: currentStepData.id,
+          username,
+          payload: submissionPayload,
+        })
 
-          const treatContent = [
-            clinicalNotes.treatmentPlan && `Treatment: ${clinicalNotes.treatmentPlan}`,
-            medications.length > 0 &&
-              `Medications: ${medications.map((m) => `${m.name} ${m.dosage} ${m.frequency} for ${m.duration}`).join(", ")}`,
-            investigations.length > 0 && `Investigations: ${investigations.join(", ")}`,
-            clinicalNotes.referrals && `Referrals: ${clinicalNotes.referrals}`,
-          ]
-            .filter(Boolean)
-            .join("\n")
+        updatedSteps[currentStep] = {
+          ...currentStepData,
+          status: "completed",
+          completedBy: `${username} (offline)`,
+          completedAt: new Date().toISOString(),
+        }
 
-          if (!diagContent && !treatContent) {
-            toast({
-              title: "Nothing to save",
-              description: "Add a Diagnosis and/or Treatment before saving.",
-              variant: "destructive",
-            })
-            return
+        const nextIdx = currentStep + 1
+        if (nextIdx < updatedSteps.length) {
+          const nextStep = updatedSteps[nextIdx]
+          const counselingDone = updatedSteps.find((s) => s.id === "counseling")?.status === "completed"
+          const canUnlockNext = nextStep.id !== "closure" || counselingDone
+
+          if (canUnlockNext && nextStep.status !== "completed") {
+            updatedSteps[nextIdx] = { ...nextStep, status: "in-progress" }
           }
 
-          // Save Diagnosis note if provided
-          if (diagContent) {
-            const resDiag = await apiService.createClinicalNote(vId!, {
-              note_type: "Diagnosis",
-              content: diagContent,
-              icd10_codes: parseList(clinicalNotes.icd10Codes),
-              follow_up_required: !!clinicalNotes.followUpRequired,
-              follow_up_date:
-                clinicalNotes.followUpRequired && clinicalNotes.followUpDate ? clinicalNotes.followUpDate : undefined,
-            })
-            if (!resDiag.success) {
-              saved = false
+          if (canUnlockNext) {
+            const canViewNext = userRole === "administrator" || nextStep.role === userRole
+            if (canViewNext) {
+              setCurrentStep(nextIdx)
+            } else {
+              const nextRoleLabel = nextStep.role.replace(/_/g, " ")
+              toast({
+                title: `${currentStepData.title} captured offline`,
+                description: `${nextStep.title} is waiting for the ${nextRoleLabel}.`,
+              })
             }
           }
+        }
 
-          // Save Treatment note if provided
-          if (treatContent) {
-            const resTreat = await apiService.createClinicalNote(vId!, {
-              note_type: "Treatment",
-              content: treatContent,
-              medications_prescribed: medications.map((m) => `${m.name} ${m.dosage} ${m.frequency}`),
-              follow_up_required: !!clinicalNotes.followUpRequired,
-              follow_up_date:
-                clinicalNotes.followUpRequired && clinicalNotes.followUpDate ? clinicalNotes.followUpDate : undefined,
-            })
-            if (!resTreat.success) {
-              saved = false
-            }
-          }
-        } else if (currentStepData.id === "counseling") {
-          const content =
-            [
-              clinicalNotes.mentalHealthScreening && `Screening: ${clinicalNotes.mentalHealthScreening}`,
-              clinicalNotes.counselingNotes && `Notes: ${clinicalNotes.counselingNotes}`,
-            ]
-              .filter(Boolean)
-              .join("\n") || "Counseling session completed."
-          const res = await apiService.createClinicalNote(vId!, {
-            note_type: "Counseling",
-            content,
-            follow_up_required: !!clinicalNotes.followUpRequired,
-            follow_up_date:
-              clinicalNotes.followUpRequired && clinicalNotes.followUpDate ? clinicalNotes.followUpDate : undefined,
-          })
-          saved = !!res.success
-        } else if (currentStepData.id === "closure") {
-          const content = clinicalNotes.finalNotes?.trim() || "File closed."
-          const res = await apiService.createClinicalNote(vId!, { note_type: "Closure", content })
-          saved = !!res.success
+        setWorkflowSteps(updatedSteps)
+        if (currentStep >= updatedSteps.length - 1) {
+          onWorkflowComplete()
         }
-        if (!saved && currentStepData.id !== "nursing") {
-          toast({ title: "Save failed", description: "Could not save note. Please try again.", variant: "destructive" })
-          return
-        }
-      } catch (e) {
         toast({
-          title: "Network error",
-          description: "Failed to reach server. Please try again.",
-          variant: "destructive",
+          title: `${currentStepData.title} queued for sync`,
+          description: "Step captured offline and will sync automatically once you reconnect.",
         })
         return
+      }
+
+      try {
+        const result = await submitStepToServer({
+          stepId: currentStepData.id,
+          patientId: Number(patientId),
+          visitId,
+          payload: { ...submissionPayload, persistVitals: false },
+        })
+
+        if (result.visitId && result.visitId !== visitId) {
+          setVisitId(result.visitId)
+        }
+
+        if (result.warnings.length) {
+          result.warnings.forEach((message) =>
+            toast({ title: "Partial success", description: message, variant: "default" }),
+          )
+        }
+      } catch (error) {
+        const description = error instanceof Error ? error.message : String(error)
+        toast({ title: "Save failed", description, variant: "destructive" })
+        throw error
       }
 
       updatedSteps[currentStep] = {
@@ -857,16 +909,19 @@ export function ClinicalWorkflow({
             })
           }
         }
+      } else {
+        onWorkflowComplete()
       }
 
       setWorkflowSteps(updatedSteps)
-      if (currentStep >= updatedSteps.length - 1) onWorkflowComplete()
+      await processOfflineQueue()
     }
 
     doComplete()
       .catch((error) => {
-        const description = error instanceof Error ? error.message : String(error)
-        toast({ title: "Unexpected error", description, variant: "destructive" })
+        if (error instanceof Error) {
+          console.warn("Workflow completion error", error)
+        }
       })
       .finally(() => {
         setCompletingStep(false)
@@ -895,6 +950,278 @@ export function ClinicalWorkflow({
   const updateClinicalNotes = (field: keyof ClinicalNotes, value: string) => {
     setClinicalNotes((prev) => ({ ...prev, [field]: value }))
   }
+
+  const queueOfflineSubmission = useCallback(
+    (entry: Omit<QueuedWorkflowSubmission, "id" | "createdAt">) => {
+      const existing = readOfflineWorkflowQueue()
+      const newEntry: QueuedWorkflowSubmission = {
+        id: `offline-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        createdAt: Date.now(),
+        patientId: entry.patientId,
+        visitId: entry.visitId,
+        stepId: entry.stepId,
+        username: entry.username,
+        payload: JSON.parse(JSON.stringify(entry.payload)) as WorkflowSubmissionPayload,
+      }
+      writeOfflineWorkflowQueue([...existing, newEntry])
+      return newEntry
+    },
+    [],
+  )
+
+  const submitStepToServer = useCallback(
+    async ({
+      stepId,
+      patientId: numericPatientId,
+      visitId: providedVisitId,
+      payload,
+    }: {
+      stepId: WorkflowStep["id"]
+      patientId: number
+      visitId?: number | null
+      payload: WorkflowSubmissionPayload
+    }): Promise<{ visitId: number; warnings: string[] }> => {
+      let workingVisitId = providedVisitId ?? null
+
+      if (!workingVisitId) {
+        const created = await apiService.createVisit(numericPatientId, {})
+        if (!created.success || !created.data?.visit_id) {
+          throw new Error(created.error || "Unable to create a visit record.")
+        }
+        workingVisitId = created.data.visit_id
+      }
+
+      const warnings: string[] = []
+      const shouldPersistVitals = !!payload.persistVitals && stepId === "nursing"
+
+      if (shouldPersistVitals) {
+        const numberOrUndefined = (value?: string) => {
+          if (!value || value.trim() === "") return undefined
+          const parsed = Number(value)
+          return Number.isNaN(parsed) ? undefined : parsed
+        }
+
+        const vitalsPayload = {
+          systolic_bp: numberOrUndefined(payload.vitalSigns.bloodPressureSystolic),
+          diastolic_bp: numberOrUndefined(payload.vitalSigns.bloodPressureDiastolic),
+          heart_rate: numberOrUndefined(payload.vitalSigns.pulse),
+          temperature: numberOrUndefined(payload.vitalSigns.temperature),
+          weight: numberOrUndefined(payload.vitalSigns.weight),
+          height: numberOrUndefined(payload.vitalSigns.height),
+          oxygen_saturation: numberOrUndefined(payload.vitalSigns.oxygenSaturation),
+          respiratory_rate: numberOrUndefined(payload.vitalSigns.respiratoryRate),
+          nursing_notes: payload.clinicalNotes.nursingAssessment?.trim() || undefined,
+        }
+
+        const hasVitals = Object.values(vitalsPayload).some((value) => value !== undefined && value !== "")
+        if (hasVitals) {
+          const vitalsResponse = await apiService.addVitalSigns(workingVisitId, vitalsPayload)
+          if (!vitalsResponse.success) {
+            warnings.push(vitalsResponse.error || "Failed to sync vital signs.")
+          }
+        }
+      }
+
+      if (stepId === "nursing") {
+        const content = payload.clinicalNotes.nursingAssessment?.trim() || "Nursing assessment completed."
+        if (content) {
+          const response = await apiService.createClinicalNote(workingVisitId, {
+            note_type: "Assessment",
+            content,
+            follow_up_required: payload.clinicalNotes.followUpRequired || false,
+            follow_up_date:
+              payload.clinicalNotes.followUpRequired && payload.clinicalNotes.followUpDate
+                ? payload.clinicalNotes.followUpDate
+                : undefined,
+          })
+          if (!response.success) {
+            warnings.push(response.error || "Failed to sync nursing assessment note.")
+          }
+        }
+      }
+
+      if (stepId === "doctor") {
+        const parseList = (input?: string) =>
+          (input || "")
+            .split(",")
+            .map((value) => value.trim())
+            .filter((value) => value.length > 0)
+
+        const icd10String = payload.clinicalNotes.icd10Codes
+        const diagSegments = [] as string[]
+        if (icd10String) diagSegments.push(`ICD-10: ${icd10String}`)
+        if (payload.clinicalNotes.doctorDiagnosis)
+          diagSegments.push(`Diagnosis: ${payload.clinicalNotes.doctorDiagnosis}`)
+        const diagContent = diagSegments.join("\n")
+
+        const treatmentSegments = [] as string[]
+        if (payload.clinicalNotes.treatmentPlan)
+          treatmentSegments.push(`Treatment: ${payload.clinicalNotes.treatmentPlan}`)
+        if (payload.medications.length > 0) {
+          treatmentSegments.push(
+            `Medications: ${payload.medications
+              .map((m) => `${m.name} ${m.dosage} ${m.frequency} for ${m.duration}`)
+              .join(", ")}`,
+          )
+        }
+        if (payload.investigations.length > 0) {
+          treatmentSegments.push(`Investigations: ${payload.investigations.join(", ")}`)
+        }
+        if (payload.clinicalNotes.referrals) {
+          treatmentSegments.push(`Referrals: ${payload.clinicalNotes.referrals}`)
+        }
+        if (payload.clinicalNotes.followUpInstructions) {
+          treatmentSegments.push(`Follow-up instructions: ${payload.clinicalNotes.followUpInstructions}`)
+        }
+        const treatContent = treatmentSegments.join("\n")
+
+        if (!diagContent && !treatContent) {
+          throw new Error("Add a diagnosis and/or treatment before saving.")
+        }
+
+        if (diagContent) {
+          const response = await apiService.createClinicalNote(workingVisitId, {
+            note_type: "Diagnosis",
+            content: diagContent,
+            icd10_codes: parseList(icd10String),
+            follow_up_required: payload.clinicalNotes.followUpRequired || false,
+            follow_up_date:
+              payload.clinicalNotes.followUpRequired && payload.clinicalNotes.followUpDate
+                ? payload.clinicalNotes.followUpDate
+                : undefined,
+          })
+          if (!response.success) {
+            throw new Error(response.error || "Failed to sync diagnosis note.")
+          }
+        }
+
+        if (treatContent) {
+          const response = await apiService.createClinicalNote(workingVisitId, {
+            note_type: "Treatment",
+            content: treatContent,
+            medications_prescribed: payload.medications.map((m) => `${m.name} ${m.dosage} ${m.frequency}`),
+            follow_up_required: payload.clinicalNotes.followUpRequired || false,
+            follow_up_date:
+              payload.clinicalNotes.followUpRequired && payload.clinicalNotes.followUpDate
+                ? payload.clinicalNotes.followUpDate
+                : undefined,
+          })
+          if (!response.success) {
+            throw new Error(response.error || "Failed to sync treatment note.")
+          }
+        }
+      }
+
+      if (stepId === "counseling") {
+        const content =
+          [
+            payload.clinicalNotes.mentalHealthScreening &&
+              `Screening: ${payload.clinicalNotes.mentalHealthScreening}`,
+            payload.clinicalNotes.counselingNotes && `Notes: ${payload.clinicalNotes.counselingNotes}`,
+          ]
+            .filter(Boolean)
+            .join("\n") || "Counseling session completed."
+
+        const response = await apiService.createClinicalNote(workingVisitId, {
+          note_type: "Counseling",
+          content,
+          follow_up_required: payload.clinicalNotes.followUpRequired || false,
+          follow_up_date:
+            payload.clinicalNotes.followUpRequired && payload.clinicalNotes.followUpDate
+              ? payload.clinicalNotes.followUpDate
+              : undefined,
+        })
+        if (!response.success) {
+          throw new Error(response.error || "Failed to sync counseling note.")
+        }
+      }
+
+      if (stepId === "closure") {
+        const content = payload.clinicalNotes.finalNotes?.trim() || "File closed."
+        const response = await apiService.createClinicalNote(workingVisitId, {
+          note_type: "Closure",
+          content,
+        })
+        if (!response.success) {
+          throw new Error(response.error || "Failed to sync closure note.")
+        }
+      }
+
+      return { visitId: workingVisitId, warnings }
+    },
+    [],
+  )
+
+  const processOfflineQueue = useCallback(async () => {
+    if (!offlineManager.getConnectionStatus?.()) return
+    if (processingOfflineQueueRef.current) return
+    processingOfflineQueueRef.current = true
+
+    try {
+      const queued = readOfflineWorkflowQueue()
+      if (!queued.length) return
+
+      const visitIdMap = new Map<number, number>()
+      const remaining: QueuedWorkflowSubmission[] = []
+      let syncedAny = false
+
+      const ordered = [...queued].sort((a, b) => a.createdAt - b.createdAt)
+
+      for (const item of ordered) {
+        const targetPatientId = Number(item.patientId)
+        const mappedVisitId = visitIdMap.get(targetPatientId) ?? item.visitId ?? null
+        try {
+          const result = await submitStepToServer({
+            stepId: item.stepId,
+            patientId: targetPatientId,
+            visitId: mappedVisitId,
+            payload: item.payload,
+          })
+
+          visitIdMap.set(targetPatientId, result.visitId)
+          if (targetPatientId === Number(patientId) && (!visitId || visitId !== result.visitId)) {
+            setVisitId(result.visitId)
+          }
+          if (result.warnings.length) {
+            result.warnings.forEach((message) =>
+              toast({ title: "Sync warning", description: message, variant: "destructive" }),
+            )
+          }
+          syncedAny = true
+        } catch (error) {
+          console.warn("Failed to replay offline workflow submission", error)
+          remaining.push(item)
+        }
+      }
+
+      writeOfflineWorkflowQueue(remaining)
+
+      if (syncedAny) {
+        toast({
+          title: "Offline workflow synced",
+          description: "Pending workflow steps were sent to the server.",
+        })
+        await syncFromServerRef.current?.()
+      }
+    } finally {
+      processingOfflineQueueRef.current = false
+    }
+  }, [patientId, submitStepToServer, toast, visitId])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const handleOnline = () => {
+      processOfflineQueue().catch((error) => console.warn("Failed to process offline queue", error))
+    }
+
+    window.addEventListener("online", handleOnline)
+    processOfflineQueue().catch((error) => console.warn("Failed to process offline queue", error))
+
+    return () => {
+      window.removeEventListener("online", handleOnline)
+    }
+  }, [processOfflineQueue])
 
   // Enhanced doctor consultation functions
   const addQuickMedication = (preset: string) => {
@@ -943,8 +1270,13 @@ export function ClinicalWorkflow({
         }
         break
       case "medication":
-        const [name, ...rest] = suggestion.text.split(" ")
+        const [name] = suggestion.text.split(" ")
         addQuickMedication(name.toLowerCase())
+        break
+      case "investigation":
+        if (suggestion.text && !investigations.includes(suggestion.text)) {
+          setInvestigations((prev) => [...prev, suggestion.text])
+        }
         break
     }
     setSmartSuggestions([])
@@ -1097,6 +1429,31 @@ export function ClinicalWorkflow({
           }
         } catch {}
 
+        let importedIcd10Codes: string[] = []
+        try {
+          const diagnosisNode = (notes || []).find((n: any) => n.note_type === "Diagnosis")
+          if (diagnosisNode) {
+            const source = diagnosisNode.icd10_codes ?? diagnosisNode.content
+            if (Array.isArray(source)) {
+              importedIcd10Codes = source.filter((code: any) => typeof code === "string" && code.trim().length > 0)
+            } else if (typeof source === "string" && source.trim().length > 0) {
+              try {
+                const parsed = JSON.parse(source)
+                if (Array.isArray(parsed)) {
+                  importedIcd10Codes = parsed.filter((code: any) => typeof code === "string" && code.trim().length > 0)
+                }
+              } catch {
+                const extracted = source.match(/ICD-10\s*:\s*([^\n]+)/i)
+                const raw = extracted ? extracted[1] : source
+                importedIcd10Codes = raw
+                  .split(/[,;\n]/)
+                  .map((value) => value.trim())
+                  .filter((value) => value.length > 0 && /^[A-Za-z0-9.]+$/.test(value))
+              }
+            }
+          }
+        } catch {}
+
         if (latestAssessment || latestDiagnosis || latestTreatment || latestCounseling || prescriptionsText) {
           setClinicalNotes((prev) => ({
             ...prev,
@@ -1105,10 +1462,20 @@ export function ClinicalWorkflow({
             treatmentPlan: prev.treatmentPlan || latestTreatment || prev.treatmentPlan,
             prescriptions: prev.prescriptions || prescriptionsText || prev.prescriptions,
             counselingNotes: prev.counselingNotes || latestCounseling || prev.counselingNotes,
+            icd10Codes:
+              prev.icd10Codes || (importedIcd10Codes.length > 0 ? importedIcd10Codes.join(", ") : prev.icd10Codes),
           }))
+        }
+
+        if (importedIcd10Codes.length > 0) {
+          setSelectedICD10Codes((prev) => {
+            if (prev.length > 0) return prev
+            return importedIcd10Codes.map((code) => ({ code, description: code }))
+          })
         }
       }
     }
+    syncFromServerRef.current = syncFromServer
     syncFromServer()
   }, [patientId, userRole])
 
@@ -2206,12 +2573,8 @@ export function ClinicalWorkflow({
                             <Label className="text-xs">Instructions</Label>
                             <Input
                               placeholder="Follow-up instructions"
-                              onChange={(e) =>
-                                updateClinicalNotes(
-                                  "treatmentPlan",
-                                  clinicalNotes.treatmentPlan + `\nFollow-up: ${e.target.value}`,
-                                )
-                              }
+                              value={clinicalNotes.followUpInstructions || ""}
+                              onChange={(e) => updateClinicalNotes("followUpInstructions", e.target.value)}
                             />
                           </div>
                         </div>
@@ -2286,6 +2649,11 @@ export function ClinicalWorkflow({
                               ? `Scheduled for ${clinicalNotes.followUpDate}`
                               : "Date to be arranged"}
                           </p>
+                          {clinicalNotes.followUpInstructions && (
+                            <p className="text-xs text-muted-foreground">
+                              Instructions: {clinicalNotes.followUpInstructions}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
