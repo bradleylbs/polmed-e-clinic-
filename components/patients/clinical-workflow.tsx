@@ -271,24 +271,7 @@ const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
       "Assessment: Dental caries, gingivitis, periodontitis, malocclusion",
       "Treatment: Scaling, fillings, extractions, oral hygiene counseling",
     ].join("\n"),
-    guidance: [
-      {
-        title: "Chief Complaint",
-        items: ['"Toothache, bleeding gums, routine check-up"'],
-      },
-      {
-        title: "Examination",
-        items: ["Dentition status", "Caries (tooth numbers)", "Gingival health", "Occlusion"],
-      },
-      {
-        title: "Assessment",
-        items: ["Dental caries", "Gingivitis", "Periodontitis", "Malocclusion"],
-      },
-      {
-        title: "Treatment",
-        items: ["Scaling", "Fillings", "Extractions", "Oral hygiene counseling"],
-      },
-    ],
+    guidance: [],
     quickSnippets: [
       {
         label: "Document multiple caries",
@@ -347,24 +330,7 @@ const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
       "Assessment: Myopia, hyperopia, astigmatism, presbyopia, glaucoma suspect",
       "Treatment: Spectacle prescription, referral to ophthalmology",
     ].join("\n"),
-    guidance: [
-      {
-        title: "Chief Complaint",
-        items: ['"Blurred vision, eye strain, routine eye test"'],
-      },
-      {
-        title: "Examination",
-        items: ["Visual acuity (6/6, 6/9, etc.)", "Refraction", "IOP", "Fundoscopy findings"],
-      },
-      {
-        title: "Assessment",
-        items: ["Myopia", "Hyperopia", "Astigmatism", "Presbyopia", "Glaucoma suspect"],
-      },
-      {
-        title: "Treatment",
-        items: ["Spectacle prescription", "Referral to ophthalmology"],
-      },
-    ],
+    guidance: [],
     quickSnippets: [
       {
         label: "Refractive error corrected",
@@ -419,24 +385,7 @@ const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
       "Assessment: Conductive/sensorineural hearing loss (mild/moderate/severe)",
       "Treatment: Hearing aid recommendation, ear wax removal, ENT referral",
     ].join("\n"),
-    guidance: [
-      {
-        title: "Chief Complaint",
-        items: ['"Hearing loss, tinnitus, ear fullness"'],
-      },
-      {
-        title: "Examination",
-        items: ["Otoscopy findings", "Pure tone audiometry results", "Tympanometry"],
-      },
-      {
-        title: "Assessment",
-        items: ["Conductive hearing loss", "Sensorineural hearing loss", "Mixed loss"],
-      },
-      {
-        title: "Treatment",
-        items: ["Hearing aid recommendation", "Ear wax removal", "ENT referral"],
-      },
-    ],
+    guidance: [],
     quickSnippets: [
       {
         label: "Bilateral hearing loss",
@@ -490,24 +439,7 @@ const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
       "Assessment: Dysmenorrhea, PCOS, fibroids, normal pregnancy",
       "Treatment: Contraception counseling, hormonal therapy, prenatal care",
     ].join("\n"),
-    guidance: [
-      {
-        title: "Chief Complaint",
-        items: ['"Menstrual irregularity, pelvic pain, contraception, pregnancy"'],
-      },
-      {
-        title: "Examination",
-        items: ["Menstrual history (LMP, cycle)", "Pelvic exam", "Pap smear", "Pregnancy test"],
-      },
-      {
-        title: "Assessment",
-        items: ["Dysmenorrhea", "PCOS", "Fibroids", "Normal pregnancy"],
-      },
-      {
-        title: "Treatment",
-        items: ["Contraception counseling", "Hormonal therapy", "Prenatal care"],
-      },
-    ],
+    guidance: [],
     quickSnippets: [
       {
         label: "Antenatal visit",
@@ -561,24 +493,7 @@ const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
       "Assessment: Normal intrauterine pregnancy, abdominal pathology",
       "Treatment: Report findings, obstetric follow-up, surgical referral",
     ].join("\n"),
-    guidance: [
-      {
-        title: "Chief Complaint",
-        items: ['"Pregnancy dating, abdominal pain, organ assessment"'],
-      },
-      {
-        title: "Examination",
-        items: ["Scan type", "Gestational age", "Fetal biometry", "Organ visualization"],
-      },
-      {
-        title: "Assessment",
-        items: ["Normal intrauterine pregnancy", "Abdominal pathology"],
-      },
-      {
-        title: "Treatment",
-        items: ["Report findings", "Obstetric follow-up", "Surgical referral if needed"],
-      },
-    ],
+    guidance: [],
     quickSnippets: [
       {
         label: "Normal obstetric scan",
@@ -633,24 +548,7 @@ const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
       "Assessment: Depression (mild/moderate/severe), anxiety disorder, PTSD",
       "Treatment: CBT initiated, psychotherapy sessions, psychiatric referral",
     ].join("\n"),
-    guidance: [
-      {
-        title: "Chief Complaint",
-        items: ['"Depression, anxiety, behavioral issues, trauma"'],
-      },
-      {
-        title: "Examination",
-        items: ["Mental status exam", "Appearance", "Mood", "Thought content", "Cognition"],
-      },
-      {
-        title: "Assessment",
-        items: ["Depression (mild/moderate/severe)", "Anxiety disorder", "PTSD"],
-      },
-      {
-        title: "Treatment",
-        items: ["CBT initiated", "Psychotherapy sessions", "Psychiatric referral"],
-      },
-    ],
+    guidance: [],
     quickSnippets: [
       {
         label: "Anxiety assessment",
