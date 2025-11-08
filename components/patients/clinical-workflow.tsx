@@ -1065,6 +1065,12 @@ export function ClinicalWorkflow({
   username,
   onWorkflowComplete,
 }: ClinicalWorkflowProps) {
+  const normalizedUserRole = useMemo(() => normalizeRoleValue(userRole), [userRole])
+  const canEditSpecialistSelection = useMemo(
+    () => ["administrator", "doctor", "nurse", "clerk"].includes(normalizedUserRole),
+    [normalizedUserRole],
+  )
+  const isSpecialistRole = useMemo(() => SPECIALIST_ROLE_KEYS.has(normalizedUserRole), [normalizedUserRole])
   const [currentStep, setCurrentStep] = useState(0)
   const { toast } = useToast()
   const [savingVitals, setSavingVitals] = useState(false)
@@ -1208,7 +1214,9 @@ export function ClinicalWorkflow({
   }, [selectedSpecialists])
 
   useEffect(() => {
-    if (!visitId) return
+    if (!visitId || !canEditSpecialistSelection) {
+      return
+    }
 
     const orderedSelection = orderSpecialists(selectedSpecialists, specialistCatalog)
     const lastSynced = lastSyncedSpecialistsRef.current
@@ -1262,11 +1270,7 @@ export function ClinicalWorkflow({
     return () => {
       isActive = false
     }
-  }, [visitId, selectedSpecialists, specialistCatalog, toast])
-
-  const normalizedUserRole = normalizeRoleValue(userRole)
-  const canEditSpecialistSelection = ["administrator", "doctor", "nurse", "clerk"].includes(normalizedUserRole)
-  const isSpecialistRole = SPECIALIST_ROLE_KEYS.has(normalizedUserRole)
+  }, [visitId, selectedSpecialists, specialistCatalog, toast, canEditSpecialistSelection])
 
   const displayWorkflowSteps = useMemo(() => {
     const canViewAllSpecialists = normalizedUserRole === "administrator"
