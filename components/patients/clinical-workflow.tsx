@@ -878,7 +878,6 @@ const rolesAlign = (stepRole: string, activeRole: string) => {
   if (normalizedActive === normalizedStep) return true
   if (normalizedActive === "social_work" && normalizedStep === "social_worker") return true
   if (normalizedActive === "social_worker" && normalizedStep === "social_work") return true
-  if (normalizedActive === "doctor" && SPECIALIST_ROLE_KEYS.has(normalizedStep)) return true
   return false
 }
 
