@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -8,7 +8,11 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, Eye, Edit, UserPlus, Calendar, Phone, Mail, Activity, Clock, CheckCircle, Loader2 } from "lucide-react"
-import { apiService, type Patient } from "@/lib/api-service"
+import {
+  apiService,
+  type Patient,
+  type SpecialistAssignmentsSummary,
+} from "@/lib/api-service"
 import { offlineManager } from "@/lib/offline-manager"
 import { useToast } from "@/hooks/use-toast"
 
@@ -18,51 +22,131 @@ interface PatientListProps {
   onNewPatient: () => void
 }
 
+const SPECIALIST_ROLES = new Set([
+  "doctor",
+  "dentist",
+  "optometrist",
+  "audiologist",
+  "gynaecologist",
+  "ultrasound",
+  "psychologist",
+])
+
+type PatientListItem = Patient & {
+  visit_id?: number
+  specialist_type?: string | null
+  assignmentCreatedAt?: string | null
+}
+
 export function PatientList({ userRole, onPatientSelect, onNewPatient }: PatientListProps) {
-  const [patients, setPatients] = useState<Patient[]>([])
+  const normalizedRoleFromProp = String(userRole || "").toLowerCase().replace(/\s+/g, "_")
+  const isSpecialistRole = SPECIALIST_ROLES.has(normalizedRoleFromProp)
+
+  const [patients, setPatients] = useState<PatientListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [statusFilter, setStatusFilter] = useState<string>(() => (isSpecialistRole ? "pending" : "all"))
   const [memberFilter, setMemberFilter] = useState<string>("all")
+  const [assignmentSummary, setAssignmentSummary] = useState<SpecialistAssignmentsSummary | null>(
+    isSpecialistRole
+      ? {
+          total: 0,
+          pending: 0,
+          completed: 0,
+        }
+      : null,
+  )
   const { toast } = useToast()
 
-  const normalizedRole = String(userRole || "").toLowerCase().replace(/\s+/g, "_")
+  const normalizedRole = normalizedRoleFromProp
+  const isSpecialistView = isSpecialistRole
   const canCreatePatient = normalizedRole === "clerk"
 
-  useEffect(() => {
-    fetchPatients()
-  }, [])
-
-  const fetchPatients = async () => {
+  const fetchPatients = useCallback(async () => {
     try {
       setLoading(true)
-      let patientsData: any[] = []
-      if (!offlineManager.getConnectionStatus()) {
-        const data = await offlineManager.getData("patients")
-        patientsData = Array.isArray(data) ? data : data ? [data] : []
-      } else {
-        const response = await apiService.getPatients()
+      if (isSpecialistView) {
+        if (!offlineManager.getConnectionStatus()) {
+          setPatients([])
+          setAssignmentSummary({ total: 0, pending: 0, completed: 0 })
+          toast({
+            title: "Offline",
+            description: "Specialist assignments require an online connection.",
+            variant: "destructive",
+          })
+          return
+        }
+
+        const statusParam = statusFilter !== "all" ? (statusFilter as "pending" | "completed") : undefined
+        const response = await apiService.getMySpecialistAssignments(
+          statusParam ? { status: statusParam } : undefined,
+        )
+
         if (response.success && response.data) {
-          patientsData = response.data as any[]
+          const { assignments, summary: apiSummary } = response.data
+          const normalizedAssignments: PatientListItem[] = (assignments ?? []).map((assignment) => ({
+            id: assignment.patient_id,
+            full_name: assignment.patient_name || "Unknown",
+            medical_aid_number: assignment.medical_aid_number || "",
+            physical_address: assignment.location || "",
+            telephone_number: assignment.phone_number || "",
+            email: "",
+            status: assignment.status,
+            created_at: assignment.created_at || undefined,
+            visit_id: assignment.visit_id,
+            specialist_type: assignment.specialist_type,
+            assignmentCreatedAt: assignment.created_at ?? null,
+          }))
+
+          setPatients(normalizedAssignments)
+          const pendingCount = normalizedAssignments.filter((entry) => entry.status === "pending").length
+          const completedCount = normalizedAssignments.filter((entry) => entry.status === "completed").length
+          const fallbackSummary: SpecialistAssignmentsSummary =
+            apiSummary ?? {
+              total: normalizedAssignments.length,
+              pending: pendingCount,
+              completed: completedCount,
+            }
+          setAssignmentSummary(fallbackSummary)
         } else {
+          setPatients([])
+          setAssignmentSummary({ total: 0, pending: 0, completed: 0 })
           toast({
             title: "Error",
-            description: response.error || "Failed to fetch patients",
+            description: response.error || "Failed to load specialist assignments",
             variant: "destructive",
           })
         }
+      } else {
+        let patientsData: any[] = []
+        if (!offlineManager.getConnectionStatus()) {
+          const data = await offlineManager.getData("patients")
+          patientsData = Array.isArray(data) ? data : data ? [data] : []
+        } else {
+          const response = await apiService.getPatients()
+          if (response.success && response.data) {
+            patientsData = response.data as any[]
+          } else {
+            toast({
+              title: "Error",
+              description: response.error || "Failed to fetch patients",
+              variant: "destructive",
+            })
+          }
+        }
+        const normalized = patientsData.map((p) => ({
+          id: p.id,
+          full_name: [p.first_name, p.last_name].filter(Boolean).join(" ") || p.full_name || "Unknown",
+          medical_aid_number: p.medical_aid_number || "",
+          physical_address: p.physical_address || "",
+          telephone_number: p.phone_number || p.telephone_number || "",
+          email: p.email || "",
+          status: p.status || "registered",
+          created_at: p.created_at,
+        }))
+        setPatients(normalized as PatientListItem[])
+        setAssignmentSummary(null)
       }
-      const normalized = patientsData.map((p) => ({
-        id: p.id,
-        full_name: [p.first_name, p.last_name].filter(Boolean).join(" ") || p.full_name || "Unknown",
-        medical_aid_number: p.medical_aid_number || "",
-        physical_address: p.physical_address || "",
-        telephone_number: p.phone_number || p.telephone_number || "",
-        email: p.email || "",
-        status: p.status || "registered",
-        created_at: p.created_at,
-      }))
-      setPatients(normalized as Patient[])
     } catch (error) {
       toast({
         title: "Error",
@@ -72,7 +156,26 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
     } finally {
       setLoading(false)
     }
-  }
+  }, [isSpecialistView, statusFilter, toast])
+
+  useEffect(() => {
+    fetchPatients()
+  }, [fetchPatients])
+
+  const statusOptions = isSpecialistView
+    ? [
+        { value: "all", label: "All Assignments" },
+        { value: "pending", label: "Pending" },
+        { value: "completed", label: "Completed" },
+      ]
+    : [
+        { value: "all", label: "All Statuses" },
+        { value: "registered", label: "Registered" },
+        { value: "in-progress", label: "In Progress" },
+        { value: "completed", label: "Completed" },
+      ]
+
+  const statusPlaceholder = isSpecialistView ? "Filter assignments" : "Filter by status"
 
   const filteredPatients = patients.filter((patient) => {
     const name = (patient.full_name || "").toLowerCase()
@@ -116,6 +219,13 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
             Completed
           </Badge>
         )
+      case "pending":
+        return (
+          <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+            <Clock className="w-3 h-3 mr-1" />
+            Pending
+          </Badge>
+        )
       default:
         return <Badge variant="outline">{status}</Badge>
     }
@@ -142,7 +252,7 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between p-6 rounded-2xl bg-gradient-to-br from-primary/5 via-primary/3 to-transparent border border-primary/10">
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between p-6 rounded-2xl bg-linear-to-br from-primary/5 via-primary/3 to-transparent border border-primary/10">
         <div>
           <h2 className="text-3xl font-bold text-foreground mb-2">Patient Management</h2>
           <p className="text-muted-foreground">Manage patient records and clinical workflows</p>
@@ -157,6 +267,23 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
           </Button>
         )}
       </div>
+
+      {isSpecialistView && assignmentSummary && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="p-4 rounded-xl border border-primary/10 bg-primary/5">
+            <p className="text-sm text-muted-foreground">Total Assignments</p>
+            <p className="text-2xl font-semibold text-primary">{assignmentSummary.total}</p>
+          </div>
+          <div className="p-4 rounded-xl border border-amber-100 bg-amber-50/70">
+            <p className="text-sm text-muted-foreground">Pending</p>
+            <p className="text-2xl font-semibold text-amber-600">{assignmentSummary.pending}</p>
+          </div>
+          <div className="p-4 rounded-xl border border-emerald-100 bg-emerald-50/70">
+            <p className="text-sm text-muted-foreground">Completed</p>
+            <p className="text-2xl font-semibold text-emerald-600">{assignmentSummary.completed}</p>
+          </div>
+        </div>
+      )}
 
       <Card className="border-primary/10 shadow-lg hover:shadow-xl transition-shadow">
         <CardContent className="pt-6">
@@ -175,13 +302,14 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
 
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full sm:w-48 border-primary/20">
-                <SelectValue placeholder="Filter by status" />
+                <SelectValue placeholder={statusPlaceholder} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="registered">Registered</SelectItem>
-                <SelectItem value="in-progress">In Progress</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
+                {statusOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
@@ -223,7 +351,7 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-4 flex-1">
                     <Avatar className="w-14 h-14 border-2 border-primary/20 shadow-md">
-                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-lg font-semibold">
+                      <AvatarFallback className="bg-linear-to-br from-primary to-primary/70 text-primary-foreground text-lg font-semibold">
                         {getInitials(patient.full_name)}
                       </AvatarFallback>
                     </Avatar>
@@ -264,6 +392,24 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
                           </div>
                         )}
                       </div>
+
+                      {isSpecialistView && (
+                        <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-muted-foreground">
+                          {patient.specialist_type && (
+                            <Badge variant="outline" className="bg-primary/5 border-primary/20 capitalize">
+                              {patient.specialist_type.replace(/_/g, " ")}
+                            </Badge>
+                          )}
+                          {patient.visit_id && (
+                            <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
+                              Visit #{patient.visit_id}
+                            </Badge>
+                          )}
+                          {patient.assignmentCreatedAt && (
+                            <span>Assigned {new Date(patient.assignmentCreatedAt).toLocaleString()}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 

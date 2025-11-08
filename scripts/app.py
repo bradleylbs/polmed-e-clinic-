@@ -3051,6 +3051,116 @@ def get_visit_workflow_status(visit_id: int):
         logger.error(f"Get workflow status error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
+
+@app.route('/api/specialists/assignments', methods=['GET'])
+@token_required
+@role_required(list(SPECIALIST_ROLE_NAMES))
+def get_my_specialist_assignments():
+    """Return visits queue for the logged-in specialist."""
+    try:
+        normalized_role = str(request.current_user.get('role_name', '')).strip().lower().replace(' ', '_')
+        specialist_key = None
+        for key, definition in SPECIALIST_DEFINITIONS.items():
+            if definition['role'] == normalized_role:
+                specialist_key = key
+                break
+
+        if not specialist_key:
+            empty_payload = {'assignments': [], 'summary': {'total': 0, 'pending': 0, 'completed': 0}}
+            return jsonify({'success': True, 'data': empty_payload}), 200
+
+        status_filter = (request.args.get('status') or 'pending').strip().lower()
+        if status_filter not in {'pending', 'completed', 'all'}:
+            status_filter = 'pending'
+
+        try:
+            limit = int(request.args.get('limit', 50))
+        except (TypeError, ValueError):
+            limit = 50
+        limit = max(1, min(limit, 200))
+
+        params: List[Any] = [specialist_key]
+        where_clauses = ["vs.required = 1", "vs.specialist_type = %s"]
+
+        patient_id_value = request.args.get('patient_id')
+        if patient_id_value:
+            where_clauses.append("pv.patient_id = %s")
+            params.append(patient_id_value)
+
+        if status_filter == 'pending':
+            where_clauses.append("vs.completed_at IS NULL")
+        elif status_filter == 'completed':
+            where_clauses.append("vs.completed_at IS NOT NULL")
+
+        query = f"""
+        SELECT
+            vs.visit_id,
+            vs.specialist_type,
+            vs.required,
+            vs.completed_at,
+            vs.created_at,
+            vs.updated_at,
+            vs.notes,
+            pv.patient_id,
+            pv.visit_date,
+            pv.visit_time,
+            pv.location,
+            pv.route_id,
+            pv.current_stage_id,
+            p.first_name,
+            p.last_name,
+            p.phone_number,
+            p.medical_aid_number,
+            p.id_number
+        FROM visit_specialists vs
+        JOIN patient_visits pv ON pv.id = vs.visit_id
+        JOIN patients p ON p.id = pv.patient_id
+        WHERE {' AND '.join(where_clauses)}
+        ORDER BY
+            CASE WHEN vs.completed_at IS NULL THEN 0 ELSE 1 END,
+            vs.created_at DESC
+        LIMIT %s
+        """
+        params.append(limit)
+
+        rows = DatabaseManager.execute_query(query, tuple(params), fetch=True) or []
+        payload = []
+        for row in rows:
+            patient_name = (
+                f"{(row.get('first_name') or '').strip()} {(row.get('last_name') or '').strip()}".strip()
+            ) or None
+            payload.append({
+                'visit_id': row.get('visit_id'),
+                'patient_id': row.get('patient_id'),
+                'specialist_type': row.get('specialist_type'),
+                'required': bool(row.get('required')),
+                'completed_at': _to_jsonable(row.get('completed_at')),
+                'created_at': _to_jsonable(row.get('created_at')),
+                'updated_at': _to_jsonable(row.get('updated_at')),
+                'notes': row.get('notes'),
+                'visit_date': _to_jsonable(row.get('visit_date')),
+                'visit_time': _to_jsonable(row.get('visit_time')),
+                'location': row.get('location'),
+                'route_id': row.get('route_id'),
+                'current_stage_id': row.get('current_stage_id'),
+                'patient_name': patient_name,
+                'phone_number': row.get('phone_number'),
+                'medical_aid_number': row.get('medical_aid_number'),
+                'id_number': row.get('id_number'),
+                'status': 'completed' if row.get('completed_at') else 'pending',
+            })
+
+        summary = {
+            'total': len(payload),
+            'pending': sum(1 for item in payload if item['status'] == 'pending'),
+            'completed': sum(1 for item in payload if item['status'] == 'completed'),
+        }
+
+        return jsonify({'success': True, 'data': {'assignments': payload, 'summary': summary}}), 200
+    except Exception as err:
+        logger.error(f"Failed to list specialist assignments: {err}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 # ============================================================================
 # REFERRAL MANAGEMENT
 # ============================================================================

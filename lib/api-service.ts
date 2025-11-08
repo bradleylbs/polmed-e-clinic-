@@ -389,6 +389,38 @@ export interface VisitSpecialistConfiguration {
   specialist_stages: string[]
 }
 
+export interface SpecialistAssignment {
+  visit_id: number
+  patient_id: number
+  specialist_type: string
+  required: boolean
+  status: "pending" | "completed"
+  created_at?: string
+  updated_at?: string
+  completed_at?: string | null
+  notes?: string | null
+  visit_date?: string | null
+  visit_time?: string | null
+  location?: string | null
+  route_id?: number | null
+  current_stage_id?: number | null
+  patient_name?: string | null
+  phone_number?: string | null
+  medical_aid_number?: string | null
+  id_number?: string | null
+}
+
+export interface SpecialistAssignmentsSummary {
+  total: number
+  pending: number
+  completed: number
+}
+
+export interface SpecialistAssignmentsResponse {
+  assignments: SpecialistAssignment[]
+  summary: SpecialistAssignmentsSummary
+}
+
 export interface CreateVisitRequest {
   visit_date?: string
   visit_time?: string
@@ -1165,6 +1197,27 @@ class ApiService {
       method: "PUT",
       body: JSON.stringify({ specialists }),
     })
+  }
+
+  async getMySpecialistAssignments(params?: {
+    status?: "pending" | "completed" | "all"
+    limit?: number
+    patientId?: number | string
+  }): Promise<ApiResponse<SpecialistAssignmentsResponse>> {
+    const query = new URLSearchParams()
+    if (params?.status) {
+      query.set("status", params.status)
+    }
+    if (typeof params?.limit === "number" && !Number.isNaN(params.limit)) {
+      query.set("limit", String(params.limit))
+    }
+    if (params?.patientId !== undefined && params.patientId !== null) {
+      query.set("patient_id", String(params.patientId))
+    }
+
+    const suffix = query.toString()
+    const path = suffix ? `/specialists/assignments?${suffix}` : "/specialists/assignments"
+    return this.request<SpecialistAssignmentsResponse>(path)
   }
 
   async getClinicalNotes(visitId: number): Promise<ApiResponse<ClinicalNote[]>> {
