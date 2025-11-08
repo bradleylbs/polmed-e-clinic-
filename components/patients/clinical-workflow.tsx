@@ -1213,11 +1213,8 @@ export function ClinicalWorkflow({
     const orderedSelection = orderSpecialists(selectedSpecialists, specialistCatalog)
     const lastSynced = lastSyncedSpecialistsRef.current
 
-    if (lastSynced === null) {
-      return
-    }
-
-    if (lastSynced && arraysEqual(lastSynced, orderedSelection)) {
+    const hasSyncedSnapshot = Array.isArray(lastSynced)
+    if (hasSyncedSnapshot && arraysEqual(lastSynced, orderedSelection)) {
       return
     }
 
@@ -2094,7 +2091,7 @@ export function ClinicalWorkflow({
           throw new Error(created.error || "Unable to create a visit record.")
         }
         workingVisitId = created.data.visit_id
-        lastSyncedSpecialistsRef.current = selectedSpecialists
+        lastSyncedSpecialistsRef.current = null
       }
 
       const warnings: string[] = []
