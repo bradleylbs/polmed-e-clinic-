@@ -1293,7 +1293,15 @@ export function ClinicalWorkflow({
     })
   }, [isSpecialistRole, normalizedUserRole, workflowSteps, userRole])
 
-  const activeStepId = workflowSteps[currentStep]?.id
+  const visibleStepIds = useMemo(() => new Set(displayWorkflowSteps.map((step) => step.id)), [displayWorkflowSteps])
+
+  const activeStepId = useMemo(() => {
+    const current = workflowSteps[currentStep]
+    if (current && visibleStepIds.has(current.id)) {
+      return current.id
+    }
+    return displayWorkflowSteps[0]?.id
+  }, [currentStep, displayWorkflowSteps, visibleStepIds, workflowSteps])
   const hasVisibleSteps = displayWorkflowSteps.length > 0
 
   const toggleSpecialistSelection = (specialistType: string) => {
@@ -1336,15 +1344,18 @@ export function ClinicalWorkflow({
 
   useEffect(() => {
     const current = workflowSteps[currentStep]
-    if (current && rolesAlign(current.role, userRole)) {
+    if (current && visibleStepIds.has(current.id)) {
       return
     }
 
-    const firstRoleMatch = workflowSteps.findIndex((step) => rolesAlign(step.role, userRole))
-    if (firstRoleMatch >= 0 && firstRoleMatch !== currentStep) {
-      setCurrentStep(firstRoleMatch)
+    const firstVisible = displayWorkflowSteps[0]
+    if (firstVisible) {
+      const targetIndex = workflowSteps.findIndex((step) => step.id === firstVisible.id)
+      if (targetIndex >= 0 && targetIndex !== currentStep) {
+        setCurrentStep(targetIndex)
+      }
     }
-  }, [workflowSteps, userRole, currentStep])
+  }, [currentStep, displayWorkflowSteps, visibleStepIds, workflowSteps])
 
   // Generate vital alerts for enhanced doctor interface
   const generateVitalAlerts = (): VitalAlert[] => {
@@ -2385,12 +2396,16 @@ export function ClinicalWorkflow({
 
   const selectWorkflowStep = useCallback(
     (stepId: string) => {
+      if (!visibleStepIds.has(stepId)) {
+        return
+      }
+
       const targetIndex = workflowSteps.findIndex((step) => step.id === stepId)
       if (targetIndex >= 0) {
         setCurrentStep(targetIndex)
       }
     },
-    [workflowSteps],
+    [visibleStepIds, workflowSteps],
   )
 
   const updateDocumentDraft = useCallback((key: string, patch: Partial<DocumentUploadDraft>) => {
