@@ -23,7 +23,6 @@ interface PatientListProps {
 }
 
 const SPECIALIST_ROLES = new Set([
-  "doctor",
   "dentist",
   "optometrist",
   "audiologist",
