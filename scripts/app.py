@@ -1936,7 +1936,7 @@ def create_patient_visit(patient_id: int):
 
 @app.route('/api/patients/<int:patient_id>/visits/latest', methods=['GET'])
 @token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'] + list(SPECIALIST_ROLE_NAMES))
 def get_latest_visit(patient_id: int):
     """Return the most recent visit for a patient"""
     try:
@@ -2061,7 +2061,7 @@ def add_vital_signs(visit_id: int):
 
 @app.route('/api/visits/<int:visit_id>/vital-signs', methods=['GET'])
 @token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'] + list(SPECIALIST_ROLE_NAMES))
 def get_visit_vitals(visit_id: int):
     try:
         summary = DatabaseManager.execute_query(
@@ -2123,7 +2123,7 @@ def get_visit_vitals(visit_id: int):
 
 @app.route('/api/visits/<int:visit_id>/clinical-notes', methods=['GET'])
 @token_required
-@role_required(['administrator', 'doctor', 'nurse', 'social_work', 'social_worker'])
+@role_required(['administrator', 'doctor', 'nurse', 'social_work', 'social_worker'] + list(SPECIALIST_ROLE_NAMES))
 def get_clinical_notes(visit_id: int):
     """Get clinical notes for a visit"""
     try:
@@ -3167,7 +3167,7 @@ def get_my_specialist_assignments():
 
 @app.route('/api/patients/<int:patient_id>/referrals', methods=['GET'])
 @token_required
-@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'] + list(SPECIALIST_ROLE_NAMES))
 def list_referrals(patient_id: int):
     """List referrals for a patient"""
     try:
