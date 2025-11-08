@@ -1275,11 +1275,23 @@ export function ClinicalWorkflow({
   const isSpecialistRole = SPECIALIST_ROLE_KEYS.has(normalizedUserRole)
 
   const displayWorkflowSteps = useMemo(() => {
-    if (!isSpecialistRole) {
-      return workflowSteps
-    }
-    return workflowSteps.filter((step) => rolesAlign(step.role, userRole))
-  }, [isSpecialistRole, workflowSteps, userRole])
+    const canViewAllSpecialists = normalizedUserRole === "administrator"
+
+    return workflowSteps.filter((step) => {
+      if (step.isSpecialist) {
+        if (canViewAllSpecialists) {
+          return true
+        }
+        return rolesAlign(step.role, userRole)
+      }
+
+      if (isSpecialistRole) {
+        return rolesAlign(step.role, userRole)
+      }
+
+      return true
+    })
+  }, [isSpecialistRole, normalizedUserRole, workflowSteps, userRole])
 
   const activeStepId = workflowSteps[currentStep]?.id
   const hasVisibleSteps = displayWorkflowSteps.length > 0
