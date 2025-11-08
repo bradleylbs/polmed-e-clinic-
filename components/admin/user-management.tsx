@@ -37,9 +37,21 @@ import {
   Calendar,
   MoreVertical,
   ChevronRight,
+  Ear,
 } from "lucide-react"
 
-type UserRole = "administrator" | "doctor" | "nurse" | "clerk" | "social_worker"
+type UserRole =
+  | "administrator"
+  | "doctor"
+  | "nurse"
+  | "clerk"
+  | "social_worker"
+  | "dentist"
+  | "optometrist"
+  | "audiologist"
+  | "gynaecologist"
+  | "ultrasound"
+  | "psychologist"
 type UserStatus = "active" | "pending" | "suspended" | "inactive"
 
 interface SystemUser {
@@ -71,7 +83,7 @@ const roleConfig = {
   administrator: {
     icon: Shield,
     label: "Administrator",
-    color: "bg-gradient-to-br from-primary to-primary/70",
+    color: "bg-linear-to-br from-primary to-primary/70",
     textColor: "text-primary",
     bgColor: "bg-primary/10",
     borderColor: "border-primary/20",
@@ -80,7 +92,7 @@ const roleConfig = {
   doctor: {
     icon: Stethoscope,
     label: "Doctor",
-    color: "bg-gradient-to-br from-blue-500 to-blue-600",
+    color: "bg-linear-to-br from-blue-500 to-blue-600",
     textColor: "text-blue-600",
     bgColor: "bg-blue-500/10",
     borderColor: "border-blue-500/20",
@@ -89,7 +101,7 @@ const roleConfig = {
   nurse: {
     icon: Heart,
     label: "Nurse",
-    color: "bg-gradient-to-br from-pink-500 to-pink-600",
+    color: "bg-linear-to-br from-pink-500 to-pink-600",
     textColor: "text-pink-600",
     bgColor: "bg-pink-500/10",
     borderColor: "border-pink-500/20",
@@ -98,7 +110,7 @@ const roleConfig = {
   clerk: {
     icon: UserCheck,
     label: "Clerk",
-    color: "bg-gradient-to-br from-slate-500 to-slate-600",
+    color: "bg-linear-to-br from-slate-500 to-slate-600",
     textColor: "text-slate-600",
     bgColor: "bg-slate-500/10",
     borderColor: "border-slate-500/20",
@@ -107,11 +119,65 @@ const roleConfig = {
   social_worker: {
     icon: Users,
     label: "Social Worker",
-    color: "bg-gradient-to-br from-purple-500 to-purple-600",
+    color: "bg-linear-to-br from-purple-500 to-purple-600",
     textColor: "text-purple-600",
     bgColor: "bg-purple-500/10",
     borderColor: "border-purple-500/20",
     permissions: ["counseling_records", "mental_health", "psychosocial"],
+  },
+  dentist: {
+    icon: Stethoscope,
+    label: "Dentist",
+    color: "bg-linear-to-br from-amber-500 to-orange-500",
+    textColor: "text-amber-600",
+    bgColor: "bg-amber-500/10",
+    borderColor: "border-amber-500/20",
+    permissions: ["dental_assessments", "clinical_notes"],
+  },
+  optometrist: {
+    icon: Eye,
+    label: "Optometrist",
+    color: "bg-linear-to-br from-cyan-500 to-blue-500",
+    textColor: "text-cyan-600",
+    bgColor: "bg-cyan-500/10",
+    borderColor: "border-cyan-500/20",
+    permissions: ["vision_screening", "clinical_notes"],
+  },
+  audiologist: {
+    icon: Ear,
+    label: "Audiologist",
+    color: "bg-linear-to-br from-emerald-500 to-emerald-600",
+    textColor: "text-emerald-600",
+    bgColor: "bg-emerald-500/10",
+    borderColor: "border-emerald-500/20",
+    permissions: ["hearing_assessments", "clinical_notes"],
+  },
+  gynaecologist: {
+    icon: Heart,
+    label: "Gynaecologist",
+    color: "bg-linear-to-br from-rose-500 to-rose-600",
+    textColor: "text-rose-600",
+    bgColor: "bg-rose-500/10",
+    borderColor: "border-rose-500/20",
+    permissions: ["womens_health", "clinical_notes"],
+  },
+  ultrasound: {
+    icon: Stethoscope,
+    label: "Ultrasound",
+    color: "bg-linear-to-br from-indigo-500 to-indigo-600",
+    textColor: "text-indigo-600",
+    bgColor: "bg-indigo-500/10",
+    borderColor: "border-indigo-500/20",
+    permissions: ["diagnostic_imaging", "clinical_reports"],
+  },
+  psychologist: {
+    icon: Users,
+    label: "Psychologist",
+    color: "bg-linear-to-br from-purple-600 to-purple-700",
+    textColor: "text-purple-700",
+    bgColor: "bg-purple-600/10",
+    borderColor: "border-purple-600/20",
+    permissions: ["mental_health", "counseling_records"],
   },
 }
 
@@ -318,11 +384,11 @@ export function UserManagement({ currentUser }: UserManagementProps) {
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg shadow-primary/30">
+              <div className="w-12 h-12 rounded-2xl bg-linear-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg shadow-primary/30">
                 <Users className="w-6 h-6 text-primary-foreground" />
               </div>
               <div>
-                <h2 className="text-3xl font-bold bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
+                <h2 className="text-3xl font-bold bg-linear-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
                   User Management
                 </h2>
                 <p className="text-muted-foreground">Manage system users, roles, and permissions</p>
@@ -377,7 +443,7 @@ export function UserManagement({ currentUser }: UserManagementProps) {
               icon: Shield,
               color: "from-purple-500 to-purple-600",
               bgColor: "bg-purple-500/10",
-              change: "5 roles",
+              change: `${Object.keys(roleConfig).length} roles`,
             },
           ].map((stat, idx) => (
             <Card
@@ -385,7 +451,7 @@ export function UserManagement({ currentUser }: UserManagementProps) {
               className="relative overflow-hidden border-2 border-border/50 hover:border-primary/30 transition-all duration-500 hover:-translate-y-1 hover:shadow-xl group"
               style={{ animationDelay: `${idx * 100}ms` }}
             >
-              <div className={`absolute inset-0 bg-gradient-to-br ${stat.color} opacity-0 group-hover:opacity-5 transition-opacity duration-500`} />
+              <div className={`absolute inset-0 bg-linear-to-br ${stat.color} opacity-0 group-hover:opacity-5 transition-opacity duration-500`} />
               <CardContent className="pt-6 relative">
                 <div className="flex items-start justify-between">
                   <div className="space-y-2">
@@ -520,7 +586,7 @@ export function UserManagement({ currentUser }: UserManagementProps) {
                     <CardContent className="pt-6">
                       <div className="flex flex-col lg:flex-row items-start gap-6">
                         <div className="flex items-start gap-4 flex-1 min-w-0 w-full">
-                          <div className={`w-14 h-14 rounded-2xl ${roleInfo.color} shadow-lg flex items-center justify-center text-white group-hover:scale-110 group-hover:rotate-6 transition-all duration-500 flex-shrink-0`}>
+                          <div className={`w-14 h-14 rounded-2xl ${roleInfo.color} shadow-lg flex items-center justify-center text-white group-hover:scale-110 group-hover:rotate-6 transition-all duration-500 shrink-0`}>
                             <RoleIcon className="w-7 h-7" />
                           </div>
 
@@ -540,7 +606,7 @@ export function UserManagement({ currentUser }: UserManagementProps) {
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                               <div className="flex items-center gap-2 text-sm">
-                                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
                                   <UserCheck className="w-4 h-4 text-muted-foreground" />
                                 </div>
                                 <div className="min-w-0">
@@ -550,7 +616,7 @@ export function UserManagement({ currentUser }: UserManagementProps) {
                               </div>
 
                               <div className="flex items-center gap-2 text-sm">
-                                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
                                   <Mail className="w-4 h-4 text-muted-foreground" />
                                 </div>
                                 <div className="min-w-0">
@@ -560,7 +626,7 @@ export function UserManagement({ currentUser }: UserManagementProps) {
                               </div>
 
                               <div className="flex items-center gap-2 text-sm">
-                                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
                                   <Phone className="w-4 h-4 text-muted-foreground" />
                                 </div>
                                 <div className="min-w-0">
@@ -571,7 +637,7 @@ export function UserManagement({ currentUser }: UserManagementProps) {
 
                               {user.mpNumber && (
                                 <div className="flex items-center gap-2 text-sm">
-                                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
                                     <Stethoscope className="w-4 h-4 text-muted-foreground" />
                                   </div>
                                   <div className="min-w-0">
@@ -583,7 +649,7 @@ export function UserManagement({ currentUser }: UserManagementProps) {
 
                               {user.province && (
                                 <div className="flex items-center gap-2 text-sm">
-                                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
                                     <MapPin className="w-4 h-4 text-muted-foreground" />
                                   </div>
                                   <div className="min-w-0">
@@ -594,7 +660,7 @@ export function UserManagement({ currentUser }: UserManagementProps) {
                               )}
 
                               <div className="flex items-center gap-2 text-sm">
-                                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
                                   <Clock className="w-4 h-4 text-muted-foreground" />
                                 </div>
                                 <div className="min-w-0">
@@ -604,7 +670,7 @@ export function UserManagement({ currentUser }: UserManagementProps) {
                               </div>
 
                               <div className="flex items-center gap-2 text-sm">
-                                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
                                   <Calendar className="w-4 h-4 text-muted-foreground" />
                                 </div>
                                 <div className="min-w-0">
@@ -681,7 +747,7 @@ export function UserManagement({ currentUser }: UserManagementProps) {
 
         <TabsContent value="pending" className="space-y-6 mt-6">
           <Card className="border-2 border-border/50 shadow-xl">
-            <CardHeader className="border-b border-border/50 bg-gradient-to-r from-amber-500/5 to-transparent">
+            <CardHeader className="border-b border-border/50 bg-linear-to-r from-amber-500/5 to-transparent">
               <div className="flex items-start gap-3">
                 <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center">
                   <Clock className="w-6 h-6 text-amber-600" />
@@ -705,7 +771,7 @@ export function UserManagement({ currentUser }: UserManagementProps) {
                     return (
                       <div 
                         key={user.id} 
-                        className="group flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 border-2 border-border/50 rounded-xl hover:border-amber-500/30 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 bg-gradient-to-r from-amber-500/5 to-transparent"
+                        className="group flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 border-2 border-border/50 rounded-xl hover:border-amber-500/30 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 bg-linear-to-r from-amber-500/5 to-transparent"
                         style={{ animationDelay: `${idx * 100}ms` }}
                       >
                         <div className="flex items-start gap-4 flex-1">
@@ -783,7 +849,7 @@ export function UserManagement({ currentUser }: UserManagementProps) {
 
         <TabsContent value="permissions" className="space-y-6 mt-6">
           <Card className="border-2 border-border/50 shadow-xl">
-            <CardHeader className="border-b border-border/50 bg-gradient-to-r from-primary/5 to-transparent">
+            <CardHeader className="border-b border-border/50 bg-linear-to-r from-primary/5 to-transparent">
               <div className="flex items-start gap-3">
                 <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
                   <Shield className="w-6 h-6 text-primary" />
@@ -805,7 +871,7 @@ export function UserManagement({ currentUser }: UserManagementProps) {
                   return (
                     <div 
                       key={roleKey} 
-                      className="group border-2 border-border/50 rounded-xl p-6 hover:border-primary/30 hover:shadow-lg transition-all duration-500 hover:-translate-y-1 bg-gradient-to-br from-card to-muted/20"
+                      className="group border-2 border-border/50 rounded-xl p-6 hover:border-primary/30 hover:shadow-lg transition-all duration-500 hover:-translate-y-1 bg-linear-to-br from-card to-muted/20"
                       style={{ animationDelay: `${idx * 100}ms` }}
                     >
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
@@ -859,10 +925,10 @@ export function UserManagement({ currentUser }: UserManagementProps) {
       {showAddForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
           <Card className="w-full max-w-4xl max-h-[90vh] overflow-auto border-2 border-border/50 shadow-2xl animate-in zoom-in duration-300">
-            <CardHeader className="border-b border-border/50 bg-gradient-to-r from-primary/5 to-transparent sticky top-0 bg-card z-10">
+            <CardHeader className="border-b border-border/50 bg-linear-to-r from-primary/5 to-transparent sticky top-0 bg-card z-10">
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg">
+                  <div className="w-12 h-12 rounded-xl bg-linear-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg">
                     <UserPlus className="w-6 h-6 text-primary-foreground" />
                   </div>
                   <div>

@@ -25,11 +25,24 @@ import {
   UserPlus,
   BookOpen,
   MessageCircle,
+  Eye,
+  Ear,
 } from "lucide-react"
 import { apiService } from "@/lib/api-service"
 import { useToast } from "@/hooks/use-toast"
 
-type UserRole = "administrator" | "doctor" | "nurse" | "clerk" | "social_worker"
+type UserRole =
+  | "administrator"
+  | "doctor"
+  | "nurse"
+  | "clerk"
+  | "social_worker"
+  | "dentist"
+  | "optometrist"
+  | "audiologist"
+  | "gynaecologist"
+  | "ultrasound"
+  | "psychologist"
 
 interface User {
   username: string
@@ -125,6 +138,42 @@ const roleConfig = {
     color: "bg-accent text-accent-foreground",
     description: "Counseling and mental health support",
   },
+  dentist: {
+    icon: Stethoscope,
+    label: "Dentist",
+    color: "bg-chart-1 text-white",
+    description: "Dental consultation and oral health",
+  },
+  optometrist: {
+    icon: Eye,
+    label: "Optometrist",
+    color: "bg-secondary text-secondary-foreground",
+    description: "Vision screening and eye care",
+  },
+  audiologist: {
+    icon: Ear,
+    label: "Audiologist",
+    color: "bg-muted text-foreground",
+    description: "Hearing assessments and referrals",
+  },
+  gynaecologist: {
+    icon: Heart,
+    label: "Gynaecologist",
+    color: "bg-pink-600 text-white",
+    description: "Women's health consultations",
+  },
+  ultrasound: {
+    icon: Stethoscope,
+    label: "Ultrasound",
+    color: "bg-blue-600 text-white",
+    description: "Diagnostic imaging procedures",
+  },
+  psychologist: {
+    icon: Users,
+    label: "Psychologist",
+    color: "bg-purple-600 text-white",
+    description: "Psychology sessions and reporting",
+  },
 }
 
 const getRoleSpecificLabels = (role: UserRole, metricType: string) => {
@@ -165,6 +214,66 @@ const getRoleSpecificLabels = (role: UserRole, metricType: string) => {
         weekly: "Sessions This Week",
         monthly: "Sessions This Month",
         completed: "Referrals Made",
+        todayIcon: MessageCircle,
+        weekIcon: Users,
+        completedIcon: BookOpen,
+      }
+    case "dentist":
+      return {
+        today: "Dental Visits Today",
+        weekly: "Treatments This Week",
+        monthly: "Treatments This Month",
+        completed: "Clinical Notes",
+        todayIcon: Stethoscope,
+        weekIcon: Activity,
+        completedIcon: FileText,
+      }
+    case "optometrist":
+      return {
+        today: "Eye Exams Today",
+        weekly: "Assessments This Week",
+        monthly: "Assessments This Month",
+        completed: "Vision Reports",
+        todayIcon: Eye,
+        weekIcon: TrendingUp,
+        completedIcon: ClipboardCheck,
+      }
+    case "audiologist":
+      return {
+        today: "Hearing Tests Today",
+        weekly: "Assessments This Week",
+        monthly: "Assessments This Month",
+        completed: "Referral Notes",
+        todayIcon: Ear,
+        weekIcon: Activity,
+        completedIcon: FileText,
+      }
+    case "gynaecologist":
+      return {
+        today: "Consultations Today",
+        weekly: "Consultations This Week",
+        monthly: "Consultations This Month",
+        completed: "Clinical Notes",
+        todayIcon: Heart,
+        weekIcon: TrendingUp,
+        completedIcon: FileText,
+      }
+    case "ultrasound":
+      return {
+        today: "Scans Completed Today",
+        weekly: "Scans This Week",
+        monthly: "Scans This Month",
+        completed: "Reports Filed",
+        todayIcon: Stethoscope,
+        weekIcon: Activity,
+        completedIcon: ClipboardCheck,
+      }
+    case "psychologist":
+      return {
+        today: "Sessions Conducted Today",
+        weekly: "Sessions This Week",
+        monthly: "Sessions This Month",
+        completed: "Progress Notes",
         todayIcon: MessageCircle,
         weekIcon: Users,
         completedIcon: BookOpen,
@@ -364,7 +473,7 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between p-6 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent rounded-2xl border border-primary/20">
+  <div className="flex items-center justify-between p-6 bg-linear-to-br from-primary/10 via-primary/5 to-transparent rounded-2xl border border-primary/20">
         <div>
           <h1 className="text-3xl font-bold text-foreground mb-2">Welcome back, {user.username}</h1>
           <div className="flex items-center gap-2 mt-1">
@@ -476,7 +585,7 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
             <CardContent>
               <div className="space-y-3">
                 {dashboardData.lowStockAlerts > 0 && (
-                  <div className="flex items-center justify-between p-4 bg-gradient-to-r from-orange-50 to-orange-100/50 border border-orange-200 rounded-xl hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between p-4 bg-linear-to-r from-orange-50 to-orange-100/50 border border-orange-200 rounded-xl hover:shadow-md transition-shadow">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
                         <Package className="w-5 h-5 text-orange-600" />
@@ -488,7 +597,7 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
                 )}
 
                 {dashboardData.maintenanceAlerts > 0 && (
-                  <div className="flex items-center justify-between p-4 bg-gradient-to-r from-yellow-50 to-yellow-100/50 border border-yellow-200 rounded-xl hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between p-4 bg-linear-to-r from-yellow-50 to-yellow-100/50 border border-yellow-200 rounded-xl hover:shadow-md transition-shadow">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center">
                         <Activity className="w-5 h-5 text-yellow-600" />

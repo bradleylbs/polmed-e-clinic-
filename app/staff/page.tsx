@@ -26,7 +26,18 @@ import { AlertTriangle, RefreshCcw, Home, ShieldAlert } from "lucide-react"
 import type { Patient as ApiPatient, Route as ApiRoute } from "@/lib/api-service"
 import { ErrorFallback } from "@/components/ui/error-fallback" // Import ErrorFallback component
 
-type UserRole = "administrator" | "doctor" | "nurse" | "clerk" | "social_worker"
+type UserRole =
+  | "administrator"
+  | "doctor"
+  | "nurse"
+  | "clerk"
+  | "social_worker"
+  | "dentist"
+  | "optometrist"
+  | "audiologist"
+  | "gynaecologist"
+  | "ultrasound"
+  | "psychologist"
 
 interface User {
   username: string
@@ -121,7 +132,19 @@ interface AppError {
   actionLabel?: string
 }
 
-const VALID_ROLES: UserRole[] = ["administrator", "doctor", "nurse", "clerk", "social_worker"]
+const VALID_ROLES: UserRole[] = [
+  "administrator",
+  "doctor",
+  "nurse",
+  "clerk",
+  "social_worker",
+  "dentist",
+  "optometrist",
+  "audiologist",
+  "gynaecologist",
+  "ultrasound",
+  "psychologist",
+]
 const SESSION_STORAGE_KEY = "staff_session"
 const PERSISTENT_SESSION_KEY = "staff_session_persistent" // For persistent login across browser closures
 const SESSION_EXPIRY_MS = 8 * 60 * 60 * 1000 // 8 hours
@@ -132,6 +155,12 @@ const roleConfig: Record<UserRole, { label: string }> = {
   nurse: { label: "Nurse" },
   clerk: { label: "Clerk" },
   social_worker: { label: "Social Worker" },
+  dentist: { label: "Dentist" },
+  optometrist: { label: "Optometrist" },
+  audiologist: { label: "Audiologist" },
+  gynaecologist: { label: "Gynaecologist" },
+  ultrasound: { label: "Ultrasound" },
+  psychologist: { label: "Psychologist" },
 }
 
 const ROLE_PRIMARY_VIEW: Record<UserRole, ViewMode> = {
@@ -140,6 +169,12 @@ const ROLE_PRIMARY_VIEW: Record<UserRole, ViewMode> = {
   nurse: "patients",
   clerk: "patient-register",
   social_worker: "patients",
+  dentist: "patients",
+  optometrist: "patients",
+  audiologist: "patients",
+  gynaecologist: "patients",
+  ultrasound: "patients",
+  psychologist: "patients",
 }
 
 const NAV_SYNC_MAP: Partial<Record<ViewMode, string>> = {

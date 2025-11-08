@@ -14,7 +14,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Shield, Stethoscope, Heart, AlertCircle, Eye, EyeOff, Mail, Lock, ArrowRight, ArrowLeft } from "lucide-react"
 
-type UserRole = "administrator" | "doctor" | "nurse" | "clerk" | "social_worker"
+type UserRole =
+  | "administrator"
+  | "doctor"
+  | "nurse"
+  | "clerk"
+  | "social_worker"
+  | "dentist"
+  | "optometrist"
+  | "audiologist"
+  | "gynaecologist"
+  | "ultrasound"
+  | "psychologist"
 
 interface LoginFormProps {
   onLogin: (credentials: {

@@ -17,9 +17,22 @@ import {
   UserCheck,
   Heart,
   Route,
+  Eye,
+  Ear,
 } from "lucide-react"
 
-type UserRole = "administrator" | "doctor" | "nurse" | "clerk" | "social_worker"
+type UserRole =
+  | "administrator"
+  | "doctor"
+  | "nurse"
+  | "clerk"
+  | "social_worker"
+  | "dentist"
+  | "optometrist"
+  | "audiologist"
+  | "gynaecologist"
+  | "ultrasound"
+  | "psychologist"
 
 interface User {
   username: string
@@ -39,14 +52,28 @@ const roleConfig = {
   nurse: { icon: Heart, label: "Nurse", color: "bg-chart-2 text-white" },
   clerk: { icon: UserCheck, label: "Clerk", color: "bg-muted text-muted-foreground" },
   social_worker: { icon: Users, label: "Social Worker", color: "bg-accent text-accent-foreground" },
+  dentist: { icon: Stethoscope, label: "Dentist", color: "bg-chart-1 text-white" },
+  optometrist: { icon: Eye, label: "Optometrist", color: "bg-secondary text-secondary-foreground" },
+  audiologist: { icon: Ear, label: "Audiologist", color: "bg-muted text-foreground" },
+  gynaecologist: { icon: Heart, label: "Gynaecologist", color: "bg-pink-600 text-white" },
+  ultrasound: { icon: Stethoscope, label: "Ultrasound", color: "bg-blue-600 text-white" },
+  psychologist: { icon: Users, label: "Psychologist", color: "bg-purple-600 text-white" },
 }
+const specialistRoles: UserRole[] = [
+  "dentist",
+  "optometrist",
+  "audiologist",
+  "gynaecologist",
+  "ultrasound",
+  "psychologist",
+]
 
 const navigationItems = [
   {
     id: "patients",
     label: "Patients",
     icon: Users,
-    roles: ["administrator", "doctor", "nurse", "clerk", "social_worker"],
+    roles: ["administrator", "doctor", "nurse", "clerk", "social_worker", ...specialistRoles],
   },
   {
     id: "routes",
@@ -60,7 +87,7 @@ const navigationItems = [
     id: "reports",
     label: "Reports",
     icon: BarChart3,
-    roles: ["administrator", "doctor", "nurse", "clerk", "social_worker"],
+    roles: ["administrator", "doctor", "nurse", "clerk", "social_worker", ...specialistRoles],
   },
   { id: "settings", label: "Settings", icon: Settings, roles: ["administrator"] },
 ]
@@ -113,7 +140,7 @@ export function AppShell({ user, children, onLogout }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="bg-gradient-to-r from-primary via-primary/95 to-primary/90 border-b border-primary/20 px-4 py-4 shadow-lg">
+  <header className="bg-linear-to-r from-primary via-primary/95 to-primary/90 border-b border-primary/20 px-4 py-4 shadow-lg">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center shadow-lg">
