@@ -86,7 +86,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-linear-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
       {/* Header with Back Button */}
       <div className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-xl border-b border-border/50">
         <div className="container mx-auto max-w-7xl px-4 py-4 flex items-center justify-start">
@@ -124,11 +124,11 @@ export function LoginForm({ onLogin }: LoginFormProps) {
           <div className="space-y-6">
             <p className="text-sm font-semibold uppercase tracking-[0.3em] text-muted-foreground">Login - POLMED</p>
             <h2 className="text-4xl sm:text-5xl font-bold leading-tight">
-              <span className="bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
+              <span className="bg-linear-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
                 Your Health,
               </span>
               <br />
-              <span className="bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
+              <span className="bg-linear-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
                 At Your Fingertips
               </span>
             </h2>
@@ -169,7 +169,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
               >
                 <CardContent className="p-6 text-center space-y-3">
                   <div
-                    className={`mx-auto w-12 h-12 rounded-xl bg-gradient-to-br ${item.gradient} flex items-center justify-center shadow-lg ${item.shadow} group-hover:scale-110 group-hover:rotate-6 transition-all duration-500`}
+                    className={`mx-auto w-12 h-12 rounded-xl bg-linear-to-br ${item.gradient} flex items-center justify-center shadow-lg ${item.shadow} group-hover:scale-110 group-hover:rotate-6 transition-all duration-500`}
                   >
                     <item.icon className={`w-6 h-6 ${item.iconColor}`} />
                   </div>

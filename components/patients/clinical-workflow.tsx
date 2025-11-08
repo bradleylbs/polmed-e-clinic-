@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -36,9 +36,15 @@ import {
   Zap,
   Target,
   Clipboard,
+  CloudUpload,
 } from "lucide-react"
 import { ReferralModal } from "./referral-modal"
-import { apiService, type CreateClinicalNoteRequest, type SmartSuggestionRecord } from "@/lib/api-service"
+import {
+  apiService,
+  type CreateClinicalNoteRequest,
+  type PatientDocument,
+  type SmartSuggestionRecord,
+} from "@/lib/api-service"
 import { offlineManager } from "@/lib/offline-manager"
 import { useToast } from "@/components/ui/use-toast"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
@@ -261,6 +267,75 @@ interface SpecialistNoteConfig {
   dropdowns: SpecialistDropdownConfig[]
   requiredSections: string[]
   requiredDropdowns?: SpecialistDropdownType[]
+  recommendedUploads?: string[]
+}
+
+interface DocumentUploadDraft {
+  file: File | null
+  documentType: string
+  notes: string
+  isConfidential: boolean
+}
+
+const DOCUMENT_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "report", label: "Clinical report" },
+  { value: "imaging", label: "Imaging" },
+  { value: "prescription", label: "Prescription" },
+  { value: "certificate", label: "Medical certificate" },
+  { value: "referral", label: "Referral" },
+  { value: "discharge", label: "Discharge summary" },
+  { value: "consent", label: "Consent form" },
+  { value: "other", label: "Other" },
+]
+
+const ALLOWED_DOCUMENT_EXTENSIONS = [
+  ".pdf",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".tif",
+  ".tiff",
+  ".bmp",
+  ".doc",
+  ".docx",
+  ".xls",
+  ".xlsx",
+  ".csv",
+  ".txt",
+  ".rtf",
+]
+
+const MAX_RECENT_UPLOADS = 3
+
+const formatFileSize = (bytes: number) => {
+  if (bytes <= 0 || Number.isNaN(bytes)) {
+    return "0 B"
+  }
+
+  const units = ["B", "KB", "MB", "GB"]
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const size = bytes / Math.pow(1024, exponent)
+  return `${size.toFixed(size < 10 && exponent > 0 ? 1 : 0)} ${units[exponent]}`
+}
+
+const formatUploadTimestamp = (value?: string | null) => {
+  if (!value) {
+    return "Just now"
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return parsed.toLocaleString("en-ZA", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
 }
 
 const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
@@ -314,6 +389,11 @@ const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
       "Chlorhexidine 0.12% rinse twice daily",
       "Ibuprofen 400mg three times daily for 3 days",
       "Amoxicillin 500mg three times daily for 5 days",
+    ],
+    recommendedUploads: [
+      "Intraoral photographs documenting lesions or procedures",
+      "Relevant radiographs (periapical, bitewing, panoramic)",
+      "Signed consent or laboratory forms related to dental appliances",
     ],
     dropdowns: [
       { field: "severity", label: "Caries severity", options: ["Mild", "Moderate", "Severe"], required: true },
@@ -370,6 +450,11 @@ const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
     ],
     procedures: ["Spectacle prescription", "Refer to ophthalmology", "Visual hygiene counseling"],
     medications: ["Artificial tears QID", "Timolol 0.5% drops BID", "Latanoprost 0.005% nocte"],
+    recommendedUploads: [
+      "Refraction sheets or autorefractor printouts",
+      "OCT images or visual field plots for glaucoma screening",
+      "Signed spectacle or contact lens prescriptions",
+    ],
     dropdowns: [
       { field: "severity", label: "Severity", options: ["Mild", "Moderate", "Severe"], required: true },
       { field: "laterality", label: "Laterality", options: ["Right eye", "Left eye", "Both eyes"], required: true },
@@ -425,6 +510,11 @@ const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
     ],
     procedures: ["Hearing aid counseling", "Pure tone audiometry", "Ear wax removal", "ENT referral"],
     medications: ["Cerumenolytic drops nightly x5", "Short course oral steroids (if indicated)", "No medication required"],
+    recommendedUploads: [
+      "Pure tone audiograms and tympanometry traces",
+      "Hearing aid fitting reports or real ear measurements",
+      "Referral letters to ENT specialists when issued",
+    ],
     dropdowns: [
       { field: "severity", label: "Loss severity", options: ["Mild", "Moderate", "Moderately severe", "Severe"] },
       { field: "laterality", label: "Laterality", options: ["Right", "Left", "Bilateral"] },
@@ -479,6 +569,11 @@ const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
     ],
     procedures: ["Contraception counseling", "Hormonal therapy initiation", "Prenatal care review", "Pap smear"],
     medications: ["Combined oral contraceptive daily", "Prenatal vitamins OD", "Progesterone-only pill"],
+    recommendedUploads: [
+      "Pelvic or obstetric ultrasound reports and key images",
+      "Pap smear or HPV/cytology laboratory results",
+      "Consent forms or procedure notes for interventions performed",
+    ],
     dropdowns: [
       { field: "severity", label: "Symptom severity", options: ["Mild", "Moderate", "Severe"] },
       { field: "laterality", label: "Pelvic laterality", options: ["Right adnexa", "Left adnexa", "Bilateral", "Not applicable"] },
@@ -533,6 +628,11 @@ const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
     ],
     procedures: ["Obstetric follow-up", "Surgical referral", "Detailed organ assessment"],
     medications: ["No medication required", "Analgesia as per referring clinician"],
+    recommendedUploads: [
+      "Representative ultrasound image captures or cine loops",
+      "Formal sonographer or radiologist report",
+      "Communication or referral note back to the requesting clinician",
+    ],
     dropdowns: [
       { field: "severity", label: "Findings severity", options: ["Normal", "Mild deviation", "Significant deviation"], required: true },
       { field: "laterality", label: "Laterality", options: ["Right", "Left", "Bilateral", "Midline", "Not applicable"] },
@@ -588,6 +688,11 @@ const SPECIALIST_NOTE_CONFIG: Record<string, SpecialistNoteConfig> = {
     ],
     procedures: ["CBT session", "Psychotherapy follow-up", "Psychiatric referral", "Safety planning"],
     medications: ["Psychiatric referral for pharmacotherapy", "Sleep hygiene strategies", "Relaxation techniques"],
+    recommendedUploads: [
+      "Psychometric assessment score sheets or inventories",
+      "Session summaries or progress note exports for continuity",
+      "Signed consent forms or safety plans when indicated",
+    ],
     dropdowns: [
       { field: "severity", label: "Symptom severity", options: ["Mild", "Moderate", "Severe", "Crisis"], required: true },
       { field: "laterality", label: "Presentation focus", options: ["Individual", "Family", "Group", "Not applicable"] },
@@ -1031,6 +1136,10 @@ export function ClinicalWorkflow({
   const lastSyncedSpecialistsRef = useRef<string[] | null>(null)
   const syncingSpecialistsRef = useRef(false)
   const [helperPopoverOpen, setHelperPopoverOpen] = useState<Record<string, { procedures?: boolean; medications?: boolean }>>({})
+  const [documentDrafts, setDocumentDrafts] = useState<Record<string, DocumentUploadDraft>>({})
+  const [recentUploadsByKey, setRecentUploadsByKey] = useState<Record<string, PatientDocument[]>>({})
+  const [uploadingDocumentKey, setUploadingDocumentKey] = useState<string | null>(null)
+  const fileInputsRef = useRef<Record<string, HTMLInputElement | null>>({})
 
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>(() =>
     composeWorkflowSteps({
@@ -1163,6 +1272,17 @@ export function ClinicalWorkflow({
 
   const normalizedUserRole = normalizeRoleValue(userRole)
   const canEditSpecialistSelection = ["administrator", "doctor", "nurse", "clerk"].includes(normalizedUserRole)
+  const isSpecialistRole = SPECIALIST_ROLE_KEYS.has(normalizedUserRole)
+
+  const displayWorkflowSteps = useMemo(() => {
+    if (!isSpecialistRole) {
+      return workflowSteps
+    }
+    return workflowSteps.filter((step) => rolesAlign(step.role, userRole))
+  }, [isSpecialistRole, workflowSteps, userRole])
+
+  const activeStepId = workflowSteps[currentStep]?.id
+  const hasVisibleSteps = displayWorkflowSteps.length > 0
 
   const toggleSpecialistSelection = (specialistType: string) => {
     if (!canEditSpecialistSelection) return
@@ -2251,6 +2371,144 @@ export function ClinicalWorkflow({
     setInvestigations((prev) => prev.filter((_, i) => i !== index))
   }
 
+  const selectWorkflowStep = useCallback(
+    (stepId: string) => {
+      const targetIndex = workflowSteps.findIndex((step) => step.id === stepId)
+      if (targetIndex >= 0) {
+        setCurrentStep(targetIndex)
+      }
+    },
+    [workflowSteps],
+  )
+
+  const updateDocumentDraft = useCallback((key: string, patch: Partial<DocumentUploadDraft>) => {
+    setDocumentDrafts((prev) => {
+      const existing = prev[key] ?? { file: null, documentType: "report", notes: "", isConfidential: false }
+      return {
+        ...prev,
+        [key]: {
+          ...existing,
+          ...patch,
+        },
+      }
+    })
+  }, [])
+
+  const resetDocumentDraft = useCallback(
+    (key: string) => {
+      setDocumentDrafts((prev) => {
+        const existing = prev[key]
+        if (!existing) {
+          return prev
+        }
+        return {
+          ...prev,
+          [key]: {
+            ...existing,
+            file: null,
+            notes: "",
+          },
+        }
+      })
+
+      const input = fileInputsRef.current[key]
+      if (input) {
+        input.value = ""
+      }
+    },
+    [fileInputsRef],
+  )
+
+  const ensureActiveVisit = useCallback(async (): Promise<number | null> => {
+    if (visitId) {
+      return visitId
+    }
+
+    const created = await apiService.createVisit(Number(patientId), {})
+    if (!created.success || !created.data?.visit_id) {
+      toast({
+        title: "Unable to start visit",
+        description: created.error || "Could not create a visit before uploading documents.",
+        variant: "destructive",
+      })
+      return null
+    }
+
+    const newVisitId = created.data.visit_id
+    setVisitId(newVisitId)
+    return newVisitId
+  }, [patientId, toast, visitId])
+
+  const handleDocumentUpload = useCallback(
+    async (specialistKey: string, specialistType: string, workflowStep: string, draft: DocumentUploadDraft) => {
+      if (!draft.file) {
+        toast({ title: "Select a file first", description: "Choose a document to upload." })
+        return
+      }
+
+      if (typeof window !== "undefined" && !navigator.onLine) {
+        toast({
+          title: "Offline",
+          description: "Connect to the internet before uploading supporting documents.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      setUploadingDocumentKey(specialistKey)
+      try {
+        const visitForUpload = await ensureActiveVisit()
+        if (!visitForUpload) {
+          return
+        }
+
+        const response = await apiService.uploadPatientDocument(Number(patientId), {
+          file: draft.file,
+          visitId: visitForUpload,
+          documentType: draft.documentType,
+          specialistType,
+          workflowStep,
+          isConfidential: draft.isConfidential,
+          notes: draft.notes.trim().length ? draft.notes.trim() : undefined,
+        })
+
+        if (!response.success || !response.data) {
+          toast({
+            title: "Upload failed",
+            description: response.error || "The document could not be uploaded.",
+            variant: "destructive",
+          })
+          return
+        }
+
+        const uploadedDocument = response.data
+        toast({
+          title: "Document uploaded",
+          description: uploadedDocument.file_name || "Supporting document attached.",
+        })
+
+        setRecentUploadsByKey((prev) => {
+          const current = prev[specialistKey] ?? []
+          return {
+            ...prev,
+            [specialistKey]: [uploadedDocument, ...current].slice(0, MAX_RECENT_UPLOADS),
+          }
+        })
+        resetDocumentDraft(specialistKey)
+      } catch (error: any) {
+        console.error("Document upload error", error)
+        toast({
+          title: "Upload error",
+          description: error?.message || "Unexpected error while uploading the document.",
+          variant: "destructive",
+        })
+      } finally {
+        setUploadingDocumentKey((current) => (current === specialistKey ? null : current))
+      }
+    },
+    [ensureActiveVisit, patientId, resetDocumentDraft, toast],
+  )
+
   const applySuggestion = (suggestion: SmartSuggestion) => {
     const logId = smartSuggestionLogId
     switch (suggestion.type) {
@@ -2626,6 +2884,16 @@ export function ClinicalWorkflow({
       const procedures = config?.procedures ?? []
       const medications = config?.medications ?? []
       const guidanceSections = config?.guidance ?? []
+      const recommendedUploads = config?.recommendedUploads ?? []
+      const specialistKey = step.specialistType ?? step.id
+      const documentDraft = documentDrafts[specialistKey] ?? {
+        file: null,
+        documentType: "report",
+        notes: "",
+        isConfidential: false,
+      }
+      const recentUploads = recentUploadsByKey[specialistKey] ?? []
+      const uploadInProgress = uploadingDocumentKey === specialistKey
       const helperState = helperPopoverOpen[step.specialistType] || {}
       const normalizedSpecialistType =
         step.specialistType === "dental_consultation" ? "dentist" : step.specialistType
@@ -2795,12 +3063,12 @@ export function ClinicalWorkflow({
 
         return (
           <div className="space-y-6">
-            <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-6 shadow-lg">
-              <div className="absolute inset-0 bg-grid-white/5 [mask-image:radial-gradient(white,transparent_85%)]" />
+            <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-linear-to-br from-primary/5 via-background to-secondary/5 p-6 shadow-lg">
+              <div className="absolute inset-0 bg-grid-white/5 mask-[radial-gradient(white,transparent_85%)]" />
               <div className="relative flex flex-col gap-5">
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div>
-                    <h3 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                    <h3 className="text-2xl font-bold bg-linear-to-r from-primary to-secondary bg-clip-text text-transparent">
                       {patientName}
                     </h3>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -2894,6 +3162,146 @@ export function ClinicalWorkflow({
                 </AlertDescription>
               </Alert>
             )}
+
+            {recommendedUploads.length > 0 ? (
+              <Card className="border-dashed border-primary/30 bg-muted/40">
+                <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="rounded-md bg-primary/10 p-2">
+                      <CloudUpload className="h-4 w-4 text-primary" />
+                    </span>
+                    <div>
+                      <CardTitle className="text-sm">Recommended uploads</CardTitle>
+                      <CardDescription>Upload supporting media to strengthen the clinical record.</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <ul className="ml-5 list-disc space-y-1 text-xs text-muted-foreground">
+                      {recommendedUploads.map((item, index) => (
+                        <li key={`${step.specialistType}-upload-${index}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="rounded-lg border border-primary/20 bg-background/60 p-4 space-y-3">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium text-muted-foreground">Select file</Label>
+                        <Input
+                          type="file"
+                          accept={ALLOWED_DOCUMENT_EXTENSIONS.join(",")}
+                          disabled={uploadInProgress}
+                          ref={(element) => {
+                            if (!specialistKey) {
+                              return
+                            }
+                            if (element) {
+                              fileInputsRef.current[specialistKey] = element
+                            } else {
+                              delete fileInputsRef.current[specialistKey]
+                            }
+                          }}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0] ?? null
+                            updateDocumentDraft(specialistKey, { file })
+                          }}
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          {documentDraft.file
+                            ? `${documentDraft.file.name} • ${formatFileSize(documentDraft.file.size)}`
+                            : "No file selected"}
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium text-muted-foreground">Document type</Label>
+                        <Select
+                          value={documentDraft.documentType}
+                          disabled={uploadInProgress}
+                          onValueChange={(value) => updateDocumentDraft(specialistKey, { documentType: value })}
+                        >
+                          <SelectTrigger className="h-9 text-sm">
+                            <SelectValue placeholder="Select document type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {DOCUMENT_TYPE_OPTIONS.map((option) => (
+                              <SelectItem key={`${specialistKey}-doc-${option.value}`} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-muted-foreground">Notes</Label>
+                      <Textarea
+                        rows={2}
+                        placeholder="Add context for this upload (optional)"
+                        value={documentDraft.notes}
+                        disabled={uploadInProgress}
+                        onChange={(event) => updateDocumentDraft(specialistKey, { notes: event.target.value })}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Checkbox
+                          checked={documentDraft.isConfidential}
+                          disabled={uploadInProgress}
+                          onCheckedChange={(checked) =>
+                            updateDocumentDraft(specialistKey, { isConfidential: Boolean(checked) })
+                          }
+                        />
+                        Mark as confidential
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          onClick={() =>
+                            handleDocumentUpload(
+                              specialistKey,
+                              normalizedSpecialistType ?? specialistKey,
+                              step.id,
+                              documentDraft,
+                            )
+                          }
+                          disabled={uploadInProgress || !documentDraft.file}
+                        >
+                          {uploadInProgress ? "Uploading…" : "Upload document"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => resetDocumentDraft(specialistKey)}
+                          disabled={uploadInProgress}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Uploads are linked to this visit so the multidisciplinary team can review supporting evidence in
+                      real time.
+                    </p>
+                  </div>
+                  {recentUploads.length > 0 ? (
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                      <p className="text-xs font-semibold text-primary">Recent uploads this session</p>
+                      <ul className="mt-2 space-y-1">
+                        {recentUploads.map((doc) => (
+                          <li key={doc.id} className="text-xs text-muted-foreground">
+                            <span className="font-medium text-foreground">{doc.file_name}</span>
+                            <span className="ml-2">
+                              {(doc.document_type || "document").toString()} • {formatUploadTimestamp(doc.uploaded_at)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ) : null}
 
             <Tabs defaultValue="assessment" className="w-full">
               <TabsList className="grid w-full grid-cols-4 h-auto p-1 bg-muted/50 backdrop-blur-sm rounded-xl">
@@ -3224,6 +3632,32 @@ export function ClinicalWorkflow({
               <p className="text-xs text-muted-foreground">Capture findings for this specialist stage.</p>
             </div>
           </div>
+
+          {recommendedUploads.length > 0 ? (
+            <Card className="border-dashed border-primary/30 bg-muted/40">
+              <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="rounded-md bg-primary/10 p-2">
+                    <CloudUpload className="h-4 w-4 text-primary" />
+                  </span>
+                  <div>
+                    <CardTitle className="text-sm">Recommended uploads</CardTitle>
+                    <CardDescription>Attach supporting media via the Patient Documents panel.</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <ul className="ml-5 list-disc space-y-1 text-xs text-muted-foreground">
+                  {recommendedUploads.map((item, index) => (
+                    <li key={`${step.specialistType}-upload-${index}`}>{item}</li>
+                  ))}
+                </ul>
+                <p className="text-[11px] text-muted-foreground">
+                  Uploads sync with this visit so the multidisciplinary team can review evidence-based documentation.
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
 
           {guidanceSections.length > 0 && (
             <Alert className="bg-muted/40 border-primary/30">
@@ -3655,12 +4089,12 @@ export function ClinicalWorkflow({
 
         return (
           <div className="space-y-6">
-            <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-6 shadow-lg">
-              <div className="absolute inset-0 bg-grid-white/5 [mask-image:radial-gradient(white,transparent_85%)]" />
+            <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-linear-to-br from-primary/5 via-background to-secondary/5 p-6 shadow-lg">
+              <div className="absolute inset-0 bg-grid-white/5 mask-[radial-gradient(white,transparent_85%)]" />
               <div className="relative">
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h3 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                    <h3 className="text-2xl font-bold bg-linear-to-r from-primary to-secondary bg-clip-text text-transparent">
                       {patientName}
                     </h3>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -3686,10 +4120,10 @@ export function ClinicalWorkflow({
                         key={index}
                         className={`group relative overflow-hidden rounded-xl p-4 transition-all duration-300 hover:scale-105 ${
                           alert.severity === "critical"
-                            ? "bg-gradient-to-br from-red-500/10 to-red-600/5 border border-red-500/30 shadow-lg shadow-red-500/10"
+                            ? "bg-linear-to-br from-red-500/10 to-red-600/5 border border-red-500/30 shadow-lg shadow-red-500/10"
                             : alert.severity === "caution"
-                              ? "bg-gradient-to-br from-yellow-500/10 to-orange-500/5 border border-yellow-500/30 shadow-lg shadow-yellow-500/10"
-                              : "bg-gradient-to-br from-green-500/10 to-emerald-500/5 border border-green-500/30 shadow-lg shadow-green-500/10"
+                              ? "bg-linear-to-br from-yellow-500/10 to-orange-500/5 border border-yellow-500/30 shadow-lg shadow-yellow-500/10"
+                              : "bg-linear-to-br from-green-500/10 to-emerald-500/5 border border-green-500/30 shadow-lg shadow-green-500/10"
                         }`}
                       >
                         <div className="flex items-center justify-between mb-2">
@@ -3840,7 +4274,7 @@ export function ClinicalWorkflow({
 
               <TabsContent value="diagnosis" className="space-y-4 mt-6">
                 <Card className="border-primary/20 shadow-lg">
-                  <CardHeader className="bg-gradient-to-r from-primary/5 to-secondary/5">
+                  <CardHeader className="bg-linear-to-r from-primary/5 to-secondary/5">
                     <CardTitle className="text-lg flex items-center gap-2">
                       <Eye className="w-5 h-5 text-primary" />
                       Diagnosis & ICD-10 Coding
@@ -3910,7 +4344,7 @@ export function ClinicalWorkflow({
                           <Button
                             variant="outline"
                             size="lg"
-                            className="w-full justify-between text-left font-normal border-2 border-dashed border-primary/30 hover:border-primary hover:bg-primary/5 bg-gradient-to-r from-primary/5 to-transparent transition-all duration-200 h-auto py-3"
+                            className="w-full justify-between text-left font-normal border-2 border-dashed border-primary/30 hover:border-primary hover:bg-primary/5 bg-linear-to-r from-primary/5 to-transparent transition-all duration-200 h-auto py-3"
                           >
                             <div className="flex items-center">
                               <Search className="mr-3 h-5 w-5 text-primary" />
@@ -4041,7 +4475,7 @@ export function ClinicalWorkflow({
                                         }`}
                                         disabled={!!isAlreadySelected}
                                       >
-                                        <div className={`flex-shrink-0 w-3 h-3 rounded-full mt-2 transition-colors ${
+                                        <div className={`shrink-0 w-3 h-3 rounded-full mt-2 transition-colors ${
                                           isAlreadySelected ? 'bg-green-500' : 'bg-primary/60'
                                         }`} />
                                         <div className="flex-1 min-w-0">
@@ -4083,7 +4517,7 @@ export function ClinicalWorkflow({
                                             </p>
                                           )}
                                         </div>
-                                        <div className="flex-shrink-0 flex items-center">
+                                        <div className="shrink-0 flex items-center">
                                           {isAlreadySelected ? (
                                             <CheckCircle className="w-4 h-4 text-green-600" />
                                           ) : (
@@ -4181,7 +4615,7 @@ export function ClinicalWorkflow({
                                     }`}
                                     title={item.desc}
                                   >
-                                    {isSelected && <CheckCircle className="w-3 h-3 mr-1 flex-shrink-0" />}
+                                    {isSelected && <CheckCircle className="w-3 h-3 mr-1 shrink-0" />}
                                     <span className="font-bold">{item.code}</span>
                                     <span className="text-xs opacity-70 ml-1 hidden md:inline">• {item.desc}</span>
                                   </Button>
@@ -4193,7 +4627,7 @@ export function ClinicalWorkflow({
                           {/* Search Tips */}
                           <div className="text-xs bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
                             <div className="flex items-start gap-2">
-                              <Brain className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                              <Brain className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
                               <div className="flex-1">
                                 <p className="font-semibold text-blue-900 mb-1">💡 Search Tips:</p>
                                 <ul className="space-y-1 text-blue-700">
@@ -4209,7 +4643,7 @@ export function ClinicalWorkflow({
                     </div>
 
                     {smartSuggestions.length > 0 && (
-                      <Alert className="border-primary/30 bg-gradient-to-r from-primary/5 to-secondary/5">
+                      <Alert className="border-primary/30 bg-linear-to-r from-primary/5 to-secondary/5">
                         <Sparkles className="h-4 w-4 text-primary" />
                         <AlertDescription>
                           <div className="space-y-3">
@@ -4234,7 +4668,7 @@ export function ClinicalWorkflow({
                                   <div className="flex items-center gap-2 mt-1">
                                     <div className="h-1.5 w-24 bg-muted rounded-full overflow-hidden">
                                       <div
-                                        className={`h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all duration-300 ${getConfidenceWidthClass(suggestion.confidence)}`}
+                                        className={`h-full bg-linear-to-r from-primary to-secondary rounded-full transition-all duration-300 ${getConfidenceWidthClass(suggestion.confidence)}`}
                                         aria-hidden="true"
                                       />
                                     </div>
@@ -4718,7 +5152,7 @@ export function ClinicalWorkflow({
         <CardDescription>Patient ID: {patientId}</CardDescription>
       </CardHeader>
       <CardContent>
-        {specialistCatalog.length > 0 && (
+  {specialistCatalog.length > 0 && !isSpecialistRole && (
           <div className="mb-6 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -4765,9 +5199,10 @@ export function ClinicalWorkflow({
         )}
 
         {/* Workflow Progress */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            {workflowSteps.map((step, index) => {
+        {(!isSpecialistRole || hasVisibleSteps) && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-4">
+              {displayWorkflowSteps.map((step, index) => {
               const Icon = step.icon
               return (
                 <div key={step.id} className="flex items-center">
@@ -4782,47 +5217,59 @@ export function ClinicalWorkflow({
                   >
                     <Icon className="w-5 h-5" />
                   </div>
-                  {index < workflowSteps.length - 1 && <ArrowRight className="w-4 h-4 mx-2 text-muted-foreground" />}
-                </div>
-              )
-            })}
-          </div>
+                    {index < displayWorkflowSteps.length - 1 && (
+                      <ArrowRight className="w-4 h-4 mx-2 text-muted-foreground" />
+                    )}
+                  </div>
+                )
+              })}
+            </div>
 
-          <div className="flex flex-wrap gap-2">
-            {workflowSteps.map((step) => (
-              <Badge
-                key={step.id}
-                variant={
-                  step.status === "completed" ? "default" : step.status === "in-progress" ? "secondary" : "outline"
-                }
-              >
-                {step.status === "completed" && <CheckCircle className="w-3 h-3 mr-1" />}
-                {step.status === "in-progress" && <Clock className="w-3 h-3 mr-1" />}
-                {step.title}
-              </Badge>
-            ))}
+            <div className="flex flex-wrap gap-2">
+              {displayWorkflowSteps.map((step) => (
+                <Badge
+                  key={step.id}
+                  variant={
+                    step.status === "completed" ? "default" : step.status === "in-progress" ? "secondary" : "outline"
+                  }
+                >
+                  {step.status === "completed" && <CheckCircle className="w-3 h-3 mr-1" />}
+                  {step.status === "in-progress" && <Clock className="w-3 h-3 mr-1" />}
+                  {step.title}
+                </Badge>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <Separator className="my-6" />
 
         {/* Current Step Content */}
-        <Tabs value={workflowSteps[currentStep]?.id} className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
-            {workflowSteps.map((step, index) => (
-              <TabsTrigger
-                key={step.id}
-                value={step.id}
-                disabled={!rolesAlign(step.role, userRole)}
-                onClick={() => setCurrentStep(index)}
-              >
-                {step.title}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+        {isSpecialistRole && !hasVisibleSteps ? (
+          <Alert variant="default" className="flex items-start gap-3">
+            <AlertTriangle className="h-4 w-4 mt-0.5" />
+            <AlertDescription className="text-sm">
+              No specialist workflow stage has been assigned to your role for this visit yet. Please contact the care
+              coordinator to add your stage when required.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <Tabs value={activeStepId} className="w-full">
+            <TabsList className="grid w-full grid-cols-5">
+              {displayWorkflowSteps.map((step) => (
+                <TabsTrigger
+                  key={step.id}
+                  value={step.id}
+                  disabled={!rolesAlign(step.role, userRole)}
+                  onClick={() => selectWorkflowStep(step.id)}
+                >
+                  {step.title}
+                </TabsTrigger>
+              ))}
+            </TabsList>
 
-          {workflowSteps.map((step) => (
-            <TabsContent key={step.id} value={step.id} className="mt-6">
+            {displayWorkflowSteps.map((step) => (
+              <TabsContent key={step.id} value={step.id} className="mt-6">
               {(() => {
                 const roleAligned = rolesAlign(step.role, userRole)
                 if (!roleAligned) {
@@ -4901,8 +5348,9 @@ export function ClinicalWorkflow({
                 </div>
               )}
             </TabsContent>
-          ))}
-        </Tabs>
+            ))}
+          </Tabs>
+        )}
 
         {showReferral && (
           <ReferralModal

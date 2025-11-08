@@ -807,7 +807,7 @@ export default function StaffHomePage() {
   // Error boundary renderer
   const renderError = useCallback(
     (error: AppError) => (
-      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-linear-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
         <Card className="w-full max-w-md shadow-xl animate-fade-in">
           <CardContent className="p-8 space-y-6">
             <div className="text-center space-y-4">
@@ -948,7 +948,7 @@ export default function StaffHomePage() {
   // Loading state
   if (initStatus === "initializing") {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-linear-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
         <div className="text-center space-y-6 animate-fade-in">
           <div className="relative">
             <div className="h-16 w-16 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
@@ -982,7 +982,7 @@ export default function StaffHomePage() {
     <AppShell user={user} onLogout={handleLogout}>
       {/* Offline indicator */}
       <div
-        className={`fixed top-0 left-0 right-0 z-[9998] transform transition-all duration-300 ${
+        className={`fixed top-0 left-0 right-0 z-9998 transform transition-all duration-300 ${
           isOnline ? "-translate-y-full opacity-0" : "translate-y-0 opacity-100"
         }`}
       >

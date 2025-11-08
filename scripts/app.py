@@ -1,7 +1,8 @@
 import re
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 import mysql.connector
 from mysql.connector import Error, errorcode
 import jwt
@@ -93,6 +94,42 @@ TRUTHY_FLAG_VALUES: Set[Any] = {
     'y',
     'Y',
 }
+
+ALLOWED_DOCUMENT_EXTENSIONS: Set[str] = {
+    '.pdf',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.gif',
+    '.tif',
+    '.tiff',
+    '.bmp',
+    '.doc',
+    '.docx',
+    '.xls',
+    '.xlsx',
+    '.csv',
+    '.txt',
+    '.rtf',
+}
+
+
+def _allowed_document_extension(filename: str) -> bool:
+    if not filename or '.' not in filename:
+        return False
+    extension = filename.rsplit('.', 1)[1].lower()
+    return f'.{extension}' in ALLOWED_DOCUMENT_EXTENSIONS
+
+
+def _parse_bool_flag(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip()
+    if not text:
+        return default
+    return text in {'1', 'true', 'True', 'TRUE', 'yes', 'Yes', 'YES', 'on', 'On', 'ON'}
 
 # Allow CORS from configured frontends (comma-separated) or common localhost defaults
 # Prefer CORS_ALLOWED_ORIGINS (pipeline/app settings) but support legacy FRONTEND_ORIGINS
@@ -6412,7 +6449,7 @@ def enroll_chronic_disease_program():
 @app.route('/api/visits/<int:visit_id>/close', methods=['POST'])
 @token_required
 @role_required(['administrator', 'doctor'])
-def close_visit_with_notification():
+def close_visit_with_notification(visit_id: int):
     """Close visit and send email report to beneficiary (POPIA compliant)"""
     try:
         data = request.get_json() or {}
@@ -7028,6 +7065,215 @@ def get_appointments():
 
 
 # ============================================================================
+# ============================================================================
+# PATIENT DOCUMENT MANAGEMENT (CLINICAL STAFF)
+# ============================================================================
+
+@app.route('/api/patients/<int:patient_id>/documents', methods=['POST'])
+@token_required
+@role_required([
+    'administrator',
+    'doctor',
+    'nurse',
+    'dentist',
+    'optometrist',
+    'audiologist',
+    'gynaecologist',
+    'ultrasound',
+    'psychologist',
+    'social_worker',
+    'clerk',
+])
+def upload_patient_document(patient_id: int):
+    """Upload a supporting document for a patient visit or specialist workflow stage."""
+    try:
+        patient_exists = DatabaseManager.execute_query(
+            "SELECT id FROM patients WHERE id = %s",
+            (patient_id,),
+            fetch=True,
+        )
+        if not patient_exists:
+            return jsonify({'success': False, 'error': 'Patient not found'}), 404
+
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'Upload payload must include a file'}), 400
+
+        file_storage = request.files['file']
+        if not file_storage or not file_storage.filename:
+            return jsonify({'success': False, 'error': 'No file selected for upload'}), 400
+
+        if not _allowed_document_extension(file_storage.filename):
+            allowed = ', '.join(sorted(ALLOWED_DOCUMENT_EXTENSIONS))
+            return jsonify({
+                'success': False,
+                'error': f'Unsupported file type. Allowed extensions: {allowed}',
+            }), 400
+
+        visit_id_value: Optional[int] = None
+        visit_id_raw = request.form.get('visit_id')
+        if visit_id_raw:
+            try:
+                visit_id_value = int(str(visit_id_raw).strip())
+            except ValueError:
+                return jsonify({'success': False, 'error': 'visit_id must be a valid integer'}), 400
+
+            visit_check = DatabaseManager.execute_query(
+                "SELECT id FROM patient_visits WHERE id = %s AND patient_id = %s",
+                (visit_id_value, patient_id),
+                fetch=True,
+            )
+            if not visit_check:
+                return jsonify({'success': False, 'error': 'Visit does not belong to patient'}), 400
+
+        document_type = (request.form.get('document_type') or 'other').strip() or 'other'
+        specialist_raw = request.form.get('specialist_type')
+        specialist_type = None
+        if specialist_raw:
+            normalized = specialist_raw.strip().lower().replace(' ', '_')
+            specialist_type = SPECIALIST_LOOKUP.get(normalized, normalized)
+
+        workflow_step = request.form.get('workflow_step')
+        if workflow_step:
+            workflow_step = workflow_step.strip().lower()
+
+        tags_serialized = None
+        tags_payload: Optional[Any] = None
+        tags_raw = request.form.get('tags')
+        if tags_raw:
+            try:
+                parsed_tags = json.loads(tags_raw)
+                if isinstance(parsed_tags, (list, dict)):
+                    tags_payload = parsed_tags
+                else:
+                    tags_payload = str(parsed_tags)
+            except json.JSONDecodeError:
+                tags_payload = [tag.strip() for tag in tags_raw.split(',') if tag.strip()]
+
+            try:
+                tags_serialized = json.dumps(tags_payload)
+            except (TypeError, ValueError):
+                tags_serialized = None
+
+        notes = request.form.get('notes')
+        is_confidential = _parse_bool_flag(request.form.get('is_confidential'), default=False)
+
+        original_filename = file_storage.filename
+        safe_filename = secure_filename(original_filename)
+        if not safe_filename:
+            return jsonify({'success': False, 'error': 'Could not derive a safe filename'}), 400
+
+        upload_root = app.config.get('UPLOAD_FOLDER', 'uploads')
+        if not os.path.isabs(upload_root):
+            upload_root = os.path.join(os.getcwd(), upload_root)
+
+        patient_folder = os.path.join(upload_root, f'patient_{patient_id}')
+        os.makedirs(patient_folder, exist_ok=True)
+
+        unique_prefix = uuid.uuid4().hex
+        stored_filename = f"{unique_prefix}_{safe_filename}"
+        absolute_path = os.path.join(patient_folder, stored_filename)
+        file_storage.save(absolute_path)
+
+        try:
+            file_size = os.path.getsize(absolute_path)
+        except OSError:
+            file_size = None
+
+        stored_relative_path = os.path.relpath(absolute_path, upload_root).replace('\\', '/')
+
+        insert_query = """
+        INSERT INTO documents (
+            patient_id,
+            visit_id,
+            document_type,
+            file_name,
+            file_path,
+            file_size,
+            mime_type,
+            is_confidential,
+            uploaded_by,
+            specialist_type,
+            workflow_step,
+            tags,
+            notes
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+
+        insert_result = DatabaseManager.execute_query(
+            insert_query,
+            (
+                patient_id,
+                visit_id_value,
+                document_type,
+                original_filename,
+                stored_relative_path,
+                file_size,
+                file_storage.mimetype,
+                1 if is_confidential else 0,
+                request.current_user['id'],
+                specialist_type,
+                workflow_step,
+                tags_serialized,
+                notes,
+            ),
+        )
+
+        if not insert_result:
+            try:
+                os.remove(absolute_path)
+            except OSError:
+                pass
+            return jsonify({'success': False, 'error': 'Failed to persist document metadata'}), 500
+
+        fetch_query = """
+        SELECT d.*, u.first_name AS uploader_first, u.last_name AS uploader_last
+        FROM documents d
+        LEFT JOIN users u ON d.uploaded_by = u.id
+        WHERE d.file_path = %s
+        ORDER BY d.id DESC
+        LIMIT 1
+        """
+
+        doc_record = DatabaseManager.execute_query(fetch_query, (stored_relative_path,), fetch=True)
+        if not doc_record:
+            return jsonify({'success': True, 'message': 'Document uploaded', 'data': None}), 201
+
+        document = doc_record[0]
+
+        tags_value = document.get('tags')
+        if isinstance(tags_value, str):
+            try:
+                tags_value = json.loads(tags_value)
+            except json.JSONDecodeError:
+                pass
+
+        response_payload = {
+            'id': document['id'],
+            'patient_id': document['patient_id'],
+            'visit_id': document.get('visit_id'),
+            'document_type': document.get('document_type'),
+            'file_name': document.get('file_name'),
+            'file_path': document.get('file_path'),
+            'file_size': document.get('file_size'),
+            'mime_type': document.get('mime_type'),
+            'is_confidential': bool(document.get('is_confidential')),
+            'uploaded_by': document.get('uploaded_by'),
+            'uploaded_by_name': f"{document.get('uploader_first') or ''} {document.get('uploader_last') or ''}".strip() or None,
+            'uploaded_at': document.get('uploaded_at').isoformat() if document.get('uploaded_at') else None,
+            'specialist_type': document.get('specialist_type'),
+            'workflow_step': document.get('workflow_step'),
+            'tags': tags_value,
+            'notes': document.get('notes'),
+            'download_url': f"/api/patient-portal/documents/download/{document['id']}",
+        }
+
+        return jsonify({'success': True, 'message': 'Document uploaded successfully', 'data': response_payload}), 201
+
+    except Exception as upload_error:
+        logger.error(f"Document upload error for patient {patient_id}: {upload_error}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
 # PATIENT PORTAL ADDITIONAL ENDPOINTS
 # ============================================================================
 
@@ -7384,53 +7630,68 @@ def book_appointment_patient_portal():
                 'error': 'Patient ID and Appointment ID are required'
             }), 400
         
-        connection = get_db_connection()
-        with connection.cursor() as cursor:
-            # Check if appointment is still available
-            cursor.execute("""
-                SELECT status FROM appointments 
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+
+        cursor = None
+        try:
+            cursor = connection.cursor(dictionary=True)
+
+            cursor.execute(
+                """
+                SELECT status FROM appointments
                 WHERE appointment_id = %s
-            """, (appointment_id,))
-            
+                """,
+                (appointment_id,),
+            )
+
             appointment = cursor.fetchone()
-            
+
             if not appointment:
-                return jsonify({
-                    'success': False,
-                    'error': 'Appointment not found'
-                }), 404
-            
+                return jsonify({'success': False, 'error': 'Appointment not found'}), 404
+
             if appointment['status'] != 'Available':
-                return jsonify({
-                    'success': False,
-                    'error': 'Appointment is no longer available'
-                }), 400
-            
-            cursor.execute("""
-                UPDATE appointments 
+                return jsonify({'success': False, 'error': 'Appointment is no longer available'}), 400
+
+            cursor.execute(
+                """
+                UPDATE appointments
                 SET patient_id = %s,
                     status = 'Scheduled',
                     reason = %s,
                     updated_at = NOW()
                 WHERE appointment_id = %s
-            """, (patient_id, reason, appointment_id))
-            
+                """,
+                (patient_id, reason, appointment_id),
+            )
+
             connection.commit()
-            
+
             return jsonify({
                 'success': True,
                 'message': 'Appointment booked successfully',
-                'appointment_id': appointment_id
+                'appointment_id': appointment_id,
             }), 200
-            
-    except Exception as e:
-        connection.rollback()
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-    finally:
-        connection.close()
+
+        except Exception as e:
+            if connection:
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+            return jsonify({'success': False, 'error': str(e)}), 500
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+            if connection and connection.is_connected():
+                connection.close()
+    except Exception as outer_error:
+        logger.error(f"Appointment booking error: {outer_error}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
     
 @app.route('/api/patient-portal/visits/<int:patient_id>', methods=['GET'])
 @patient_portal_token_required
@@ -7914,9 +8175,25 @@ def get_patient_documents(patient_id: int):
         # Query documents
         query = """
         SELECT 
-            d.id, d.visit_id, d.document_type, d.file_name, d.file_size,
-            d.mime_type, d.is_confidential, d.download_count, d.created_at, d.updated_at,
-            pv.visit_date, u.first_name as uploader_first, u.last_name as uploader_last
+            d.id,
+            d.visit_id,
+            d.document_type,
+            d.file_name,
+            d.file_size,
+            d.file_path,
+            d.mime_type,
+            d.is_confidential,
+            d.download_count,
+            d.created_at,
+            d.updated_at,
+            d.specialist_type,
+            d.workflow_step,
+            d.tags,
+            d.notes,
+            d.uploaded_by,
+            pv.visit_date,
+            u.first_name as uploader_first,
+            u.last_name as uploader_last
         FROM documents d
         LEFT JOIN patient_visits pv ON d.visit_id = pv.id
         LEFT JOIN users u ON d.uploaded_by = u.id
@@ -7929,15 +8206,28 @@ def get_patient_documents(patient_id: int):
         
         documents_data = []
         for doc in documents:
+            tags_value = doc.get('tags')
+            if isinstance(tags_value, str):
+                try:
+                    tags_value = json.loads(tags_value)
+                except json.JSONDecodeError:
+                    tags_value = [tag.strip() for tag in tags_value.split(',') if tag.strip()]
+
             documents_data.append({
                 'id': doc['id'],
                 'visit_id': doc['visit_id'],
                 'document_type': doc['document_type'],  # prescription, report, certificate, referral, etc
                 'file_name': doc['file_name'],
                 'file_size': doc['file_size'],
+                'file_path': doc['file_path'],
                 'mime_type': doc['mime_type'],
                 'is_confidential': bool(doc['is_confidential']),
                 'download_count': doc['download_count'] or 0,
+                'specialist_type': doc.get('specialist_type'),
+                'workflow_step': doc.get('workflow_step'),
+                'tags': tags_value,
+                'notes': doc.get('notes'),
+                'uploaded_by_user_id': doc.get('uploaded_by'),
                 'visit_date': doc['visit_date'].isoformat() if doc['visit_date'] else None,
                 'uploaded_by': f"{doc['uploader_first']} {doc['uploader_last']}" if doc['uploader_first'] else None,
                 'created_at': doc['created_at'].isoformat() if doc['created_at'] else None,

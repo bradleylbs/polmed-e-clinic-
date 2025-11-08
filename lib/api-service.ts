@@ -209,6 +209,37 @@ export interface Referral {
   updated_at?: string | null
 }
 
+export interface PatientDocument {
+  id: number
+  patient_id: number
+  visit_id?: number | null
+  document_type: string
+  file_name: string
+  file_path?: string | null
+  file_size?: number | null
+  mime_type?: string | null
+  is_confidential?: boolean
+  uploaded_by?: number | null
+  uploaded_by_name?: string | null
+  uploaded_at?: string | null
+  specialist_type?: string | null
+  workflow_step?: string | null
+  tags?: string[] | Record<string, unknown> | string | null
+  notes?: string | null
+  download_url?: string
+}
+
+export interface UploadPatientDocumentOptions {
+  file: File
+  visitId?: number | null
+  documentType?: string
+  specialistType?: string
+  workflowStep?: string
+  isConfidential?: boolean
+  tags?: string[] | Record<string, unknown>
+  notes?: string
+}
+
 export interface CreateReferralRequest {
   referral_type: "internal" | "external"
   from_stage: Referral["from_stage"]
@@ -415,9 +446,12 @@ class ApiService {
     }
 
     const url = `${this.baseUrl}${endpoint}`
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    }
+    const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData
+    const headers: Record<string, string> = isFormData
+      ? {}
+      : {
+          "Content-Type": "application/json",
+        }
 
     if (options.headers) {
       if (options.headers instanceof Headers) {
@@ -446,6 +480,12 @@ class ApiService {
       const isMutation = method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE"
 
       if (isOffline && isMutation) {
+        if (isFormData) {
+          return {
+            success: false,
+            error: "File uploads are unavailable while offline.",
+          }
+        }
         try {
           const { offlineManager } = await import("./offline-manager")
           const body = options.body && typeof options.body === "string" ? JSON.parse(options.body) : options.body
@@ -612,13 +652,6 @@ class ApiService {
     })
   }
 
-  async updatePatient(id: number, patient: Partial<Patient>): Promise<ApiResponse<Patient>> {
-    return this.request<Patient>(`/patients/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(patient),
-    })
-  }
-
   async searchMember(medicalAidNumber: string): Promise<ApiResponse<any>> {
     return this.request<any>(`/patients/search-member/${medicalAidNumber}`)
   }
@@ -658,6 +691,52 @@ class ApiService {
 
   async getVisitVitals(visitId: number): Promise<ApiResponse<{ count: number; latest: any }>> {
     return this.request<{ count: number; latest: any }>(`/visits/${visitId}/vital-signs`)
+  }
+
+  // ==================== DOCUMENT MANAGEMENT ====================
+  async uploadPatientDocument(
+    patientId: number,
+    options: UploadPatientDocumentOptions,
+  ): Promise<ApiResponse<PatientDocument>> {
+    const formData = new FormData()
+    formData.append("file", options.file)
+
+    if (options.visitId !== undefined && options.visitId !== null) {
+      formData.append("visit_id", String(options.visitId))
+    }
+
+    if (options.documentType) {
+      formData.append("document_type", options.documentType)
+    }
+
+    if (options.specialistType) {
+      formData.append("specialist_type", options.specialistType)
+    }
+
+    if (options.workflowStep) {
+      formData.append("workflow_step", options.workflowStep)
+    }
+
+    if (typeof options.isConfidential === "boolean") {
+      formData.append("is_confidential", options.isConfidential ? "1" : "0")
+    }
+
+    if (options.tags) {
+      try {
+        formData.append("tags", JSON.stringify(options.tags))
+      } catch (error) {
+        console.warn("Failed to serialise document tags", error)
+      }
+    }
+
+    if (options.notes) {
+      formData.append("notes", options.notes)
+    }
+
+    return this.request<PatientDocument>(`/patients/${patientId}/documents`, {
+      method: "POST",
+      body: formData,
+    })
   }
 
   // ==================== ROUTE MANAGEMENT ====================
