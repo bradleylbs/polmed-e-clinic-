@@ -2180,9 +2180,19 @@ export function ClinicalWorkflow({
           )
         } else {
           // Success message for successful step completion
+          let successDescription = "Your clinical data has been saved and synced to the server."
+          
+          if (currentStepData.id === "doctor") {
+            successDescription = "Doctor consultation notes, diagnosis, and treatment plan have been successfully submitted and saved."
+          } else if (currentStepData.id === "counseling") {
+            successDescription = "Counseling session notes and mental health screening have been successfully submitted and saved."
+          } else if (currentStepData.id === "closure") {
+            successDescription = "Patient file has been closed successfully. All clinical workflow steps are now complete."
+          }
+          
           toast({
-            title: `✅ ${currentStepData.title} completed successfully!`,
-            description: "Your clinical data has been saved and synced to the server.",
+            title: `✅ ${currentStepData.title} Completed Successfully!`,
+            description: successDescription,
             duration: 5000,
           })
         }
@@ -3026,6 +3036,31 @@ export function ClinicalWorkflow({
   }, [patientId, userRole])
 
   const saveVitals = async () => {
+    // Check for required fields
+    const requiredFields = [
+      { value: vitalSigns.bloodPressureSystolic, name: 'Blood Pressure (Systolic)' },
+      { value: vitalSigns.bloodPressureDiastolic, name: 'Blood Pressure (Diastolic)' },
+      { value: vitalSigns.pulse, name: 'Pulse/Heart Rate' },
+      { value: vitalSigns.temperature, name: 'Temperature' },
+      { value: vitalSigns.weight, name: 'Weight' },
+      { value: vitalSigns.height, name: 'Height' },
+      { value: vitalSigns.oxygenSaturation, name: 'Oxygen Saturation' },
+      { value: vitalSigns.respiratoryRate, name: 'Respiratory Rate' },
+    ]
+
+    const emptyFields = requiredFields.filter(field => !field.value || field.value.trim() === '')
+    
+    if (emptyFields.length > 0) {
+      const fieldNames = emptyFields.map(f => f.name).join(', ')
+      toast({
+        title: "❌ Required Fields Missing",
+        description: `Please complete the following fields: ${fieldNames}`,
+        variant: "destructive",
+        duration: 6000,
+      })
+      return
+    }
+
     const n = (v: string) => (v.trim() === "" ? undefined : Number(v))
     const payload = {
       systolic_bp: n(vitalSigns.bloodPressureSystolic),
@@ -3037,12 +3072,6 @@ export function ClinicalWorkflow({
       oxygen_saturation: n(vitalSigns.oxygenSaturation),
       respiratory_rate: n(vitalSigns.respiratoryRate),
       nursing_notes: clinicalNotes.nursingAssessment?.trim() || undefined,
-    }
-
-    const hasAny = Object.values(payload).some((v) => v !== undefined && v !== "")
-    if (!hasAny) {
-      toast({ title: "No data to save", description: "Enter at least one vital sign or note.", variant: "destructive" })
-      return
     }
 
     // Validate vital signs before saving
@@ -3101,7 +3130,11 @@ export function ClinicalWorkflow({
         return
       }
 
-      toast({ title: "✅ Vital signs saved successfully", description: "Vital signs have been recorded and saved to the patient record.", duration: 4000 })
+      toast({ 
+        title: "✅ Vital Signs Submitted Successfully!", 
+        description: "All vital signs have been recorded and saved to the patient record. You can now proceed to the next step.", 
+        duration: 5000 
+      })
       completeCurrentStep()
     } catch (e: any) {
       toast({ title: "Error", description: e?.message || String(e), variant: "destructive" })
@@ -4123,73 +4156,99 @@ export function ClinicalWorkflow({
         return (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-semibold mb-4">Vital Signs</h3>
+              <h3 className="text-lg font-semibold mb-4">Vital Signs <span className="text-red-500">*</span></h3>
+              <p className="text-xs text-muted-foreground mb-3">All fields are required before submission</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Blood Pressure (mmHg)</Label>
+                  <Label>Blood Pressure (mmHg) <span className="text-red-500">*</span></Label>
                   <div className="flex gap-2">
                     <Input
                       placeholder="Systolic"
+                      required
                       value={vitalSigns.bloodPressureSystolic}
                       onChange={(e) => updateVitalSigns("bloodPressureSystolic", e.target.value)}
+                      className={!vitalSigns.bloodPressureSystolic ? "border-red-300" : ""}
                     />
                     <span className="self-center">/</span>
                     <Input
                       placeholder="Diastolic"
+                      required
                       value={vitalSigns.bloodPressureDiastolic}
                       onChange={(e) => updateVitalSigns("bloodPressureDiastolic", e.target.value)}
+                      className={!vitalSigns.bloodPressureDiastolic ? "border-red-300" : ""}
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Temperature (°C)</Label>
+                  <Label>Temperature (°C) <span className="text-red-500">*</span></Label>
                   <Input
                     placeholder="36.5"
+                    required
                     value={vitalSigns.temperature}
                     onChange={(e) => updateVitalSigns("temperature", e.target.value)}
+                    className={!vitalSigns.temperature ? "border-red-300" : ""}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Weight (kg)</Label>
+                  <Label>Weight (kg) <span className="text-red-500">*</span></Label>
                   <Input
                     placeholder="70"
+                    required
                     value={vitalSigns.weight}
                     onChange={(e) => updateVitalSigns("weight", e.target.value)}
+                    className={!vitalSigns.weight ? "border-red-300" : ""}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Height (cm)</Label>
+                  <Label>Height (cm) <span className="text-red-500">*</span></Label>
                   <Input
                     placeholder="170"
+                    required
                     value={vitalSigns.height}
                     onChange={(e) => updateVitalSigns("height", e.target.value)}
+                    className={!vitalSigns.height ? "border-red-300" : ""}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Pulse (bpm)</Label>
+                  <Label>Pulse (bpm) <span className="text-red-500">*</span></Label>
                   <Input
                     placeholder="72"
+                    required
                     value={vitalSigns.pulse}
                     onChange={(e) => updateVitalSigns("pulse", e.target.value)}
+                    className={!vitalSigns.pulse ? "border-red-300" : ""}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Oxygen Saturation (%)</Label>
+                  <Label>Oxygen Saturation (%) <span className="text-red-500">*</span></Label>
                   <Input
                     placeholder="98"
+                    required
                     value={vitalSigns.oxygenSaturation}
                     onChange={(e) => updateVitalSigns("oxygenSaturation", e.target.value)}
+                    className={!vitalSigns.oxygenSaturation ? "border-red-300" : ""}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Respiratory Rate (breaths/min) <span className="text-red-500">*</span></Label>
+                  <Input
+                    placeholder="16"
+                    required
+                    value={vitalSigns.respiratoryRate}
+                    onChange={(e) => updateVitalSigns("respiratoryRate", e.target.value)}
+                    className={!vitalSigns.respiratoryRate ? "border-red-300" : ""}
                   />
                 </div>
               </div>
             </div>
 
-            {/* Real-time Validation Display */}
+            {/* Real-time Validation Display */
             {vitalsValidation && (
               <div className="space-y-3 p-4 rounded-lg border">
                 <div className="flex items-center justify-between">
