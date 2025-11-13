@@ -2,7 +2,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-:root {
+:root { 
   /* Updated to exact Polmed logo colors */
   --background: oklch(0.99 0 0);
   --foreground: oklch(0.25 0.02 220);
