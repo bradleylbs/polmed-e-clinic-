@@ -1469,6 +1469,85 @@ def patient_portal_dashboard(patient_id: int):
         logger.error(f"Patient portal dashboard error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
+@app.route('/api/patient-portal/appointments/<int:appointment_id>/book', methods=['POST'])
+@patient_portal_token_required
+def patient_portal_book_appointment(appointment_id: int):
+    """Book an appointment via patient portal (authenticated endpoint)"""
+    try:
+        data = request.get_json() or {}
+        
+        # Get patient_id from authenticated token
+        patient_id = request.patient_id
+        patient_notes = data.get('patient_notes', '').strip()
+        
+        # Get patient info for booking
+        patient_query = """
+        SELECT CONCAT(first_name, ' ', last_name) as full_name, phone_number, email
+        FROM patients WHERE id = %s
+        """
+        patient_info = DatabaseManager.execute_query(patient_query, (patient_id,), fetch=True)
+        
+        if not patient_info:
+            return jsonify({'success': False, 'error': 'Patient not found'}), 404
+        
+        patient_data = patient_info[0]
+        booked_by_name = patient_data['full_name']
+        booked_by_phone = patient_data['phone_number'] or ''
+        booked_by_email = patient_data['email'] or ''
+        
+        if not booked_by_phone:
+            return jsonify({'success': False, 'error': 'Patient phone number is required for booking'}), 400
+        
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+        
+        try:
+            cursor = connection.cursor()
+            # Prepare args including OUT parameter placeholders
+            args = [
+                int(appointment_id),
+                int(patient_id),
+                booked_by_name,
+                booked_by_phone,
+                booked_by_email,
+                patient_notes,
+                None,  # OUT p_booking_reference
+                None   # OUT p_result
+            ]
+
+            # callproc returns a sequence with OUT params populated
+            result_args = cursor.callproc('sp_book_appointment', args)
+
+            # OUT params are the last two arguments
+            booking_reference = result_args[6]
+            result_message = result_args[7]
+
+            connection.commit()
+
+            if result_message and str(result_message).startswith('SUCCESS') and booking_reference:
+                return jsonify({
+                    'success': True,
+                    'data': {
+                        'booking_reference': booking_reference,
+                        'confirmation_sent': True
+                    },
+                    'message': 'Appointment booked successfully'
+                }), 200
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': result_message or 'Failed to book appointment'
+                }), 400
+                
+        finally:
+            cursor.close()
+            connection.close()
+        
+    except Exception as e:
+        logger.error(f"Patient portal book appointment error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 # ============================================================================
 # PATIENT MANAGEMENT ENDPOINTS
 # ============================================================================

@@ -1,0 +1,1290 @@
+{
+  "summary": {
+    "total_endpoints": 99,
+    "tables_referenced": 41,
+    "database_tables": 84,
+    "critical_issues": 0,
+    "high_issues": 0,
+    "warnings": 4
+  },
+  "endpoints": [
+    {
+      "path": "/api/auth/login",
+      "methods": [
+        "POST"
+      ],
+      "function": "login",
+      "line": 679
+    },
+    {
+      "path": "/api/auth/register",
+      "methods": [
+        "POST"
+      ],
+      "function": "register",
+      "line": 797
+    },
+    {
+      "path": "/api/auth/verify-token",
+      "methods": [
+        "GET"
+      ],
+      "function": "verify_token",
+      "line": 908
+    },
+    {
+      "path": "/api/patient/auth/register",
+      "methods": [
+        "POST"
+      ],
+      "function": "register_patient_portal",
+      "line": 927
+    },
+    {
+      "path": "/api/patient-portal/login",
+      "methods": [
+        "POST"
+      ],
+      "function": "patient_portal_login",
+      "line": 1160
+    },
+    {
+      "path": "/api/patient-portal/dashboard/<int:patient_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "patient_portal_dashboard",
+      "line": 1346
+    },
+    {
+      "path": "/api/patients",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_patients",
+      "line": 1476
+    },
+    {
+      "path": "/api/patients",
+      "methods": [
+        "POST"
+      ],
+      "function": "create_patient",
+      "line": 1551
+    },
+    {
+      "path": "/api/patients/<int:patient_id>/visits",
+      "methods": [
+        "POST"
+      ],
+      "function": "create_patient_visit",
+      "line": 1772
+    },
+    {
+      "path": "/api/patients/<int:patient_id>/visits/latest",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_latest_visit",
+      "line": 1937
+    },
+    {
+      "path": "/api/visits/<int:visit_id>/vital-signs",
+      "methods": [
+        "POST"
+      ],
+      "function": "add_vital_signs",
+      "line": 1964
+    },
+    {
+      "path": "/api/visits/<int:visit_id>/vital-signs",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_visit_vitals",
+      "line": 2062
+    },
+    {
+      "path": "/api/visits/<int:visit_id>/clinical-notes",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_clinical_notes",
+      "line": 2124
+    },
+    {
+      "path": "/api/visits/<int:visit_id>/clinical-notes",
+      "methods": [
+        "POST"
+      ],
+      "function": "create_clinical_note",
+      "line": 2174
+    },
+    {
+      "path": "/api/icd10/search",
+      "methods": [
+        "GET"
+      ],
+      "function": "search_icd10_codes",
+      "line": 2337
+    },
+    {
+      "path": "/api/drug-database",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_drug_database",
+      "line": 2396
+    },
+    {
+      "path": "/api/visits/<int:visit_id>/prescriptions",
+      "methods": [
+        "POST"
+      ],
+      "function": "create_prescription",
+      "line": 2432
+    },
+    {
+      "path": "/api/visits/<int:visit_id>/prescriptions",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_visit_prescriptions",
+      "line": 2520
+    },
+    {
+      "path": "/api/smart-suggestions",
+      "methods": [
+        "POST"
+      ],
+      "function": "get_smart_suggestions",
+      "line": 2553
+    },
+    {
+      "path": "/api/smart-suggestions/<int:suggestion_id>/feedback",
+      "methods": [
+        "POST"
+      ],
+      "function": "provide_suggestion_feedback",
+      "line": 2752
+    },
+    {
+      "path": "/api/workflow/specialists/catalog",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_specialist_catalog",
+      "line": 2798
+    },
+    {
+      "path": "/api/visits/<int:visit_id>/workflow/specialists",
+      "methods": [
+        "PUT",
+        "PATCH"
+      ],
+      "function": "configure_visit_specialists",
+      "line": 2833
+    },
+    {
+      "path": "/api/visits/<int:visit_id>/workflow/status",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_visit_workflow_status",
+      "line": 2893
+    },
+    {
+      "path": "/api/specialists/assignments",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_my_specialist_assignments",
+      "line": 3055
+    },
+    {
+      "path": "/api/patients/<int:patient_id>/referrals",
+      "methods": [
+        "GET"
+      ],
+      "function": "list_referrals",
+      "line": 3168
+    },
+    {
+      "path": "/api/patients/<int:patient_id>/referrals",
+      "methods": [
+        "POST"
+      ],
+      "function": "create_referral",
+      "line": 3190
+    },
+    {
+      "path": "/api/referrals/<int:referral_id>",
+      "methods": [
+        "PATCH"
+      ],
+      "function": "update_referral",
+      "line": 3257
+    },
+    {
+      "path": "/api/routes",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_routes",
+      "line": 3316
+    },
+    {
+      "path": "/api/routes",
+      "methods": [
+        "POST"
+      ],
+      "function": "create_route",
+      "line": 3445
+    },
+    {
+      "path": "/api/routes/<int:route_id>",
+      "methods": [
+        "PUT"
+      ],
+      "function": "update_route",
+      "line": 3798
+    },
+    {
+      "path": "/api/appointments/available",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_available_appointments",
+      "line": 3911
+    },
+    {
+      "path": "/api/appointments/<int:appointment_id>/book",
+      "methods": [
+        "POST"
+      ],
+      "function": "book_appointment",
+      "line": 3983
+    },
+    {
+      "path": "/api/route-locations/<int:route_location_id>/generate-slots",
+      "methods": [
+        "POST"
+      ],
+      "function": "generate_appointment_slots",
+      "line": 4046
+    },
+    {
+      "path": "/api/inventory/assets",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_assets",
+      "line": 4090
+    },
+    {
+      "path": "/api/inventory/assets",
+      "methods": [
+        "POST"
+      ],
+      "function": "create_asset",
+      "line": 4163
+    },
+    {
+      "path": "/api/inventory/assets/<int:asset_id>",
+      "methods": [
+        "PUT"
+      ],
+      "function": "update_asset",
+      "line": 4247
+    },
+    {
+      "path": "/api/inventory/assets/<int:asset_id>/maintenance",
+      "methods": [
+        "POST"
+      ],
+      "function": "record_asset_maintenance",
+      "line": 4292
+    },
+    {
+      "path": "/api/inventory/asset-categories",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_asset_categories",
+      "line": 4355
+    },
+    {
+      "path": "/api/inventory/assets/categories",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_asset_categories_for_assets",
+      "line": 4383
+    },
+    {
+      "path": "/api/inventory/consumables",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_consumables",
+      "line": 4411
+    },
+    {
+      "path": "/api/inventory/consumables/<int:consumable_id>/batches",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_consumable_batches",
+      "line": 4504
+    },
+    {
+      "path": "/api/inventory/consumables",
+      "methods": [
+        "POST"
+      ],
+      "function": "create_consumable",
+      "line": 4539
+    },
+    {
+      "path": "/api/inventory/consumables/<int:consumable_id>",
+      "methods": [
+        "PUT"
+      ],
+      "function": "update_consumable",
+      "line": 4605
+    },
+    {
+      "path": "/api/inventory/consumable-categories",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_consumable_categories",
+      "line": 4646
+    },
+    {
+      "path": "/api/inventory/stock/receive",
+      "methods": [
+        "POST"
+      ],
+      "function": "receive_inventory_stock",
+      "line": 4672
+    },
+    {
+      "path": "/api/inventory/stock/<int:stock_id>/adjust",
+      "methods": [
+        "POST"
+      ],
+      "function": "adjust_inventory_stock",
+      "line": 4752
+    },
+    {
+      "path": "/api/inventory/usage",
+      "methods": [
+        "POST"
+      ],
+      "function": "record_inventory_usage",
+      "line": 4846
+    },
+    {
+      "path": "/api/inventory/usage/history",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_usage_history",
+      "line": 4984
+    },
+    {
+      "path": "/api/inventory/suppliers",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_suppliers",
+      "line": 5069
+    },
+    {
+      "path": "/api/inventory/suppliers",
+      "methods": [
+        "POST"
+      ],
+      "function": "create_supplier",
+      "line": 5108
+    },
+    {
+      "path": "/api/inventory/suppliers/<int:supplier_id>",
+      "methods": [
+        "PUT"
+      ],
+      "function": "update_supplier",
+      "line": 5167
+    },
+    {
+      "path": "/api/inventory/alerts/expiry",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_expiry_alerts",
+      "line": 5208
+    },
+    {
+      "path": "/api/inventory/alerts/stock",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_stock_alerts",
+      "line": 5285
+    },
+    {
+      "path": "/api/inventory/reports/valuation",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_inventory_valuation",
+      "line": 5340
+    },
+    {
+      "path": "/api/inventory/reports/turnover",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_inventory_turnover",
+      "line": 5415
+    },
+    {
+      "path": "/api/sync/status",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_sync_status",
+      "line": 5476
+    },
+    {
+      "path": "/api/sync/pending",
+      "methods": [
+        "POST"
+      ],
+      "function": "sync_pending_records",
+      "line": 5514
+    },
+    {
+      "path": "/api/palmed/member-lookup",
+      "methods": [
+        "GET"
+      ],
+      "function": "palmed_member_lookup",
+      "line": 5694
+    },
+    {
+      "path": "/api/palmed/sync-member",
+      "methods": [
+        "POST"
+      ],
+      "function": "sync_palmed_member",
+      "line": 5746
+    },
+    {
+      "path": "/api/dashboard/stats",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_dashboard_stats",
+      "line": 5786
+    },
+    {
+      "path": "/api/activity/recent",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_recent_activity",
+      "line": 6329
+    },
+    {
+      "path": "/api/medscheme/alert",
+      "methods": [
+        "POST"
+      ],
+      "function": "create_medscheme_alert",
+      "line": 6557
+    },
+    {
+      "path": "/api/chronic-disease/enroll",
+      "methods": [
+        "POST"
+      ],
+      "function": "enroll_chronic_disease_program",
+      "line": 6606
+    },
+    {
+      "path": "/api/visits/<int:visit_id>/close",
+      "methods": [
+        "POST"
+      ],
+      "function": "close_visit_with_notification",
+      "line": 6667
+    },
+    {
+      "path": "/api/medscheme/sync",
+      "methods": [
+        "POST"
+      ],
+      "function": "sync_to_medscheme",
+      "line": 6772
+    },
+    {
+      "path": "/api/chronic-disease/list/<int:patient_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "list_chronic_disease_enrollments",
+      "line": 6820
+    },
+    {
+      "path": "/api/users",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_users",
+      "line": 6845
+    },
+    {
+      "path": "/api/users/roles",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_user_roles",
+      "line": 6946
+    },
+    {
+      "path": "/api/users",
+      "methods": [
+        "POST"
+      ],
+      "function": "create_user",
+      "line": 6980
+    },
+    {
+      "path": "/api/users/<int:user_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_user",
+      "line": 7052
+    },
+    {
+      "path": "/api/users/<int:user_id>",
+      "methods": [
+        "PATCH"
+      ],
+      "function": "update_user",
+      "line": 7098
+    },
+    {
+      "path": "/health",
+      "methods": [
+        "GET"
+      ],
+      "function": "health_check",
+      "line": 7173
+    },
+    {
+      "path": "/api/health",
+      "methods": [
+        "GET"
+      ],
+      "function": "api_health_check",
+      "line": 7183
+    },
+    {
+      "path": "/api/appointments",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_appointments",
+      "line": 7194
+    },
+    {
+      "path": "/api/patients/<int:patient_id>/documents",
+      "methods": [
+        "POST"
+      ],
+      "function": "upload_patient_document",
+      "line": 7290
+    },
+    {
+      "path": "/api/patient-portal/notifications/<int:patient_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_patient_notifications",
+      "line": 7498
+    },
+    {
+      "path": "/api/patient-portal/notifications/<int:notification_id>/read",
+      "methods": [
+        "POST"
+      ],
+      "function": "mark_notification_as_read",
+      "line": 7549
+    },
+    {
+      "path": "/api/patient-portal/feedback/<int:patient_id>",
+      "methods": [
+        "POST"
+      ],
+      "function": "submit_patient_feedback",
+      "line": 7567
+    },
+    {
+      "path": "/api/patient-portal/feedback/<int:patient_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_patient_feedback_history",
+      "line": 7647
+    },
+    {
+      "path": "/api/patient-portal/appointments/available/<int:patient_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_available_appointments_v2",
+      "line": 7687
+    },
+    {
+      "path": "/api/patient-portal/appointments/book",
+      "methods": [
+        "POST"
+      ],
+      "function": "book_appointment_patient_portal",
+      "line": 7879
+    },
+    {
+      "path": "/api/patient-portal/visits/<int:patient_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_patient_visit_history",
+      "line": 7960
+    },
+    {
+      "path": "/api/patient-portal/prescriptions/<int:patient_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_patient_prescriptions",
+      "line": 8065
+    },
+    {
+      "path": "/api/patient-portal/test-results/<int:patient_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_patient_test_results",
+      "line": 8126
+    },
+    {
+      "path": "/api/patient-portal/medical-reports/<int:patient_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_patient_medical_reports",
+      "line": 8182
+    },
+    {
+      "path": "/api/patient-portal/medical-records/<int:patient_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_patient_medical_records",
+      "line": 8368
+    },
+    {
+      "path": "/api/patient-portal/documents/<int:patient_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_patient_documents",
+      "line": 8430
+    },
+    {
+      "path": "/api/patient-portal/documents/download/<int:document_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "download_patient_document",
+      "line": 8513
+    },
+    {
+      "path": "/api/patient-portal/diagnoses/<int:patient_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_patient_diagnoses",
+      "line": 8554
+    },
+    {
+      "path": "/api/patient-portal/visits/details/<int:visit_id>",
+      "methods": [
+        "GET"
+      ],
+      "function": "get_visit_details",
+      "line": 8608
+    },
+    {
+      "path": "/api/patient-portal/appointments/<int:appointment_id>/book",
+      "methods": [
+        "POST"
+      ],
+      "function": "book_appointment_via_portal",
+      "line": 8766
+    },
+    {
+      "path": "/api/patient-portal/appointments/<int:booking_id>/cancel",
+      "methods": [
+        "POST"
+      ],
+      "function": "cancel_appointment_via_portal",
+      "line": 8837
+    },
+    {
+      "path": "/api/patient-portal/profile/<int:patient_id>",
+      "methods": [
+        "PUT"
+      ],
+      "function": "update_patient_profile",
+      "line": 8884
+    },
+    {
+      "path": "/api/patient-portal/password/change",
+      "methods": [
+        "POST"
+      ],
+      "function": "change_patient_password",
+      "line": 8943
+    },
+    {
+      "path": "/api/patient-portal/password/forgot",
+      "methods": [
+        "POST"
+      ],
+      "function": "forgot_patient_password",
+      "line": 8997
+    },
+    {
+      "path": "/api/patient-portal/password/reset",
+      "methods": [
+        "POST"
+      ],
+      "function": "reset_patient_password",
+      "line": 9053
+    },
+    {
+      "path": "/api/patient-portal/verify-email",
+      "methods": [
+        "POST"
+      ],
+      "function": "verify_patient_email",
+      "line": 9111
+    },
+    {
+      "path": "/api/patient-portal/validate-membership",
+      "methods": [
+        "POST"
+      ],
+      "function": "validate_polmed_membership",
+      "line": 9153
+    },
+    {
+      "path": "/api/patient/auth/register",
+      "methods": [
+        "POST"
+      ],
+      "function": "register_patient_via_portal",
+      "line": 9201
+    }
+  ],
+  "table_usage": {
+    "visit_specialists": [
+      222,
+      243,
+      255,
+      279,
+      3095
+    ],
+    "sync_status": [
+      469,
+      490,
+      5483,
+      490,
+      5483
+    ],
+    "user_roles": [
+      632,
+      700,
+      2131,
+      2925,
+      2988,
+      6865,
+      6955,
+      7062,
+      632,
+      700,
+      6865,
+      6955,
+      7062
+    ],
+    "users": [
+      632,
+      700,
+      869,
+      2131,
+      2527,
+      2925,
+      2988,
+      3175,
+      3241,
+      3298,
+      4101,
+      5000,
+      6026,
+      6264,
+      6346,
+      6865,
+      7016,
+      7062,
+      7209,
+      7446,
+      7973,
+      8075,
+      8136,
+      8201,
+      8247,
+      8378,
+      8440,
+      8564,
+      632,
+      700,
+      869,
+      4101,
+      5000,
+      6865,
+      7016,
+      7062,
+      7209,
+      7446,
+      7973,
+      8075,
+      8136,
+      8201,
+      8247,
+      8378,
+      8440,
+      8564
+    ],
+    "audit_log": [
+      750,
+      1102,
+      1736,
+      1902,
+      4818,
+      4951,
+      6264,
+      6346,
+      6491,
+      750,
+      1102,
+      1736,
+      1902,
+      4818,
+      4951
+    ],
+    "patients": [
+      1012,
+      1172,
+      1356,
+      1489,
+      1700,
+      3095,
+      5000,
+      5817,
+      6397,
+      6676,
+      7209,
+      8911,
+      8921,
+      9008,
+      9232,
+      1012,
+      1356,
+      1489,
+      1700,
+      5000,
+      6676,
+      7209,
+      8921,
+      9008,
+      9232
+    ],
+    "patient_authentication": [
+      1065,
+      1172,
+      1065
+    ],
+    "patient_sessions": [
+      1241
+    ],
+    "patient_appointments": [
+      1372,
+      1392,
+      3922,
+      7209,
+      7724,
+      8775,
+      8806,
+      8846,
+      8859,
+      1372,
+      1392,
+      3922,
+      7209,
+      7724,
+      8775,
+      8806,
+      8846,
+      8859
+    ],
+    "locations": [
+      1372,
+      1410,
+      3651,
+      3922,
+      7209,
+      7724,
+      8378,
+      8614,
+      8775,
+      1372,
+      1410,
+      3922,
+      7209,
+      7724,
+      8378,
+      8614,
+      8775
+    ],
+    "route_locations": [
+      1372,
+      3612,
+      3922,
+      7209,
+      7690,
+      7724,
+      8775,
+      1372,
+      3922,
+      7209,
+      7724,
+      8775
+    ],
+    "patient_visits": [
+      1410,
+      1489,
+      1849,
+      1875,
+      1944,
+      2131,
+      2901,
+      3095,
+      5000,
+      5830,
+      5873,
+      5922,
+      6014,
+      6053,
+      6214,
+      6397,
+      6676,
+      6712,
+      7973,
+      8075,
+      8136,
+      8201,
+      8378,
+      8440,
+      8564,
+      8614,
+      1410,
+      1489,
+      1849,
+      5000,
+      6676,
+      6712,
+      7973,
+      8075,
+      8136,
+      8201,
+      8378,
+      8440,
+      8564,
+      8614
+    ],
+    "workflow_stages": [
+      1410,
+      7973,
+      1410,
+      7973
+    ],
+    "visit_workflow_progress": [
+      1410,
+      6065,
+      6077,
+      6129,
+      6147,
+      6165,
+      6180,
+      7973,
+      1410,
+      7973
+    ],
+    "vital_signs": [
+      2002,
+      2073,
+      2099,
+      5859,
+      8634,
+      8634
+    ],
+    "clinical_notes": [
+      2041,
+      2087,
+      2131,
+      2925,
+      2988,
+      3005,
+      5886,
+      5937,
+      5972,
+      8247,
+      8247
+    ],
+    "icd10_codes": [
+      2353,
+      2353
+    ],
+    "drug_database": [
+      2405,
+      2527,
+      2405
+    ],
+    "prescriptions": [
+      2485,
+      2527,
+      8075,
+      8663,
+      8075,
+      8663
+    ],
+    "referrals": [
+      3175,
+      3222,
+      3241,
+      3298,
+      5985
+    ],
+    "routes": [
+      3329,
+      3588,
+      3730,
+      3863,
+      3922,
+      6089,
+      7209,
+      7724,
+      3329,
+      3922,
+      7209,
+      7724
+    ],
+    "location_types": [
+      3922,
+      3922
+    ],
+    "asset_categories": [
+      4101,
+      4310,
+      4362,
+      4390,
+      4101
+    ],
+    "assets": [
+      4101,
+      4206,
+      4310,
+      4325,
+      4362,
+      6112,
+      4101,
+      4206,
+      4325
+    ],
+    "inventory_stock": [
+      4421,
+      4510,
+      4716,
+      4868,
+      5000,
+      5077,
+      5217,
+      5291,
+      5349,
+      5424,
+      6101,
+      4421,
+      4510,
+      4716,
+      5000,
+      5077,
+      5217,
+      5291,
+      5349,
+      5424
+    ],
+    "consumable_categories": [
+      4421,
+      4653,
+      5217,
+      5291,
+      5349,
+      5424,
+      4421,
+      5217,
+      5291,
+      5349,
+      5424
+    ],
+    "consumables": [
+      4421,
+      4569,
+      4653,
+      5000,
+      5217,
+      5291,
+      5349,
+      5424,
+      6101,
+      4421,
+      4569,
+      5000,
+      5217,
+      5291,
+      5349,
+      5424
+    ],
+    "suppliers": [
+      4510,
+      5077,
+      5138,
+      5217,
+      4510,
+      5077,
+      5138,
+      5217
+    ],
+    "inventory_usage": [
+      4915,
+      5000,
+      5424,
+      5000,
+      5424
+    ],
+    "user_sessions": [
+      6452
+    ],
+    "medscheme_alerts": [
+      6578,
+      6647,
+      6578
+    ],
+    "chronic_disease_program": [
+      6624,
+      6825,
+      6624,
+      6825
+    ],
+    "visit_closure_notifications": [
+      6733,
+      6733
+    ],
+    "medscheme_sync_log": [
+      6748,
+      6795,
+      6795
+    ],
+    "documents": [
+      7402,
+      7446,
+      8440,
+      8519,
+      7402,
+      7446,
+      8440,
+      8519
+    ],
+    "patient_feedback": [
+      7603,
+      7603
+    ],
+    "medications": [
+      8075,
+      8663,
+      8075,
+      8663
+    ],
+    "test_results": [
+      8136,
+      8654,
+      8136,
+      8654
+    ],
+    "medical_records": [
+      8378,
+      8378
+    ],
+    "diagnoses": [
+      8564,
+      8645,
+      8564,
+      8645
+    ],
+    "patient_visit_stages": [
+      8673,
+      8673
+    ]
+  },
+  "misalignments": [],
+  "warnings": [
+    {
+      "type": "unused_table_with_data",
+      "table": "smart_suggestions",
+      "rows": 17,
+      "severity": "medium"
+    },
+    {
+      "type": "unused_table_with_data",
+      "table": "integrated_assessments",
+      "rows": 1,
+      "severity": "medium"
+    },
+    {
+      "type": "unused_table_with_data",
+      "table": "counseling_referrals",
+      "rows": 1,
+      "severity": "medium"
+    },
+    {
+      "type": "unused_table_with_data",
+      "table": "icd10_order",
+      "rows": 91581,
+      "severity": "medium"
+    }
+  ]
+}

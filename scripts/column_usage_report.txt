@@ -1,0 +1,1867 @@
+
+================================================================================
+COLUMN USAGE ANALYSIS REPORT
+================================================================================
+
+📊 Summary:
+  • Total Tables (excluding views): 65
+  • Total Columns: 808
+  • Tables with Column References: 36
+  • Columns Referenced: 315
+  • Tables with Unused Columns: 57
+  • Invalid Column References: 4
+
+🚨 INVALID COLUMN REFERENCES (4):
+
+  • icd10_codes.strip
+    Lines: [2200]
+    Valid columns in icd10_codes: id, code, description, created_at, is_common...
+
+  • icd10_codes.extend
+    Lines: [8299, 8301]
+    Valid columns in icd10_codes: id, code, description, created_at, is_common...
+
+  • medications.extend
+    Lines: [8312]
+    Valid columns in medications: generic_name, strength, id, stock_quantity, supplier_id...
+
+  • medications.append
+    Lines: [8314]
+    Valid columns in medications: generic_name, strength, id, stock_quantity, supplier_id...
+
+📈 Most Referenced Columns:
+  • users.id: 25 references
+  • users.first_name: 21 references
+  • users.last_name: 21 references
+  • users.created_at: 19 references
+  • patient_visits.id: 18 references
+  • patient_visits.created_at: 18 references
+  • patient_visits.patient_id: 17 references
+  • patient_visits.visit_date: 14 references
+  • patient_visits.updated_at: 11 references
+  • patients.id: 10 references
+  • users.updated_at: 10 references
+  • patient_visits.is_completed: 10 references
+  • inventory_stock.id: 10 references
+  • inventory_stock.consumable_id: 10 references
+  • clinical_notes.note_type: 9 references
+  • clinical_notes.created_at: 9 references
+  • inventory_stock.quantity_current: 9 references
+  • user_roles.id: 8 references
+  • user_roles.role_name: 8 references
+  • locations.id: 8 references
+
+⚠️  Tables with Unused Columns:
+
+  • investigation_orders (0 rows) - 14 unused columns:
+    - special_instructions           text                 NULL
+    - order_date                     date                 NOT NULL [MUL]
+    - ordered_by                     int                  NOT NULL [MUL]
+    - patient_id                     int                  NOT NULL [MUL]
+    - expected_completion            datetime             NULL
+    - clinical_notes                 text                 NULL
+    - investigation_id               int                  NOT NULL [MUL]
+    - sample_collected_at            timestamp            NULL
+    - priority                       enum('routine','urgent','stat') NULL
+    - sample_collected_by            int                  NULL [MUL]
+    ... and 4 more
+
+  • patient_documents (0 rows) - 14 unused columns:
+    - specialist_type                varchar(100)         NULL [MUL]
+    - is_patient_accessible          tinyint(1)           NULL [MUL]
+    - patient_id                     int                  NOT NULL [MUL]
+    - tags                           text                 NULL
+    - workflow_step                  varchar(100)         NULL [MUL]
+    - file_size_bytes                int                  NULL
+    - document_type                  enum('lab_report','prescription','medical_certificate','referral','invoice','other') NULL [MUL]
+    - uploaded_by                    int                  NULL
+    - document_name                  varchar(255)         NOT NULL
+    - mime_type                      varchar(100)         NULL
+    ... and 4 more
+
+  • patient_feedback (0 rows) - 14 unused columns:
+    - feedback_type                  enum('service_rating','complaint','suggestion','compliment') NULL [MUL]
+    - patient_id                     int                  NOT NULL [MUL]
+    - is_anonymous                   tinyint(1)           NULL
+    - comments                       text                 NULL
+    - service_ratings                json                 NULL
+    - responded_by                   int                  NULL
+    - response                       text                 NULL
+    - location_name                  varchar(255)         NULL
+    - overall_rating                 int                  NULL [MUL]
+    - responded_at                   timestamp            NULL
+    ... and 4 more
+
+  • vital_signs_references (0 rows) - 14 unused columns:
+    - age_max                        int                  NULL
+    - unit                           varchar(20)          NULL
+    - parameter_name                 varchar(50)          NOT NULL [MUL]
+    - caution_min                    decimal(6,2)         NULL
+    - normal_max                     decimal(6,2)         NULL
+    - clinical_context               varchar(100)         NULL
+    - age_min                        int                  NULL [MUL]
+    - critical_min                   decimal(6,2)         NULL
+    - source                         varchar(255)         NULL
+    - is_active                      tinyint(1)           NULL
+    ... and 4 more
+
+  • investigation_results (0 rows) - 12 unused columns:
+    - verified_by                    int                  NULL [MUL]
+    - interpretation                 text                 NULL
+    - reported_at                    timestamp            NOT NULL [MUL]
+    - critical_alert                 tinyint(1)           NULL [MUL]
+    - result_data                    json                 NOT NULL
+    - comments                       text                 NULL
+    - reported_by                    int                  NULL [MUL]
+    - reference_ranges               json                 NULL
+    - abnormal_flags                 json                 NULL
+    - verified_at                    timestamp            NULL
+    ... and 2 more
+
+  • patient_portal_users (0 rows) - 12 unused columns:
+    - email                          varchar(255)         NOT NULL [UNI]
+    - reset_token                    varchar(120)         NULL
+    - locked_until                   timestamp            NULL
+    - patient_id                     int                  NOT NULL [UNI]
+    - verification_token             varchar(120)         NULL
+    - polmed_number                  varchar(50)          NULL [UNI]
+    - verification_expires           timestamp            NULL
+    - is_email_verified              tinyint(1)           NULL
+    - reset_expires                  timestamp            NULL
+    - failed_attempts                int                  NULL
+    ... and 2 more
+
+  • assets (1 rows) - 11 unused columns:
+    - current_value                  decimal(10,2)        NULL
+    - purchase_cost                  decimal(10,2)        NULL
+    - asset_tag                      varchar(50)          NOT NULL [UNI]
+    - last_maintenance_date          date                 NULL
+    - asset_name                     varchar(255)         NOT NULL
+    - purchase_date                  date                 NULL
+    - maintenance_notes              text                 NULL
+    - manufacturer                   varchar(100)         NULL
+    - location                       varchar(255)         NULL
+    - serial_number                  varchar(100)         NULL [MUL]
+    ... and 1 more
+
+  • integrated_assessments (1 rows) - 11 unused columns:
+    - counseling_referral_needed     tinyint(1)           NULL
+    - psychological_assessment_json  text                 NULL
+    - visit_id                       int                  NOT NULL [MUL]
+    - assessment_date                datetime             NOT NULL
+    - integrated_recommendations_json text                 NULL
+    - assessed_by                    int                  NOT NULL [MUL]
+    - comprehensive_care_plan_json   text                 NULL
+    - medical_assessment_json        text                 NULL
+    - combined_risk_level            varchar(20)          NULL
+    - counseling_urgency             varchar(20)          NULL
+    ... and 1 more
+
+  • investigations (0 rows) - 11 unused columns:
+    - investigation_code             varchar(50)          NOT NULL [UNI]
+    - clinical_significance          text                 NULL
+    - cost                           decimal(8,2)         NULL
+    - normal_ranges                  json                 NULL
+    - alternative_names              json                 NULL
+    - reference_values               text                 NULL
+    - category_id                    int                  NOT NULL [MUL]
+    - is_active                      tinyint(1)           NULL
+    - is_stat_available              tinyint(1)           NULL
+    - units                          varchar(50)          NULL
+    ... and 1 more
+
+  • smart_suggestions (17 rows) - 11 unused columns:
+    - user_id                        int                  NULL [MUL]
+    - confidence_score               decimal(3,2)         NOT NULL [MUL]
+    - input_context                  text                 NOT NULL
+    - patient_context                json                 NULL
+    - suggestion_type                enum('icd10','medication','investigation','template') NOT NULL [MUL]
+    - was_accepted                   tinyint(1)           NULL [MUL]
+    - feedback_score                 int                  NULL
+    - suggestion_data                json                 NOT NULL
+    - accepted_at                    timestamp            NULL
+    - feedback_notes                 text                 NULL
+    ... and 1 more
+
+  • counseling_referrals (1 rows) - 10 unused columns:
+    - focus_areas_json               text                 NULL
+    - referral_date                  datetime             NULL
+    - rationale_json                 text                 NULL
+    - scheduled_date                 datetime             NULL
+    - session_notes                  text                 NULL
+    - visit_id                       int                  NOT NULL [MUL]
+    - assigned_counselor             int                  NULL [MUL]
+    - urgency                        varchar(20)          NOT NULL
+    - status                         enum('pending','scheduled','in_progress','completed') NULL
+    - outcome_summary                text                 NULL
+
+  • medscheme_sync_log (0 rows) - 10 unused columns:
+    - patient_id                     int                  NOT NULL [MUL]
+    - response_data                  json                 NULL
+    - sync_data                      json                 NULL
+    - retry_count                    int                  NULL
+    - completed_at                   timestamp            NULL
+    - sync_status                    enum('pending','in_progress','completed','failed') NULL [MUL]
+    - error_message                  text                 NULL
+    - sync_type                      enum('patient_data','visit_data','diagnosis','prescription','investigation','full_sync') NOT NULL [MUL]
+    - visit_id                       int                  NULL [MUL]
+    - started_at                     timestamp            NULL
+
+  • patient_preferences (0 rows) - 10 unused columns:
+    - language_preference            varchar(10)          NULL
+    - patient_id                     int                  NOT NULL [UNI]
+    - max_travel_distance_km         int                  NULL
+    - preferred_appointment_times    json                 NULL
+    - preferred_provinces            json                 NULL
+    - preferred_cities               json                 NULL
+    - privacy_settings               json                 NULL
+    - communication_preferences      json                 NULL
+    - notification_preferences       json                 NULL
+    - accessibility_requirements     text                 NULL
+
+  • referrals (3 rows) - 10 unused columns:
+    - to_stage                       enum('Registration','Nursing Assessment','Doctor Consultation','Counseling Session') NULL
+    - external_provider              varchar(255)         NULL
+    - notes                          text                 NULL
+    - from_stage                     enum('Registration','Nursing Assessment','Doctor Consultation','Counseling Session') NOT NULL
+    - reason                         text                 NOT NULL
+    - appointment_date               date                 NULL
+    - department                     varchar(255)         NULL
+    - status                         enum('pending','sent','accepted','completed','cancelled') NOT NULL [MUL]
+    - referral_type                  enum('internal','external') NOT NULL
+    - visit_id                       varchar(36)          NULL
+
+  • visit_closure_notifications (0 rows) - 10 unused columns:
+    - recipient_email                varchar(255)         NOT NULL
+    - patient_id                     int                  NOT NULL [MUL]
+    - report_data                    json                 NULL
+    - email_status                   enum('pending','sent','failed','bounced') NULL [MUL]
+    - recipient_type                 enum('patient','dependent','main_member','guardian') NOT NULL
+    - error_message                  text                 NULL
+    - sent_at                        timestamp            NULL
+    - patient_age_at_send            int                  NULL
+    - visit_id                       int                  NOT NULL [MUL]
+    - popia_compliant                tinyint(1)           NULL
+
+📋 Column Usage by Table (Top 20 Tables):
+  clinical_notes                 ████████████████████ 100.0% (17/17 cols, 118 rows)
+  consumables                    ████████████████████ 100.0% (14/14 cols, 2 rows)
+  icd10_codes                    ████████████████████ 100.0% (5/5 cols, 72075 rows)
+  patient_visits                 ████████████████████ 100.0% (15/15 cols, 46 rows)
+  route_locations                ████████████████████ 100.0% (10/10 cols, 10 rows)
+  visit_specialists              ████████████████████ 100.0% (9/9 cols, 12 rows)
+  routes                         ██████████████████░░  92.9% (13/14 cols, 14 rows)
+  diagnoses                      █████████████████░░░  86.7% (13/15 cols, 0 rows)
+  medical_records                █████████████████░░░  85.7% (12/14 cols, 0 rows)
+  vital_signs                    █████████████████░░░  85.7% (12/14 cols, 34 rows)
+  asset_categories               ████████████████░░░░  83.3% (5/6 cols, 16 rows)
+  audit_log                      ████████████████░░░░  83.3% (10/12 cols, 1028 rows)
+  documents                      ████████████████░░░░  81.0% (17/21 cols, 2 rows)
+  patients                       ████████████████░░░░  80.0% (16/20 cols, 27 rows)
+  user_roles                     ████████████████░░░░  80.0% (4/5 cols, 11 rows)
+  users                          ███████████████░░░░░  76.5% (13/17 cols, 24 rows)
+  medications                    ██████████████░░░░░░  73.3% (11/15 cols, 0 rows)
+  test_results                   ██████████████░░░░░░  70.0% (14/20 cols, 0 rows)
+  visit_workflow_progress        ██████████████░░░░░░  70.0% (7/10 cols, 6 rows)
+  patient_appointments           █████████████░░░░░░░  68.8% (11/16 cols, 40 rows)
+
+🔗 Foreign Key Column Usage:
+  ⚠️  Unused Foreign Keys (57):
+    • chronic_disease_program.created_by → users.id
+    • clinical_alerts.rule_id → clinical_decision_rules.id
+    • clinical_alerts.patient_id → patients.id
+    • clinical_alerts.visit_id → patient_visits.id
+    • clinical_alerts.triggered_by → users.id
+    • clinical_alerts.responded_by → users.id
+    • clinical_decision_rules.created_by → users.id
+    • clinical_templates.created_by → users.id
+    • counseling_referrals.visit_id → patient_visits.id
+    • counseling_referrals.assigned_counselor → users.id
+    • integrated_assessments.visit_id → patient_visits.id
+    • integrated_assessments.assessed_by → users.id
+    • inventory_stock.received_by → users.id
+    • investigation_orders.visit_id → patient_visits.id
+    • investigation_orders.patient_id → patients.id
+
+  ✓ Used Foreign Keys: 56/113
+
+================================================================================
+
+
+================================================================================
+DETAILED PER-TABLE COLUMN USAGE
+================================================================================
+
+================================================================================
+TABLE: asset_categories
+Rows: 16, Total Columns: 6, Used: 5
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 4 times at lines: [4101, 4310, 4362, 4390]
+  ✓ USED       category_name                  varchar(100)         NOT NULL [UNI]
+               Referenced 3 times at lines: [4101, 4362, 4390]
+  ✓ USED       description                    text                 NULL
+               Referenced 2 times at lines: [4362, 4390]
+  ✓ USED       requires_calibration           tinyint(1)           NULL
+               Referenced 3 times at lines: [4101, 4362, 4390]
+  ✓ USED       calibration_frequency_months   int                  NULL
+               Referenced 4 times at lines: [4101, 4310, 4362, 4390]
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+
+================================================================================
+TABLE: assets
+Rows: 1, Total Columns: 19, Used: 6
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 3 times at lines: [4101, 4310, 4362]
+  ⚠ UNUSED     asset_tag                      varchar(50)          NOT NULL [UNI]
+  ⚠ UNUSED     serial_number                  varchar(100)         NULL [MUL]
+  ⚠ UNUSED     asset_name                     varchar(255)         NOT NULL
+  ✓ USED       category_id                    int                  NOT NULL [MUL]
+               Referenced 3 times at lines: [4101, 4310, 4362]
+  ⚠ UNUSED     manufacturer                   varchar(100)         NULL
+  ⚠ UNUSED     model                          varchar(100)         NULL
+  ⚠ UNUSED     purchase_date                  date                 NULL
+  ✓ USED       warranty_expiry                date                 NULL
+               Referenced 1 times at lines: [4101]
+  ✓ USED       status                         enum('Operational','Maintenance Required','Out of Service','Retired') NULL [MUL]
+               Referenced 1 times at lines: [6112]
+  ⚠ UNUSED     location                       varchar(255)         NULL
+  ✓ USED       assigned_to                    int                  NULL [MUL]
+               Referenced 1 times at lines: [4101]
+  ⚠ UNUSED     last_maintenance_date          date                 NULL
+  ✓ USED       next_maintenance_date          date                 NULL [MUL]
+               Referenced 2 times at lines: [4101, 6112]
+  ⚠ UNUSED     maintenance_notes              text                 NULL
+  ⚠ UNUSED     purchase_cost                  decimal(10,2)        NULL
+  ⚠ UNUSED     current_value                  decimal(10,2)        NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: audit_log
+Rows: 1028, Total Columns: 12, Used: 10
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 2 times at lines: [6264, 6346]
+  ✓ USED       user_id                        int                  NULL [MUL]
+               Referenced 3 times at lines: [6264, 6346, 6491]
+  ✓ USED       table_name                     varchar(100)         NOT NULL [MUL]
+               Referenced 3 times at lines: [6264, 6346, 6491]
+  ✓ USED       record_id                      int                  NULL
+               Referenced 1 times at lines: [6264]
+  ✓ USED       action                         enum('SELECT','INSERT','UPDATE','DELETE','LOGIN','LOGOUT') NOT NULL [MUL]
+               Referenced 3 times at lines: [6264, 6346, 6491]
+  ✓ USED       old_values                     json                 NULL
+               Referenced 1 times at lines: [6264]
+  ✓ USED       new_values                     json                 NULL
+               Referenced 1 times at lines: [6264]
+  ✓ USED       ip_address                     varchar(45)          NULL
+               Referenced 1 times at lines: [6264]
+  ⚠ UNUSED     user_agent                     text                 NULL
+  ⚠ UNUSED     session_id                     varchar(255)         NULL
+  ✓ USED       location_data                  json                 NULL
+               Referenced 1 times at lines: [6264]
+  ✓ USED       created_at                     timestamp            NULL [MUL] DEFAULT_GENERATED
+               Referenced 3 times at lines: [6264, 6346, 6491]
+
+================================================================================
+TABLE: audit_logs
+Rows: 0, Total Columns: 7, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     log_id                         int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     table_name                     varchar(100)         NOT NULL [MUL]
+  ⚠ UNUSED     record_id                      varchar(36)          NOT NULL
+  ⚠ UNUSED     action                         enum('create','update','delete','login','logout') NOT NULL
+  ⚠ UNUSED     user_id                        varchar(36)          NOT NULL [MUL]
+  ⚠ UNUSED     details                        text                 NULL
+  ⚠ UNUSED     created_at                     datetime             NULL [MUL] DEFAULT_GENERATED
+
+================================================================================
+TABLE: chronic_disease_program
+Rows: 0, Total Columns: 14, Used: 2
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ✓ USED       patient_id                     int                  NOT NULL [MUL]
+               Referenced 1 times at lines: [6825]
+  ⚠ UNUSED     condition_name                 varchar(255)         NOT NULL [MUL]
+  ⚠ UNUSED     icd10_code                     varchar(20)          NULL
+  ✓ USED       enrollment_date                date                 NOT NULL
+               Referenced 1 times at lines: [6825]
+  ⚠ UNUSED     program_status                 enum('active','inactive','completed','suspended') NULL [MUL]
+  ⚠ UNUSED     last_review_date               date                 NULL
+  ⚠ UNUSED     next_review_date               date                 NULL
+  ⚠ UNUSED     care_plan                      json                 NULL
+  ⚠ UNUSED     medscheme_notified             tinyint(1)           NULL
+  ⚠ UNUSED     medscheme_notification_date    timestamp            NULL
+  ⚠ UNUSED     created_by                     int                  NOT NULL [MUL]
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: clinical_alerts
+Rows: 0, Total Columns: 11, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     rule_id                        int                  NOT NULL [MUL]
+  ⚠ UNUSED     patient_id                     int                  NOT NULL [MUL]
+  ⚠ UNUSED     visit_id                       int                  NULL [MUL]
+  ⚠ UNUSED     triggered_by                   int                  NOT NULL [MUL]
+  ⚠ UNUSED     alert_context                  json                 NULL
+  ⚠ UNUSED     user_response                  enum('acknowledged','overridden','acted_upon') NULL
+  ⚠ UNUSED     response_notes                 text                 NULL
+  ⚠ UNUSED     responded_by                   int                  NULL [MUL]
+  ⚠ UNUSED     responded_at                   timestamp            NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL [MUL] DEFAULT_GENERATED
+
+================================================================================
+TABLE: clinical_decision_rules
+Rows: 0, Total Columns: 12, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     rule_name                      varchar(255)         NOT NULL
+  ⚠ UNUSED     rule_type                      enum('drug_interaction','allergy_alert','vital_alert','investigation_alert') NOT NULL [MUL]
+  ⚠ UNUSED     condition_logic                json                 NOT NULL
+  ⚠ UNUSED     alert_level                    enum('info','warning','critical') NULL [MUL]
+  ⚠ UNUSED     alert_message                  text                 NOT NULL
+  ⚠ UNUSED     recommendation                 text                 NULL
+  ⚠ UNUSED     evidence_grade                 varchar(10)          NULL
+  ⚠ UNUSED     is_active                      tinyint(1)           NULL [MUL]
+  ⚠ UNUSED     created_by                     int                  NULL [MUL]
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: clinical_notes
+Rows: 118, Total Columns: 17, Used: 17
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 5 times at lines: [2087, 2131, 2925, 2988, 8247]
+  ✓ USED       visit_id                       int                  NOT NULL [MUL]
+               Referenced 7 times at lines: [2087, 2131, 2925, 2988, 3005, 5972, 8247]
+  ✓ USED       note_type                      varchar(32)          NULL [MUL]
+               Referenced 9 times at lines: [2087, 2131, 2925, 2988, 3005, 5886, 5937, 5972, 8247]
+  ✓ USED       content                        text                 NOT NULL [MUL]
+               Referenced 3 times at lines: [2087, 2131, 8247]
+  ✓ USED       icd10_codes                    text                 NULL
+               Referenced 2 times at lines: [2131, 8247]
+  ✓ USED       medications_prescribed         json                 NULL
+               Referenced 2 times at lines: [2131, 8247]
+  ✓ USED       prescription_ids               json                 NULL
+               Referenced 1 times at lines: [2131]
+  ✓ USED       investigation_order_ids        json                 NULL
+               Referenced 1 times at lines: [2131]
+  ✓ USED       template_used                  int                  NULL [MUL]
+               Referenced 1 times at lines: [2131]
+  ✓ USED       confidence_score               decimal(3,2)         NULL
+               Referenced 1 times at lines: [2131]
+  ✓ USED       reviewed_by                    int                  NULL [MUL]
+               Referenced 1 times at lines: [2131]
+  ✓ USED       reviewed_at                    timestamp            NULL [MUL]
+               Referenced 1 times at lines: [2131]
+  ✓ USED       follow_up_required             tinyint(1)           NULL
+               Referenced 2 times at lines: [2131, 8247]
+  ✓ USED       follow_up_date                 date                 NULL
+               Referenced 2 times at lines: [2131, 8247]
+  ✓ USED       created_by                     int                  NOT NULL [MUL]
+               Referenced 8 times at lines: [2087, 2131, 2925, 2988, 5886, 5937, 5972, 8247]
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 9 times at lines: [2087, 2131, 2925, 2988, 3005, 5886, 5937, 5972, 8247]
+  ✓ USED       updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+               Referenced 1 times at lines: [2131]
+
+================================================================================
+TABLE: clinical_templates
+Rows: 0, Total Columns: 13, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     template_name                  varchar(255)         NOT NULL [MUL]
+  ⚠ UNUSED     template_type                  enum('assessment','diagnosis','treatment','procedure') NOT NULL [MUL]
+  ⚠ UNUSED     specialty                      varchar(100)         NULL [MUL]
+  ⚠ UNUSED     system_category                varchar(100)         NULL
+  ⚠ UNUSED     template_content               text                 NOT NULL
+  ⚠ UNUSED     keywords                       json                 NULL
+  ⚠ UNUSED     usage_count                    int                  NULL [MUL]
+  ⚠ UNUSED     created_by                     int                  NULL [MUL]
+  ⚠ UNUSED     is_active                      tinyint(1)           NULL
+  ⚠ UNUSED     is_system_template             tinyint(1)           NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: consumable_categories
+Rows: 4, Total Columns: 6, Used: 3
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 6 times at lines: [4421, 4653, 5217, 5291, 5349, 5424]
+  ✓ USED       category_name                  varchar(100)         NOT NULL [UNI]
+               Referenced 6 times at lines: [4421, 4653, 5217, 5291, 5349, 5424]
+  ⚠ UNUSED     description                    text                 NULL
+  ⚠ UNUSED     requires_prescription          tinyint(1)           NULL
+  ⚠ UNUSED     storage_requirements           text                 NULL
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 1 times at lines: [4421]
+
+================================================================================
+TABLE: consumables
+Rows: 2, Total Columns: 14, Used: 14
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 8 times at lines: [4421, 4653, 5000, 5217, 5291, 5349, 5424, 6101]
+  ✓ USED       item_code                      varchar(50)          NOT NULL [UNI]
+               Referenced 6 times at lines: [4421, 5000, 5217, 5291, 5349, 5424]
+  ✓ USED       item_name                      varchar(255)         NOT NULL [MUL]
+               Referenced 6 times at lines: [4421, 5000, 5217, 5291, 5349, 5424]
+  ✓ USED       category_id                    int                  NOT NULL [MUL]
+               Referenced 6 times at lines: [4421, 4653, 5217, 5291, 5349, 5424]
+  ✓ USED       generic_name                   varchar(255)         NULL
+               Referenced 1 times at lines: [4421]
+  ✓ USED       strength                       varchar(50)          NULL
+               Referenced 1 times at lines: [4421]
+  ✓ USED       dosage_form                    varchar(100)         NULL
+               Referenced 1 times at lines: [4421]
+  ✓ USED       unit_of_measure                varchar(20)          NOT NULL
+               Referenced 4 times at lines: [4421, 5000, 5217, 5291]
+  ✓ USED       reorder_level                  int                  NULL
+               Referenced 3 times at lines: [4421, 5291, 6101]
+  ✓ USED       max_stock_level                int                  NULL
+               Referenced 2 times at lines: [4421, 5291]
+  ✓ USED       storage_temperature_min        decimal(4,1)         NULL
+               Referenced 1 times at lines: [4421]
+  ✓ USED       storage_temperature_max        decimal(4,1)         NULL
+               Referenced 1 times at lines: [4421]
+  ✓ USED       is_controlled_substance        tinyint(1)           NULL
+               Referenced 1 times at lines: [4421]
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 1 times at lines: [4421]
+
+================================================================================
+TABLE: counseling_referrals
+Rows: 1, Total Columns: 13, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     visit_id                       int                  NOT NULL [MUL]
+  ⚠ UNUSED     referral_date                  datetime             NULL DEFAULT_GENERATED
+  ⚠ UNUSED     urgency                        varchar(20)          NOT NULL
+  ⚠ UNUSED     focus_areas_json               text                 NULL
+  ⚠ UNUSED     rationale_json                 text                 NULL
+  ⚠ UNUSED     status                         enum('pending','scheduled','in_progress','completed') NULL
+  ⚠ UNUSED     assigned_counselor             int                  NULL [MUL]
+  ⚠ UNUSED     scheduled_date                 datetime             NULL
+  ⚠ UNUSED     session_notes                  text                 NULL
+  ⚠ UNUSED     outcome_summary                text                 NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: diagnoses
+Rows: 0, Total Columns: 15, Used: 13
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 2 times at lines: [8564, 8645]
+  ✓ USED       visit_id                       int                  NOT NULL [MUL]
+               Referenced 2 times at lines: [8564, 8645]
+  ✓ USED       patient_id                     int                  NOT NULL [MUL]
+               Referenced 1 times at lines: [8564]
+  ✓ USED       icd10_code                     varchar(10)          NULL [MUL]
+               Referenced 2 times at lines: [8564, 8645]
+  ✓ USED       diagnosis_text                 varchar(500)         NULL
+               Referenced 2 times at lines: [8564, 8645]
+  ✓ USED       primary_diagnosis              tinyint(1)           NULL [MUL]
+               Referenced 2 times at lines: [8564, 8645]
+  ✓ USED       certainty_level                varchar(50)          NULL
+               Referenced 1 times at lines: [8564]
+  ✓ USED       severity                       varchar(50)          NULL
+               Referenced 2 times at lines: [8564, 8645]
+  ⚠ UNUSED     onset_date                     date                 NULL
+  ✓ USED       status                         varchar(50)          NULL [MUL]
+               Referenced 2 times at lines: [8564, 8645]
+  ✓ USED       treatment_plan                 text                 NULL
+               Referenced 2 times at lines: [8564, 8645]
+  ✓ USED       recorded_by                    int                  NULL [MUL]
+               Referenced 1 times at lines: [8564]
+  ⚠ UNUSED     recorded_at                    datetime             NULL [MUL] DEFAULT_GENERATED
+  ✓ USED       created_at                     datetime             NULL [MUL] DEFAULT_GENERATED
+               Referenced 1 times at lines: [8564]
+  ✓ USED       updated_at                     datetime             NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+               Referenced 1 times at lines: [8564]
+
+================================================================================
+TABLE: documents
+Rows: 2, Total Columns: 21, Used: 17
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 3 times at lines: [7446, 8440, 8519]
+  ✓ USED       patient_id                     int                  NOT NULL [MUL]
+               Referenced 2 times at lines: [8440, 8519]
+  ✓ USED       document_type                  varchar(100)         NOT NULL [MUL]
+               Referenced 1 times at lines: [8440]
+  ✓ USED       visit_id                       int                  NULL [MUL]
+               Referenced 1 times at lines: [8440]
+  ✓ USED       file_name                      varchar(255)         NOT NULL
+               Referenced 2 times at lines: [8440, 8519]
+  ✓ USED       file_path                      varchar(512)         NULL
+               Referenced 3 times at lines: [7446, 8440, 8519]
+  ✓ USED       file_size                      int                  NULL
+               Referenced 1 times at lines: [8440]
+  ✓ USED       mime_type                      varchar(100)         NULL
+               Referenced 2 times at lines: [8440, 8519]
+  ✓ USED       is_confidential                tinyint(1)           NULL
+               Referenced 2 times at lines: [8440, 8519]
+  ✓ USED       uploaded_by                    int                  NULL [MUL]
+               Referenced 2 times at lines: [7446, 8440]
+  ✓ USED       specialist_type                varchar(100)         NULL [MUL]
+               Referenced 1 times at lines: [8440]
+  ✓ USED       workflow_step                  varchar(100)         NULL [MUL]
+               Referenced 1 times at lines: [8440]
+  ✓ USED       tags                           text                 NULL
+               Referenced 1 times at lines: [8440]
+  ✓ USED       notes                          text                 NULL
+               Referenced 1 times at lines: [8440]
+  ⚠ UNUSED     uploaded_at                    datetime             NULL [MUL] DEFAULT_GENERATED
+  ⚠ UNUSED     expires_at                     datetime             NULL
+  ⚠ UNUSED     is_active                      tinyint(1)           NULL [MUL]
+  ✓ USED       download_count                 int                  NULL
+               Referenced 1 times at lines: [8440]
+  ⚠ UNUSED     last_downloaded_at             datetime             NULL
+  ✓ USED       created_at                     datetime             NULL [MUL] DEFAULT_GENERATED
+               Referenced 1 times at lines: [8440]
+  ✓ USED       updated_at                     datetime             NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+               Referenced 1 times at lines: [8440]
+
+================================================================================
+TABLE: drug_database
+Rows: 0, Total Columns: 18, Used: 11
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 2 times at lines: [2405, 2527]
+  ✓ USED       drug_name                      varchar(255)         NOT NULL [MUL]
+               Referenced 2 times at lines: [2405, 2527]
+  ✓ USED       generic_name                   varchar(255)         NULL [MUL]
+               Referenced 2 times at lines: [2405, 2527]
+  ⚠ UNUSED     brand_names                    json                 NULL
+  ✓ USED       drug_class                     varchar(100)         NULL [MUL]
+               Referenced 2 times at lines: [2405, 2527]
+  ✓ USED       available_strengths            json                 NULL
+               Referenced 1 times at lines: [2405]
+  ✓ USED       available_forms                json                 NULL
+               Referenced 1 times at lines: [2405]
+  ✓ USED       standard_dosages               json                 NULL
+               Referenced 1 times at lines: [2405]
+  ✓ USED       contraindications              text                 NULL
+               Referenced 1 times at lines: [2405]
+  ✓ USED       side_effects                   text                 NULL
+               Referenced 1 times at lines: [2405]
+  ⚠ UNUSED     drug_interactions              json                 NULL
+  ⚠ UNUSED     pregnancy_category             varchar(10)          NULL
+  ⚠ UNUSED     renal_adjustment               tinyint(1)           NULL
+  ⚠ UNUSED     hepatic_adjustment             tinyint(1)           NULL
+  ⚠ UNUSED     is_controlled_substance        tinyint(1)           NULL
+  ✓ USED       is_active                      tinyint(1)           NULL
+               Referenced 1 times at lines: [2405]
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 1 times at lines: [2527]
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: icd10_codes
+Rows: 72075, Total Columns: 5, Used: 5
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ✓ USED       code                           varchar(10)          NOT NULL [UNI]
+               Referenced 1 times at lines: [2353]
+  ✓ USED       description                    text                 NOT NULL
+               Referenced 1 times at lines: [2353]
+  ✓ USED       is_common                      tinyint(1)           NULL
+               Referenced 1 times at lines: [2353]
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+
+================================================================================
+TABLE: icd10_order
+Rows: 91581, Total Columns: 7, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     order_number                   int                  NOT NULL [MUL]
+  ⚠ UNUSED     code                           varchar(10)          NOT NULL [MUL]
+  ⚠ UNUSED     valid_flag                     tinyint(1)           NOT NULL
+  ⚠ UNUSED     short_description              varchar(255)         NULL
+  ⚠ UNUSED     long_description               text                 NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+
+================================================================================
+TABLE: integrated_assessments
+Rows: 1, Total Columns: 14, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     visit_id                       int                  NOT NULL [MUL]
+  ⚠ UNUSED     assessed_by                    int                  NOT NULL [MUL]
+  ⚠ UNUSED     assessment_date                datetime             NOT NULL
+  ⚠ UNUSED     medical_assessment_json        text                 NULL
+  ⚠ UNUSED     psychological_assessment_json  text                 NULL
+  ⚠ UNUSED     integrated_recommendations_json text                 NULL
+  ⚠ UNUSED     comprehensive_care_plan_json   text                 NULL
+  ⚠ UNUSED     combined_risk_level            varchar(20)          NULL
+  ⚠ UNUSED     counseling_referral_needed     tinyint(1)           NULL
+  ⚠ UNUSED     counseling_urgency             varchar(20)          NULL
+  ⚠ UNUSED     status                         enum('active','completed','discontinued') NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: inventory_stock
+Rows: 0, Total Columns: 17, Used: 10
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 10 times at lines: [4421, 4510, 4868, 5000, 5077, 5217, 5291, 5349, 5424, 6101]
+  ✓ USED       consumable_id                  int                  NOT NULL [MUL]
+               Referenced 10 times at lines: [4421, 4510, 4868, 5000, 5077, 5217, 5291, 5349, 5424, 6101]
+  ✓ USED       batch_number                   varchar(100)         NOT NULL [MUL]
+               Referenced 3 times at lines: [4868, 5000, 5217]
+  ✓ USED       supplier_id                    int                  NOT NULL [MUL]
+               Referenced 3 times at lines: [4510, 5077, 5217]
+  ⚠ UNUSED     quantity_received              int                  NOT NULL
+  ✓ USED       quantity_current               int                  NOT NULL
+               Referenced 9 times at lines: [4421, 4510, 4868, 5077, 5217, 5291, 5349, 5424, 6101]
+  ✓ USED       unit_cost                      decimal(8,2)         NULL
+               Referenced 7 times at lines: [4421, 4510, 5077, 5217, 5291, 5349, 5424]
+  ⚠ UNUSED     manufacture_date               date                 NULL
+  ✓ USED       expiry_date                    date                 NOT NULL [MUL]
+               Referenced 6 times at lines: [4421, 4510, 4868, 5000, 5217, 5349]
+  ✓ USED       received_date                  date                 NOT NULL
+               Referenced 3 times at lines: [4421, 4510, 4868]
+  ⚠ UNUSED     received_by                    int                  NOT NULL [MUL]
+  ⚠ UNUSED     location                       varchar(255)         NULL
+  ✓ USED       status                         enum('Active','Expired','Recalled','Disposed') NULL [MUL]
+               Referenced 7 times at lines: [4421, 4868, 5077, 5217, 5291, 5349, 5424]
+  ⚠ UNUSED     disposal_date                  date                 NULL
+  ⚠ UNUSED     disposal_reason                text                 NULL
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 1 times at lines: [4421]
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: inventory_usage
+Rows: 0, Total Columns: 10, Used: 6
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 2 times at lines: [5000, 5424]
+  ✓ USED       stock_id                       int                  NOT NULL [MUL]
+               Referenced 2 times at lines: [5000, 5424]
+  ✓ USED       visit_id                       int                  NULL [MUL]
+               Referenced 1 times at lines: [5000]
+  ✓ USED       quantity_used                  int                  NOT NULL
+               Referenced 1 times at lines: [5424]
+  ✓ USED       used_by                        int                  NOT NULL [MUL]
+               Referenced 1 times at lines: [5000]
+  ✓ USED       usage_date                     date                 NOT NULL [MUL]
+               Referenced 1 times at lines: [5424]
+  ⚠ UNUSED     usage_time                     time                 NOT NULL
+  ⚠ UNUSED     location                       varchar(255)         NULL
+  ⚠ UNUSED     notes                          text                 NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+
+================================================================================
+TABLE: investigation_categories
+Rows: 0, Total Columns: 10, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     category_name                  varchar(100)         NOT NULL [UNI]
+  ⚠ UNUSED     description                    text                 NULL
+  ⚠ UNUSED     department                     varchar(100)         NULL
+  ⚠ UNUSED     turnaround_time_hours          int                  NULL
+  ⚠ UNUSED     sample_type                    varchar(100)         NULL
+  ⚠ UNUSED     fasting_required               tinyint(1)           NULL
+  ⚠ UNUSED     special_instructions           text                 NULL
+  ⚠ UNUSED     is_active                      tinyint(1)           NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+
+================================================================================
+TABLE: investigation_orders
+Rows: 0, Total Columns: 17, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     visit_id                       int                  NOT NULL [MUL]
+  ⚠ UNUSED     patient_id                     int                  NOT NULL [MUL]
+  ⚠ UNUSED     investigation_id               int                  NOT NULL [MUL]
+  ⚠ UNUSED     ordered_by                     int                  NOT NULL [MUL]
+  ⚠ UNUSED     order_date                     date                 NOT NULL [MUL]
+  ⚠ UNUSED     order_time                     time                 NOT NULL
+  ⚠ UNUSED     priority                       enum('routine','urgent','stat') NULL
+  ⚠ UNUSED     clinical_notes                 text                 NULL
+  ⚠ UNUSED     special_instructions           text                 NULL
+  ⚠ UNUSED     expected_completion            datetime             NULL
+  ⚠ UNUSED     status                         enum('ordered','sample_collected','in_progress','completed','cancelled') NULL [MUL]
+  ⚠ UNUSED     sample_collected_at            timestamp            NULL
+  ⚠ UNUSED     sample_collected_by            int                  NULL [MUL]
+  ⚠ UNUSED     cancelled_reason               text                 NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: investigation_results
+Rows: 0, Total Columns: 14, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     order_id                       int                  NOT NULL [MUL]
+  ⚠ UNUSED     result_data                    json                 NOT NULL
+  ⚠ UNUSED     interpretation                 text                 NULL
+  ⚠ UNUSED     reference_ranges               json                 NULL
+  ⚠ UNUSED     abnormal_flags                 json                 NULL
+  ⚠ UNUSED     reported_by                    int                  NULL [MUL]
+  ⚠ UNUSED     verified_by                    int                  NULL [MUL]
+  ⚠ UNUSED     reported_at                    timestamp            NOT NULL [MUL]
+  ⚠ UNUSED     verified_at                    timestamp            NULL
+  ⚠ UNUSED     report_file_path               varchar(500)         NULL
+  ⚠ UNUSED     comments                       text                 NULL
+  ⚠ UNUSED     critical_alert                 tinyint(1)           NULL [MUL]
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+
+================================================================================
+TABLE: investigations
+Rows: 0, Total Columns: 14, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     category_id                    int                  NOT NULL [MUL]
+  ⚠ UNUSED     investigation_code             varchar(50)          NOT NULL [UNI]
+  ⚠ UNUSED     investigation_name             varchar(255)         NOT NULL [MUL]
+  ⚠ UNUSED     alternative_names              json                 NULL
+  ⚠ UNUSED     normal_ranges                  json                 NULL
+  ⚠ UNUSED     units                          varchar(50)          NULL
+  ⚠ UNUSED     reference_values               text                 NULL
+  ⚠ UNUSED     clinical_significance          text                 NULL
+  ⚠ UNUSED     cost                           decimal(8,2)         NULL
+  ⚠ UNUSED     is_stat_available              tinyint(1)           NULL
+  ⚠ UNUSED     is_active                      tinyint(1)           NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: location_types
+Rows: 5, Total Columns: 5, Used: 2
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 1 times at lines: [3922]
+  ✓ USED       type_name                      varchar(50)          NOT NULL [UNI]
+               Referenced 1 times at lines: [3922]
+  ⚠ UNUSED     description                    text                 NULL
+  ⚠ UNUSED     default_capacity               int                  NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+
+================================================================================
+TABLE: locations
+Rows: 15, Total Columns: 12, Used: 8
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 8 times at lines: [1372, 1410, 3922, 7209, 7724, 8378, 8614, 8775]
+  ✓ USED       location_name                  varchar(255)         NOT NULL
+               Referenced 8 times at lines: [1372, 1410, 3922, 7209, 7724, 8378, 8614, 8775]
+  ✓ USED       location_type_id               int                  NOT NULL [MUL]
+               Referenced 1 times at lines: [3922]
+  ✓ USED       province                       varchar(50)          NOT NULL [MUL]
+               Referenced 6 times at lines: [1372, 3922, 7209, 7724, 8378, 8614]
+  ✓ USED       city                           varchar(100)         NOT NULL [MUL]
+               Referenced 7 times at lines: [1372, 3922, 7209, 7724, 8378, 8614, 8775]
+  ✓ USED       address                        text                 NULL
+               Referenced 3 times at lines: [7724, 8614, 8775]
+  ⚠ UNUSED     gps_coordinates                point                NOT NULL [MUL]
+  ⚠ UNUSED     contact_person                 varchar(200)         NULL
+  ⚠ UNUSED     contact_phone                  varchar(20)          NULL
+  ⚠ UNUSED     facilities_available           json                 NULL
+  ✓ USED       is_active                      tinyint(1)           NULL
+               Referenced 2 times at lines: [3922, 7724]
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 3 times at lines: [7209, 8378, 8614]
+
+================================================================================
+TABLE: medical_records
+Rows: 0, Total Columns: 14, Used: 12
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 1 times at lines: [8378]
+  ✓ USED       patient_id                     int                  NOT NULL [MUL]
+               Referenced 1 times at lines: [8378]
+  ✓ USED       visit_id                       int                  NULL [MUL]
+               Referenced 1 times at lines: [8378]
+  ✓ USED       record_type                    varchar(50)          NOT NULL [MUL]
+               Referenced 1 times at lines: [8378]
+  ✓ USED       record_date                    date                 NOT NULL [MUL]
+               Referenced 1 times at lines: [8378]
+  ✓ USED       description                    text                 NOT NULL
+               Referenced 1 times at lines: [8378]
+  ✓ USED       icd10_code                     varchar(10)          NULL [MUL]
+               Referenced 1 times at lines: [8378]
+  ✓ USED       severity                       varchar(50)          NULL
+               Referenced 1 times at lines: [8378]
+  ✓ USED       status                         varchar(50)          NULL [MUL]
+               Referenced 1 times at lines: [8378]
+  ⚠ UNUSED     provider_name                  varchar(255)         NULL
+  ✓ USED       provider_id                    int                  NULL [MUL]
+               Referenced 1 times at lines: [8378]
+  ⚠ UNUSED     notes                          text                 NULL
+  ✓ USED       created_at                     datetime             NULL [MUL] DEFAULT_GENERATED
+               Referenced 1 times at lines: [8378]
+  ✓ USED       updated_at                     datetime             NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+               Referenced 1 times at lines: [8378]
+
+================================================================================
+TABLE: medication_administration
+Rows: 0, Total Columns: 11, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     prescription_id                int                  NOT NULL [MUL]
+  ⚠ UNUSED     visit_id                       int                  NOT NULL [MUL]
+  ⚠ UNUSED     administered_by                int                  NOT NULL [MUL]
+  ⚠ UNUSED     administration_time            timestamp            NOT NULL [MUL]
+  ⚠ UNUSED     dose_given                     varchar(50)          NULL
+  ⚠ UNUSED     route_given                    varchar(50)          NULL
+  ⚠ UNUSED     administration_notes           text                 NULL
+  ⚠ UNUSED     patient_response               text                 NULL
+  ⚠ UNUSED     adverse_reactions              text                 NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+
+================================================================================
+TABLE: medications
+Rows: 0, Total Columns: 15, Used: 11
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 2 times at lines: [8075, 8663]
+  ✓ USED       medication_name                varchar(255)         NOT NULL [MUL]
+               Referenced 2 times at lines: [8075, 8663]
+  ✓ USED       generic_name                   varchar(255)         NULL [MUL]
+               Referenced 1 times at lines: [8075]
+  ✓ USED       dosage_form                    varchar(100)         NULL
+               Referenced 2 times at lines: [8075, 8663]
+  ✓ USED       strength                       varchar(100)         NULL
+               Referenced 2 times at lines: [8075, 8663]
+  ✓ USED       therapeutic_class              varchar(100)         NULL [MUL]
+               Referenced 1 times at lines: [8075]
+  ⚠ UNUSED     contraindications              text                 NULL
+  ⚠ UNUSED     side_effects                   text                 NULL
+  ⚠ UNUSED     supplier_id                    int                  NULL [MUL]
+  ⚠ UNUSED     cost                           decimal(10,2)        NULL
+  ⚠ UNUSED     stock_quantity                 int                  NULL
+  ⚠ UNUSED     reorder_level                  int                  NULL
+  ✓ USED       is_active                      tinyint(1)           NULL [MUL]
+               Referenced 1 times at lines: [8075]
+  ✓ USED       created_at                     datetime             NULL DEFAULT_GENERATED
+               Referenced 1 times at lines: [8075]
+  ✓ USED       updated_at                     datetime             NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+               Referenced 1 times at lines: [8075]
+
+================================================================================
+TABLE: medscheme_alerts
+Rows: 0, Total Columns: 12, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     patient_id                     int                  NOT NULL [MUL]
+  ⚠ UNUSED     visit_id                       int                  NULL [MUL]
+  ⚠ UNUSED     alert_type                     enum('chronic_disease','additional_care','file_closure','data_sync') NOT NULL [MUL]
+  ⚠ UNUSED     alert_status                   enum('pending','sent','acknowledged','failed') NULL [MUL]
+  ⚠ UNUSED     alert_data                     json                 NULL
+  ⚠ UNUSED     sent_at                        timestamp            NULL
+  ⚠ UNUSED     acknowledged_at                timestamp            NULL
+  ⚠ UNUSED     error_message                  text                 NULL
+  ⚠ UNUSED     created_by                     int                  NOT NULL [MUL]
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: medscheme_sync_log
+Rows: 0, Total Columns: 13, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     patient_id                     int                  NOT NULL [MUL]
+  ⚠ UNUSED     visit_id                       int                  NULL [MUL]
+  ⚠ UNUSED     sync_type                      enum('patient_data','visit_data','diagnosis','prescription','investigation','full_sync') NOT NULL [MUL]
+  ⚠ UNUSED     sync_status                    enum('pending','in_progress','completed','failed') NULL [MUL]
+  ⚠ UNUSED     sync_data                      json                 NULL
+  ⚠ UNUSED     response_data                  json                 NULL
+  ⚠ UNUSED     started_at                     timestamp            NULL
+  ⚠ UNUSED     completed_at                   timestamp            NULL
+  ⚠ UNUSED     error_message                  text                 NULL
+  ⚠ UNUSED     retry_count                    int                  NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: notifications
+Rows: 0, Total Columns: 10, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     user_id                        int                  NOT NULL [MUL]
+  ⚠ UNUSED     title                          varchar(255)         NOT NULL
+  ⚠ UNUSED     message                        text                 NOT NULL
+  ⚠ UNUSED     type                           varchar(50)          NULL [MUL]
+  ⚠ UNUSED     reference_type                 varchar(50)          NULL [MUL]
+  ⚠ UNUSED     reference_id                   int                  NULL
+  ⚠ UNUSED     is_read                        tinyint(1)           NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     read_at                        timestamp            NULL
+
+================================================================================
+TABLE: patient_appointments
+Rows: 40, Total Columns: 16, Used: 11
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 7 times at lines: [1372, 1392, 3922, 7209, 7724, 8775, 8846]
+  ✓ USED       patient_id                     int                  NULL [MUL]
+               Referenced 4 times at lines: [1372, 1392, 7209, 8846]
+  ✓ USED       route_location_id              int                  NOT NULL [MUL]
+               Referenced 5 times at lines: [1372, 3922, 7209, 7724, 8775]
+  ✓ USED       appointment_date               date                 NOT NULL [MUL]
+               Referenced 5 times at lines: [1372, 1392, 7209, 7724, 8775]
+  ✓ USED       appointment_time               time                 NULL
+               Referenced 6 times at lines: [1372, 1392, 3922, 7209, 7724, 8775]
+  ✓ USED       appointment_duration           int                  NULL
+               Referenced 5 times at lines: [1372, 1392, 3922, 7724, 8775]
+  ✓ USED       booking_reference              varchar(50)          NULL [UNI]
+               Referenced 4 times at lines: [1372, 1392, 7209, 8846]
+  ✓ USED       status                         enum('Available','Booked','Confirmed','Completed','Cancelled','NoShow') NOT NULL [MUL]
+               Referenced 7 times at lines: [1372, 1392, 3922, 7209, 7724, 8775, 8846]
+  ⚠ UNUSED     appointment_type               varchar(100)         NULL
+  ✓ USED       created_by                     int                  NULL [MUL]
+               Referenced 1 times at lines: [7209]
+  ✓ USED       notes                          text                 NULL
+               Referenced 1 times at lines: [7209]
+  ⚠ UNUSED     booked_via_portal              tinyint(1)           NULL
+  ⚠ UNUSED     confirmation_sent              tinyint(1)           NULL
+  ⚠ UNUSED     reminder_sent                  tinyint(1)           NULL
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 1 times at lines: [7209]
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: patient_authentication
+Rows: 7, Total Columns: 14, Used: 4
+================================================================================
+
+Column Details:
+  ✓ USED       id                             bigint unsigned      NOT NULL [PRI] auto_increment
+               Referenced 1 times at lines: [1172]
+  ✓ USED       patient_id                     int                  NOT NULL [UNI]
+               Referenced 1 times at lines: [1172]
+  ✓ USED       polmed_number                  varchar(50)          NOT NULL [UNI]
+               Referenced 1 times at lines: [1130]
+  ✓ USED       email                          varchar(255)         NOT NULL [UNI]
+               Referenced 2 times at lines: [1132, 1172]
+  ⚠ UNUSED     password_hash                  varchar(255)         NOT NULL
+  ⚠ UNUSED     mobile_number                  varchar(20)          NOT NULL
+  ⚠ UNUSED     is_verified                    tinyint(1)           NULL
+  ⚠ UNUSED     verification_token             varchar(100)         NULL
+  ⚠ UNUSED     verification_expires           timestamp            NULL
+  ⚠ UNUSED     login_attempts                 int                  NULL
+  ⚠ UNUSED     locked_until                   timestamp            NULL
+  ⚠ UNUSED     last_login                     timestamp            NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED
+
+================================================================================
+TABLE: patient_documents
+Rows: 0, Total Columns: 15, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     patient_id                     int                  NOT NULL [MUL]
+  ⚠ UNUSED     visit_id                       int                  NULL [MUL]
+  ⚠ UNUSED     document_name                  varchar(255)         NOT NULL
+  ⚠ UNUSED     document_type                  enum('lab_report','prescription','medical_certificate','referral','invoice','other') NULL [MUL]
+  ⚠ UNUSED     file_path                      varchar(500)         NULL
+  ⚠ UNUSED     file_size_bytes                int                  NULL
+  ⚠ UNUSED     mime_type                      varchar(100)         NULL
+  ⚠ UNUSED     is_patient_accessible          tinyint(1)           NULL [MUL]
+  ⚠ UNUSED     uploaded_by                    int                  NULL
+  ⚠ UNUSED     specialist_type                varchar(100)         NULL [MUL]
+  ⚠ UNUSED     workflow_step                  varchar(100)         NULL [MUL]
+  ⚠ UNUSED     tags                           text                 NULL
+  ⚠ UNUSED     notes                          text                 NULL
+  ⚠ UNUSED     upload_date                    timestamp            NULL DEFAULT_GENERATED
+
+================================================================================
+TABLE: patient_feedback
+Rows: 0, Total Columns: 16, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     patient_id                     int                  NOT NULL [MUL]
+  ⚠ UNUSED     visit_id                       int                  NULL [MUL]
+  ⚠ UNUSED     appointment_id                 int                  NULL [MUL]
+  ⚠ UNUSED     feedback_type                  enum('service_rating','complaint','suggestion','compliment') NULL [MUL]
+  ⚠ UNUSED     overall_rating                 int                  NULL [MUL]
+  ⚠ UNUSED     service_ratings                json                 NULL
+  ⚠ UNUSED     location_name                  varchar(255)         NULL
+  ⚠ UNUSED     visit_date                     date                 NULL
+  ⚠ UNUSED     comments                       text                 NULL
+  ⚠ UNUSED     is_anonymous                   tinyint(1)           NULL
+  ⚠ UNUSED     status                         enum('pending','reviewed','responded','archived') NULL [MUL]
+  ⚠ UNUSED     response                       text                 NULL
+  ⚠ UNUSED     responded_by                   int                  NULL
+  ⚠ UNUSED     responded_at                   timestamp            NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+
+================================================================================
+TABLE: patient_notifications
+Rows: 0, Total Columns: 11, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     patient_id                     int                  NOT NULL [MUL]
+  ⚠ UNUSED     notification_type              enum('appointment','health_update','system','reminder','alert') NULL [MUL]
+  ⚠ UNUSED     title                          varchar(255)         NOT NULL
+  ⚠ UNUSED     message                        text                 NOT NULL
+  ⚠ UNUSED     priority                       enum('low','medium','high','urgent') NULL
+  ⚠ UNUSED     action_url                     varchar(500)         NULL
+  ⚠ UNUSED     is_read                        tinyint(1)           NULL [MUL]
+  ⚠ UNUSED     read_at                        timestamp            NULL
+  ⚠ UNUSED     expires_at                     timestamp            NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL [MUL] DEFAULT_GENERATED
+
+================================================================================
+TABLE: patient_portal_sessions
+Rows: 0, Total Columns: 9, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     patient_id                     int                  NOT NULL [MUL]
+  ⚠ UNUSED     session_token                  varchar(255)         NOT NULL [UNI]
+  ⚠ UNUSED     ip_address                     varchar(45)          NULL
+  ⚠ UNUSED     user_agent                     text                 NULL
+  ⚠ UNUSED     login_at                       timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     last_activity                  timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+  ⚠ UNUSED     expires_at                     timestamp            NOT NULL [MUL]
+  ⚠ UNUSED     is_active                      tinyint(1)           NULL [MUL]
+
+================================================================================
+TABLE: patient_portal_users
+Rows: 0, Total Columns: 15, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             bigint unsigned      NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     patient_id                     int                  NOT NULL [UNI]
+  ⚠ UNUSED     polmed_number                  varchar(50)          NULL [UNI]
+  ⚠ UNUSED     email                          varchar(255)         NOT NULL [UNI]
+  ⚠ UNUSED     password_hash                  varchar(255)         NOT NULL
+  ⚠ UNUSED     is_email_verified              tinyint(1)           NULL
+  ⚠ UNUSED     verification_token             varchar(120)         NULL
+  ⚠ UNUSED     verification_expires           timestamp            NULL
+  ⚠ UNUSED     reset_token                    varchar(120)         NULL
+  ⚠ UNUSED     reset_expires                  timestamp            NULL
+  ⚠ UNUSED     failed_attempts                int                  NULL
+  ⚠ UNUSED     locked_until                   timestamp            NULL
+  ⚠ UNUSED     last_login                     timestamp            NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: patient_preferences
+Rows: 0, Total Columns: 13, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     patient_id                     int                  NOT NULL [UNI]
+  ⚠ UNUSED     preferred_provinces            json                 NULL
+  ⚠ UNUSED     preferred_cities               json                 NULL
+  ⚠ UNUSED     preferred_appointment_times    json                 NULL
+  ⚠ UNUSED     max_travel_distance_km         int                  NULL
+  ⚠ UNUSED     notification_preferences       json                 NULL
+  ⚠ UNUSED     accessibility_requirements     text                 NULL
+  ⚠ UNUSED     language_preference            varchar(10)          NULL
+  ⚠ UNUSED     privacy_settings               json                 NULL
+  ⚠ UNUSED     communication_preferences      json                 NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: patient_sessions
+Rows: 36, Total Columns: 8, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     patient_id                     int                  NOT NULL [MUL]
+  ⚠ UNUSED     session_token                  varchar(255)         NOT NULL [UNI]
+  ⚠ UNUSED     device_info                    json                 NULL
+  ⚠ UNUSED     ip_address                     varchar(45)          NULL
+  ⚠ UNUSED     location_data                  json                 NULL
+  ⚠ UNUSED     expires_at                     datetime             NOT NULL
+  ⚠ UNUSED     created_at                     datetime             NULL DEFAULT_GENERATED
+
+================================================================================
+TABLE: patient_visit_stages
+Rows: 3, Total Columns: 10, Used: 6
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ✓ USED       visit_id                       int                  NOT NULL [MUL]
+               Referenced 1 times at lines: [8673]
+  ✓ USED       stage_name                     varchar(50)          NOT NULL
+               Referenced 1 times at lines: [8673]
+  ✓ USED       status                         varchar(50)          NOT NULL [MUL]
+               Referenced 1 times at lines: [8673]
+  ✓ USED       assigned_to                    int                  NULL [MUL]
+               Referenced 1 times at lines: [8673]
+  ⚠ UNUSED     completed_by                   int                  NULL [MUL]
+  ✓ USED       completed_at                   datetime             NULL
+               Referenced 1 times at lines: [8673]
+  ⚠ UNUSED     notes                          text                 NULL
+  ✓ USED       created_at                     datetime             NULL [MUL] DEFAULT_GENERATED
+               Referenced 1 times at lines: [8673]
+  ⚠ UNUSED     updated_at                     datetime             NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: patient_visits
+Rows: 46, Total Columns: 15, Used: 15
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 18 times at lines: [1410, 1489, 1875, 1944, 2131, 2901, 3095, 5000, 6397, 6676]
+  ✓ USED       patient_id                     int                  NOT NULL [MUL]
+               Referenced 17 times at lines: [1410, 1489, 1875, 1944, 2131, 3095, 5000, 6397, 6676, 7973]
+  ✓ USED       visit_date                     date                 NOT NULL [MUL]
+               Referenced 14 times at lines: [1410, 1489, 1944, 3095, 6053, 6397, 7973, 8075, 8136, 8201]
+  ✓ USED       visit_time                     time                 NOT NULL
+               Referenced 5 times at lines: [1944, 3095, 6397, 7973, 8201]
+  ✓ USED       route_id                       int                  NULL [MUL]
+               Referenced 3 times at lines: [1944, 3095, 7973]
+  ✓ USED       location                       varchar(255)         NULL
+               Referenced 4 times at lines: [1944, 3095, 7973, 8201]
+  ✓ USED       chief_complaint                text                 NULL
+               Referenced 6 times at lines: [1410, 6397, 7973, 8201, 8378, 8614]
+  ✓ USED       current_stage_id               int                  NULL [MUL]
+               Referenced 2 times at lines: [1944, 3095]
+  ✓ USED       is_completed                   tinyint(1)           NULL
+               Referenced 10 times at lines: [1410, 5830, 5922, 6014, 6053, 6214, 6397, 7973, 8201, 8614]
+  ✓ USED       completed_at                   timestamp            NULL
+               Referenced 5 times at lines: [1410, 3095, 5922, 6214, 7973]
+  ✓ USED       created_by                     int                  NOT NULL [MUL]
+               Referenced 6 times at lines: [1875, 2131, 5830, 5873, 5922, 6397]
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 18 times at lines: [1944, 2131, 2901, 3095, 5830, 5873, 5922, 6014, 6214, 6397]
+  ✓ USED       updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+               Referenced 11 times at lines: [2131, 3095, 6397, 7973, 8075, 8136, 8201, 8378, 8440, 8564]
+  ✓ USED       doctor_id                      int                  NULL
+               Referenced 2 times at lines: [7973, 8201]
+  ✓ USED       nurse_id                       int                  NULL
+               Referenced 1 times at lines: [7973]
+
+================================================================================
+TABLE: patients
+Rows: 27, Total Columns: 20, Used: 16
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 10 times at lines: [1172, 1356, 1489, 3095, 5000, 6397, 6676, 7209, 8921, 9008]
+  ✓ USED       medical_aid_number             varchar(50)          NULL [UNI]
+               Referenced 6 times at lines: [1128, 1172, 1356, 3095, 6676, 7209]
+  ✓ USED       first_name                     varchar(100)         NOT NULL [MUL]
+               Referenced 7 times at lines: [1172, 1356, 3095, 5000, 6397, 6676, 7209]
+  ✓ USED       last_name                      varchar(100)         NOT NULL [MUL]
+               Referenced 7 times at lines: [1172, 1356, 3095, 5000, 6397, 6676, 7209]
+  ✓ USED       date_of_birth                  date                 NULL [MUL]
+               Referenced 2 times at lines: [6676, 8921]
+  ⚠ UNUSED     gender                         enum('Male','Female','Other') NOT NULL
+  ✓ USED       id_number                      varchar(20)          NULL [UNI]
+               Referenced 2 times at lines: [3095, 6397]
+  ✓ USED       phone_number                   varchar(20)          NULL
+               Referenced 5 times at lines: [1172, 1356, 3095, 7209, 8921]
+  ✓ USED       email                          varchar(255)         NULL
+               Referenced 7 times at lines: [1132, 1172, 1356, 6676, 7209, 8921, 9008]
+  ✓ USED       physical_address               text                 NULL
+               Referenced 1 times at lines: [8921]
+  ✓ USED       emergency_contact_name         varchar(200)         NULL
+               Referenced 1 times at lines: [8921]
+  ✓ USED       emergency_contact_phone        varchar(20)          NULL
+               Referenced 1 times at lines: [8921]
+  ✓ USED       is_palmed_member               tinyint(1)           NULL [MUL]
+               Referenced 2 times at lines: [1172, 1356]
+  ✓ USED       member_type                    enum('Principal','Dependent','Non-member') NULL [MUL]
+               Referenced 3 times at lines: [1172, 1356, 6676]
+  ⚠ UNUSED     chronic_conditions             json                 NULL
+  ⚠ UNUSED     allergies                      json                 NULL
+  ⚠ UNUSED     current_medications            json                 NULL
+  ✓ USED       created_by                     int                  NULL [MUL]
+               Referenced 3 times at lines: [5817, 6397, 7209]
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 4 times at lines: [3095, 5817, 6397, 7209]
+  ✓ USED       updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+               Referenced 3 times at lines: [3095, 6397, 8921]
+
+================================================================================
+TABLE: prescriptions
+Rows: 0, Total Columns: 21, Used: 13
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 3 times at lines: [2527, 8075, 8663]
+  ✓ USED       visit_id                       int                  NOT NULL [MUL]
+               Referenced 3 times at lines: [2527, 8075, 8663]
+  ✓ USED       patient_id                     int                  NOT NULL [MUL]
+               Referenced 1 times at lines: [8075]
+  ✓ USED       drug_id                        int                  NULL [MUL]
+               Referenced 1 times at lines: [2527]
+  ⚠ UNUSED     custom_drug_name               varchar(255)         NULL
+  ✓ USED       dosage                         varchar(50)          NOT NULL
+               Referenced 2 times at lines: [8075, 8663]
+  ⚠ UNUSED     route                          varchar(50)          NULL
+  ✓ USED       frequency                      varchar(50)          NOT NULL
+               Referenced 2 times at lines: [8075, 8663]
+  ✓ USED       duration                       varchar(50)          NOT NULL
+               Referenced 2 times at lines: [8075, 8663]
+  ⚠ UNUSED     quantity_prescribed            decimal(8,2)         NULL
+  ⚠ UNUSED     quantity_dispensed             decimal(8,2)         NULL
+  ✓ USED       instructions                   text                 NULL
+               Referenced 2 times at lines: [8075, 8663]
+  ✓ USED       start_date                     date                 NULL [MUL]
+               Referenced 2 times at lines: [8075, 8663]
+  ✓ USED       end_date                       date                 NULL
+               Referenced 2 times at lines: [8075, 8663]
+  ✓ USED       prescribed_by                  int                  NOT NULL [MUL]
+               Referenced 2 times at lines: [2527, 8075]
+  ⚠ UNUSED     dispensed_by                   int                  NULL [MUL]
+  ⚠ UNUSED     dispensed_at                   timestamp            NULL
+  ⚠ UNUSED     status                         enum('prescribed','dispensed','completed','discontinued') NULL [MUL]
+  ⚠ UNUSED     discontinuation_reason         text                 NULL
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 2 times at lines: [2527, 8075]
+  ✓ USED       updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+               Referenced 1 times at lines: [8075]
+
+================================================================================
+TABLE: referrals
+Rows: 3, Total Columns: 15, Used: 4
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 3 times at lines: [3175, 3241, 3298]
+  ✓ USED       patient_id                     int                  NOT NULL [MUL]
+               Referenced 2 times at lines: [3175, 3241]
+  ⚠ UNUSED     visit_id                       varchar(36)          NULL
+  ⚠ UNUSED     referral_type                  enum('internal','external') NOT NULL
+  ⚠ UNUSED     from_stage                     enum('Registration','Nursing Assessment','Doctor Consultation','Counseling Session') NOT NULL
+  ⚠ UNUSED     to_stage                       enum('Registration','Nursing Assessment','Doctor Consultation','Counseling Session') NULL
+  ⚠ UNUSED     external_provider              varchar(255)         NULL
+  ⚠ UNUSED     department                     varchar(255)         NULL
+  ⚠ UNUSED     reason                         text                 NOT NULL
+  ⚠ UNUSED     notes                          text                 NULL
+  ⚠ UNUSED     status                         enum('pending','sent','accepted','completed','cancelled') NOT NULL [MUL]
+  ⚠ UNUSED     appointment_date               date                 NULL
+  ✓ USED       created_by                     int                  NOT NULL [MUL]
+               Referenced 4 times at lines: [3175, 3241, 3298, 5985]
+  ✓ USED       created_at                     datetime             NOT NULL [MUL] DEFAULT_GENERATED
+               Referenced 2 times at lines: [3175, 5985]
+  ⚠ UNUSED     updated_at                     datetime             NULL
+
+================================================================================
+TABLE: route_locations
+Rows: 10, Total Columns: 10, Used: 10
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 5 times at lines: [1372, 3922, 7209, 7724, 8775]
+  ✓ USED       route_id                       int                  NOT NULL [MUL]
+               Referenced 3 times at lines: [3922, 7209, 7724]
+  ✓ USED       location_id                    int                  NOT NULL [MUL]
+               Referenced 5 times at lines: [1372, 3922, 7209, 7724, 8775]
+  ✓ USED       visit_date                     date                 NOT NULL [MUL]
+               Referenced 3 times at lines: [3922, 7724, 8775]
+  ✓ USED       start_time                     time                 NOT NULL
+               Referenced 2 times at lines: [7724, 8775]
+  ✓ USED       end_time                       time                 NOT NULL
+               Referenced 2 times at lines: [7724, 8775]
+  ✓ USED       max_appointments               int                  NULL
+               Referenced 2 times at lines: [7724, 8775]
+  ✓ USED       appointment_duration           int                  NULL
+               Referenced 4 times at lines: [1372, 3922, 7724, 8775]
+  ✓ USED       notes                          text                 NULL
+               Referenced 1 times at lines: [7209]
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 1 times at lines: [7209]
+
+================================================================================
+TABLE: routes
+Rows: 14, Total Columns: 14, Used: 13
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 6 times at lines: [3329, 3730, 3863, 3922, 7209, 7724]
+  ✓ USED       route_name                     varchar(255)         NOT NULL
+               Referenced 6 times at lines: [3329, 3730, 3863, 3922, 7209, 7724]
+  ✓ USED       description                    text                 NULL
+               Referenced 3 times at lines: [3329, 3730, 3863]
+  ✓ USED       start_date                     date                 NOT NULL [MUL]
+               Referenced 4 times at lines: [3329, 3730, 3863, 6089]
+  ✓ USED       end_date                       date                 NOT NULL
+               Referenced 4 times at lines: [3329, 3730, 3863, 6089]
+  ✓ USED       province                       varchar(50)          NOT NULL [MUL]
+               Referenced 6 times at lines: [3329, 3730, 3863, 3922, 7209, 7724]
+  ✓ USED       route_type                     enum('Police Stations','Schools','Community Centers','Mixed') NOT NULL [MUL]
+               Referenced 5 times at lines: [3329, 3730, 3863, 3922, 7724]
+  ✓ USED       max_appointments_per_day       int                  NULL
+               Referenced 3 times at lines: [3329, 3730, 3863]
+  ✓ USED       created_by                     int                  NOT NULL [MUL]
+               Referenced 2 times at lines: [3329, 7209]
+  ✓ USED       is_active                      tinyint(1)           NULL
+               Referenced 6 times at lines: [3329, 3730, 3863, 3922, 6089, 7724]
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 1 times at lines: [7209]
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+  ✓ USED       max_appointments               int                  NULL
+               Referenced 4 times at lines: [3329, 3730, 3863, 7724]
+  ✓ USED       status                         varchar(50)          NULL
+               Referenced 6 times at lines: [3329, 3730, 3863, 3922, 7209, 7724]
+
+================================================================================
+TABLE: smart_suggestions
+Rows: 17, Total Columns: 13, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     suggestion_type                enum('icd10','medication','investigation','template') NOT NULL [MUL]
+  ⚠ UNUSED     input_context                  text                 NOT NULL
+  ⚠ UNUSED     suggestion_data                json                 NOT NULL
+  ⚠ UNUSED     confidence_score               decimal(3,2)         NOT NULL [MUL]
+  ⚠ UNUSED     model_version                  varchar(50)          NULL
+  ⚠ UNUSED     user_id                        int                  NULL [MUL]
+  ⚠ UNUSED     patient_context                json                 NULL
+  ⚠ UNUSED     was_accepted                   tinyint(1)           NULL [MUL]
+  ⚠ UNUSED     accepted_at                    timestamp            NULL
+  ⚠ UNUSED     feedback_score                 int                  NULL
+  ⚠ UNUSED     feedback_notes                 text                 NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL [MUL] DEFAULT_GENERATED
+
+================================================================================
+TABLE: suppliers
+Rows: 16, Total Columns: 9, Used: 2
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 3 times at lines: [4510, 5077, 5217]
+  ✓ USED       supplier_name                  varchar(255)         NOT NULL
+               Referenced 2 times at lines: [4510, 5217]
+  ⚠ UNUSED     contact_person                 varchar(200)         NULL
+  ⚠ UNUSED     phone                          varchar(20)          NULL
+  ⚠ UNUSED     email                          varchar(255)         NULL
+  ⚠ UNUSED     address                        text                 NULL
+  ⚠ UNUSED     tax_number                     varchar(50)          NULL
+  ⚠ UNUSED     is_active                      tinyint(1)           NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+
+================================================================================
+TABLE: sync_status
+Rows: 0, Total Columns: 14, Used: 4
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ✓ USED       table_name                     varchar(100)         NOT NULL [MUL]
+               Referenced 1 times at lines: [5483]
+  ⚠ UNUSED     record_id                      int                  NOT NULL
+  ⚠ UNUSED     operation_type                 enum('INSERT','UPDATE','DELETE') NOT NULL
+  ✓ USED       sync_status                    enum('Pending','Synced','Failed','Conflict') NULL [MUL]
+               Referenced 1 times at lines: [5483]
+  ⚠ UNUSED     device_id                      varchar(100)         NULL [MUL]
+  ✓ USED       user_id                        int                  NULL [MUL]
+               Referenced 1 times at lines: [5483]
+  ⚠ UNUSED     local_timestamp                timestamp            NOT NULL
+  ✓ USED       server_timestamp               timestamp            NULL DEFAULT_GENERATED
+               Referenced 1 times at lines: [5483]
+  ⚠ UNUSED     conflict_data                  json                 NULL
+  ⚠ UNUSED     error_message                  text                 NULL
+  ⚠ UNUSED     retry_count                    int                  NULL
+  ⚠ UNUSED     last_retry_at                  timestamp            NULL
+  ⚠ UNUSED     synced_at                      timestamp            NULL
+
+================================================================================
+TABLE: system_settings
+Rows: 0, Total Columns: 8, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     setting_key                    varchar(100)         NOT NULL [UNI]
+  ⚠ UNUSED     setting_value                  text                 NULL
+  ⚠ UNUSED     setting_type                   enum('string','number','boolean','json') NULL
+  ⚠ UNUSED     description                    text                 NULL
+  ⚠ UNUSED     is_encrypted                   tinyint(1)           NULL
+  ⚠ UNUSED     updated_by                     int                  NULL [MUL]
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: test_results
+Rows: 0, Total Columns: 20, Used: 14
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 2 times at lines: [8136, 8654]
+  ✓ USED       patient_id                     int                  NOT NULL [MUL]
+               Referenced 1 times at lines: [8136]
+  ✓ USED       visit_id                       int                  NULL [MUL]
+               Referenced 2 times at lines: [8136, 8654]
+  ✓ USED       test_code                      varchar(50)          NOT NULL [MUL]
+               Referenced 2 times at lines: [8136, 8654]
+  ✓ USED       test_name                      varchar(255)         NOT NULL
+               Referenced 2 times at lines: [8136, 8654]
+  ✓ USED       result_value                   varchar(255)         NULL
+               Referenced 2 times at lines: [8136, 8654]
+  ✓ USED       unit                           varchar(50)          NULL
+               Referenced 2 times at lines: [8136, 8654]
+  ✓ USED       reference_range                varchar(100)         NULL
+               Referenced 2 times at lines: [8136, 8654]
+  ⚠ UNUSED     reference_range_low            decimal(10,2)        NULL
+  ⚠ UNUSED     reference_range_high           decimal(10,2)        NULL
+  ⚠ UNUSED     abnormal                       tinyint(1)           NULL [MUL]
+  ✓ USED       abnormal_flag                  varchar(10)          NULL
+               Referenced 2 times at lines: [8136, 8654]
+  ✓ USED       test_date                      date                 NOT NULL [MUL]
+               Referenced 2 times at lines: [8136, 8654]
+  ⚠ UNUSED     collected_at                   datetime             NULL
+  ⚠ UNUSED     analysed_at                    datetime             NULL
+  ⚠ UNUSED     test_method                    varchar(100)         NULL
+  ✓ USED       lab_name                       varchar(255)         NULL
+               Referenced 1 times at lines: [8136]
+  ✓ USED       ordered_by                     int                  NULL [MUL]
+               Referenced 1 times at lines: [8136]
+  ✓ USED       created_at                     datetime             NULL [MUL] DEFAULT_GENERATED
+               Referenced 1 times at lines: [8136]
+  ✓ USED       updated_at                     datetime             NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+               Referenced 1 times at lines: [8136]
+
+================================================================================
+TABLE: user_clinical_preferences
+Rows: 0, Total Columns: 8, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     user_id                        int                  NOT NULL [MUL]
+  ⚠ UNUSED     preference_type                enum('alert_level','template_category','medication_default','workflow_step') NOT NULL [MUL]
+  ⚠ UNUSED     preference_key                 varchar(100)         NOT NULL
+  ⚠ UNUSED     preference_value               json                 NOT NULL
+  ⚠ UNUSED     is_active                      tinyint(1)           NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: user_roles
+Rows: 11, Total Columns: 5, Used: 4
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 8 times at lines: [632, 700, 2131, 2925, 2988, 6865, 6955, 7062]
+  ✓ USED       role_name                      varchar(50)          NOT NULL [UNI]
+               Referenced 8 times at lines: [632, 700, 2131, 2925, 2988, 6865, 6955, 7062]
+  ✓ USED       role_description               text                 NULL
+               Referenced 3 times at lines: [6865, 6955, 7062]
+  ⚠ UNUSED     permissions                    json                 NULL
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 6 times at lines: [2131, 2925, 2988, 6865, 6955, 7062]
+
+================================================================================
+TABLE: user_sessions
+Rows: 0, Total Columns: 8, Used: 4
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ✓ USED       user_id                        int                  NOT NULL [MUL]
+               Referenced 1 times at lines: [6452]
+  ⚠ UNUSED     session_token                  varchar(255)         NOT NULL [UNI]
+  ✓ USED       device_info                    json                 NULL
+               Referenced 1 times at lines: [6452]
+  ✓ USED       ip_address                     varchar(45)          NULL
+               Referenced 1 times at lines: [6452]
+  ⚠ UNUSED     location_data                  json                 NULL
+  ⚠ UNUSED     expires_at                     timestamp            NOT NULL [MUL]
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 1 times at lines: [6452]
+
+================================================================================
+TABLE: user_tasks
+Rows: 0, Total Columns: 10, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     user_id                        int                  NOT NULL [MUL]
+  ⚠ UNUSED     title                          varchar(255)         NOT NULL
+  ⚠ UNUSED     description                    text                 NULL
+  ⚠ UNUSED     task_type                      enum('maintenance','appointment','inventory','review') NOT NULL
+  ⚠ UNUSED     priority                       enum('high','medium','low') NULL
+  ⚠ UNUSED     due_date                       datetime             NOT NULL
+  ⚠ UNUSED     is_completed                   tinyint(1)           NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: users
+Rows: 24, Total Columns: 17, Used: 13
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 25 times at lines: [632, 700, 2131, 2527, 2925, 2988, 3175, 3241, 3298, 4101]
+  ✓ USED       username                       varchar(100)         NOT NULL [UNI]
+               Referenced 4 times at lines: [6264, 6865, 7062, 7209]
+  ✓ USED       email                          varchar(255)         NOT NULL [UNI]
+               Referenced 4 times at lines: [700, 6865, 7062, 7209]
+  ⚠ UNUSED     password_hash                  varchar(255)         NOT NULL
+  ✓ USED       role_id                        int                  NOT NULL [MUL]
+               Referenced 7 times at lines: [632, 700, 2131, 2925, 2988, 6865, 7062]
+  ✓ USED       first_name                     varchar(100)         NOT NULL
+               Referenced 21 times at lines: [2131, 2527, 3175, 3241, 3298, 4101, 5000, 6264, 6346, 6865]
+  ✓ USED       last_name                      varchar(100)         NOT NULL
+               Referenced 21 times at lines: [2131, 2527, 3175, 3241, 3298, 4101, 5000, 6264, 6346, 6865]
+  ✓ USED       phone_number                   varchar(20)          NULL
+               Referenced 3 times at lines: [6865, 7062, 7209]
+  ✓ USED       mp_number                      varchar(50)          NULL
+               Referenced 2 times at lines: [6865, 7062]
+  ✓ USED       geographic_restrictions        json                 NULL
+               Referenced 2 times at lines: [6865, 7062]
+  ✓ USED       is_active                      tinyint(1)           NULL [MUL]
+               Referenced 6 times at lines: [632, 700, 6026, 6865, 7062, 8075]
+  ✓ USED       requires_approval              tinyint(1)           NULL
+               Referenced 2 times at lines: [6865, 7062]
+  ⚠ UNUSED     approved_by                    int                  NULL [MUL]
+  ⚠ UNUSED     approved_at                    timestamp            NULL
+  ⚠ UNUSED     last_login                     timestamp            NULL
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 19 times at lines: [2131, 2527, 2925, 2988, 3175, 6026, 6264, 6346, 6865, 7062]
+  ✓ USED       updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+               Referenced 10 times at lines: [2131, 6865, 7062, 7973, 8075, 8136, 8201, 8378, 8440, 8564]
+
+================================================================================
+TABLE: visit_closure_notifications
+Rows: 0, Total Columns: 14, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     visit_id                       int                  NOT NULL [MUL]
+  ⚠ UNUSED     patient_id                     int                  NOT NULL [MUL]
+  ⚠ UNUSED     recipient_email                varchar(255)         NOT NULL
+  ⚠ UNUSED     recipient_type                 enum('patient','dependent','main_member','guardian') NOT NULL
+  ⚠ UNUSED     report_data                    json                 NULL
+  ⚠ UNUSED     email_status                   enum('pending','sent','failed','bounced') NULL [MUL]
+  ⚠ UNUSED     sent_at                        timestamp            NULL
+  ⚠ UNUSED     error_message                  text                 NULL
+  ⚠ UNUSED     popia_compliant                tinyint(1)           NULL
+  ⚠ UNUSED     patient_age_at_send            int                  NULL
+  ⚠ UNUSED     created_by                     int                  NOT NULL [MUL]
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     updated_at                     timestamp            NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+
+================================================================================
+TABLE: visit_specialists
+Rows: 12, Total Columns: 9, Used: 9
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 1 times at lines: [3095]
+  ✓ USED       visit_id                       int                  NOT NULL [MUL]
+               Referenced 2 times at lines: [222, 3095]
+  ✓ USED       specialist_type                varchar(50)          NOT NULL
+               Referenced 2 times at lines: [222, 3095]
+  ✓ USED       required                       tinyint(1)           NOT NULL
+               Referenced 2 times at lines: [222, 3095]
+  ✓ USED       completed_at                   datetime             NULL
+               Referenced 2 times at lines: [222, 3095]
+  ✓ USED       completed_by                   int                  NULL
+               Referenced 1 times at lines: [222]
+  ✓ USED       notes                          text                 NULL
+               Referenced 2 times at lines: [222, 3095]
+  ✓ USED       created_at                     datetime             NOT NULL DEFAULT_GENERATED
+               Referenced 2 times at lines: [222, 3095]
+  ✓ USED       updated_at                     datetime             NOT NULL DEFAULT_GENERATED on update CURRENT_TIMESTAMP
+               Referenced 2 times at lines: [222, 3095]
+
+================================================================================
+TABLE: visit_workflow_progress
+Rows: 6, Total Columns: 10, Used: 7
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 2 times at lines: [1410, 7973]
+  ✓ USED       visit_id                       int                  NOT NULL [MUL]
+               Referenced 2 times at lines: [1410, 7973]
+  ⚠ UNUSED     stage_id                       int                  NOT NULL [MUL]
+  ✓ USED       assigned_user_id               int                  NULL [MUL]
+               Referenced 3 times at lines: [6065, 6129, 6147]
+  ✓ USED       started_at                     timestamp            NULL
+               Referenced 4 times at lines: [6129, 6147, 6165, 6180]
+  ✓ USED       completed_at                   timestamp            NULL
+               Referenced 8 times at lines: [1410, 6065, 6077, 6129, 6147, 6165, 6180, 7973]
+  ⚠ UNUSED     notes                          text                 NULL
+  ⚠ UNUSED     data_collected                 json                 NULL
+  ✓ USED       is_completed                   tinyint(1)           NULL
+               Referenced 8 times at lines: [1410, 6065, 6077, 6129, 6147, 6165, 6180, 7973]
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 1 times at lines: [7973]
+
+================================================================================
+TABLE: vital_signs
+Rows: 34, Total Columns: 14, Used: 12
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 3 times at lines: [2073, 2099, 8634]
+  ✓ USED       visit_id                       int                  NOT NULL [MUL]
+               Referenced 3 times at lines: [2073, 2099, 8634]
+  ✓ USED       recorded_by                    int                  NOT NULL [MUL]
+               Referenced 1 times at lines: [5859]
+  ✓ USED       systolic_bp                    int                  NULL
+               Referenced 1 times at lines: [2073]
+  ✓ USED       diastolic_bp                   int                  NULL
+               Referenced 1 times at lines: [2073]
+  ✓ USED       heart_rate                     int                  NULL
+               Referenced 3 times at lines: [2073, 2099, 8634]
+  ✓ USED       temperature                    decimal(4,1)         NULL
+               Referenced 3 times at lines: [2073, 2099, 8634]
+  ✓ USED       weight                         decimal(5,2)         NULL
+               Referenced 2 times at lines: [2073, 8634]
+  ✓ USED       height                         decimal(5,2)         NULL
+               Referenced 2 times at lines: [2073, 8634]
+  ⚠ UNUSED     bmi                            decimal(4,1)         NULL STORED GENERATED
+  ✓ USED       oxygen_saturation              int                  NULL
+               Referenced 2 times at lines: [2073, 8634]
+  ✓ USED       blood_glucose                  decimal(5,1)         NULL
+               Referenced 1 times at lines: [2073]
+  ⚠ UNUSED     additional_measurements        json                 NULL
+  ✓ USED       recorded_at                    timestamp            NULL DEFAULT_GENERATED
+               Referenced 2 times at lines: [2073, 5859]
+
+================================================================================
+TABLE: vital_signs_references
+Rows: 0, Total Columns: 16, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     parameter_name                 varchar(50)          NOT NULL [MUL]
+  ⚠ UNUSED     age_min                        int                  NULL [MUL]
+  ⚠ UNUSED     age_max                        int                  NULL
+  ⚠ UNUSED     gender                         enum('male','female','all') NULL [MUL]
+  ⚠ UNUSED     normal_min                     decimal(6,2)         NULL
+  ⚠ UNUSED     normal_max                     decimal(6,2)         NULL
+  ⚠ UNUSED     caution_min                    decimal(6,2)         NULL
+  ⚠ UNUSED     caution_max                    decimal(6,2)         NULL
+  ⚠ UNUSED     critical_min                   decimal(6,2)         NULL
+  ⚠ UNUSED     critical_max                   decimal(6,2)         NULL
+  ⚠ UNUSED     unit                           varchar(20)          NULL
+  ⚠ UNUSED     clinical_context               varchar(100)         NULL
+  ⚠ UNUSED     source                         varchar(255)         NULL
+  ⚠ UNUSED     is_active                      tinyint(1)           NULL
+  ⚠ UNUSED     created_at                     timestamp            NULL DEFAULT_GENERATED
+
+================================================================================
+TABLE: workflow_progress
+Rows: 0, Total Columns: 6, Used: 0
+================================================================================
+
+Column Details:
+  ⚠ UNUSED     id                             int                  NOT NULL [PRI] auto_increment
+  ⚠ UNUSED     visit_id                       int                  NOT NULL [MUL]
+  ⚠ UNUSED     stage_id                       int                  NOT NULL [MUL]
+  ⚠ UNUSED     completed_by                   int                  NOT NULL [MUL]
+  ⚠ UNUSED     completed_at                   timestamp            NULL DEFAULT_GENERATED
+  ⚠ UNUSED     notes                          text                 NULL
+
+================================================================================
+TABLE: workflow_stages
+Rows: 5, Total Columns: 7, Used: 2
+================================================================================
+
+Column Details:
+  ✓ USED       id                             int                  NOT NULL [PRI] auto_increment
+               Referenced 2 times at lines: [1410, 7973]
+  ⚠ UNUSED     stage_name                     varchar(50)          NOT NULL [UNI]
+  ⚠ UNUSED     stage_order                    int                  NOT NULL
+  ⚠ UNUSED     required_role_id               int                  NOT NULL [MUL]
+  ⚠ UNUSED     is_mandatory                   tinyint(1)           NULL
+  ✓ USED       created_at                     timestamp            NULL DEFAULT_GENERATED
+               Referenced 1 times at lines: [7973]
+  ⚠ UNUSED     is_active                      tinyint(1)           NULL
