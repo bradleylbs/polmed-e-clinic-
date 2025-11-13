@@ -7369,6 +7369,335 @@ def get_appointments():
 
 # ============================================================================
 # ============================================================================
+# PATIENT CHECK-IN WORKFLOW
+# ============================================================================
+
+@app.route('/api/appointments/check-in/today', methods=['GET'])
+@token_required
+@role_required(['administrator', 'clerk', 'nurse'])
+def get_todays_checkin_appointments():
+    """Get today's booked appointments for check-in"""
+    try:
+        # Get today's date
+        today = datetime.now(timezone.utc).date()
+        
+        query = """
+        SELECT 
+            pa.id AS appointment_id,
+            pa.appointment_date,
+            pa.appointment_time,
+            pa.status AS appointment_status,
+            pa.booking_reference,
+            pa.patient_id,
+            pa.route_location_id,
+            CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, '')) AS patient_name,
+            p.medical_aid_number,
+            p.phone_number AS patient_phone,
+            p.email AS patient_email,
+            p.date_of_birth,
+            p.gender,
+            l.location_name,
+            l.city,
+            l.province,
+            r.route_name,
+            r.id AS route_id,
+            pv.id AS visit_id,
+            pv.current_stage_id,
+            ws.stage_name AS current_stage_name,
+            CASE WHEN pv.id IS NOT NULL THEN TRUE ELSE FALSE END AS is_checked_in
+        FROM patient_appointments pa
+        INNER JOIN patients p ON pa.patient_id = p.id
+        LEFT JOIN route_locations rl ON pa.route_location_id = rl.id
+        LEFT JOIN locations l ON rl.location_id = l.id
+        LEFT JOIN routes r ON rl.route_id = r.id
+        LEFT JOIN patient_visits pv ON pv.patient_id = pa.patient_id 
+            AND pv.visit_date = pa.appointment_date
+        LEFT JOIN workflow_stages ws ON pv.current_stage_id = ws.id
+        WHERE pa.status IN ('Booked', 'Confirmed')
+            AND pa.appointment_date = %s
+            AND pa.patient_id IS NOT NULL
+        ORDER BY pa.appointment_time ASC, pa.created_at ASC
+        """
+        
+        appointments = DatabaseManager.execute_query(query, (today,), fetch=True)
+        
+        if appointments is None:
+            return jsonify({'success': False, 'error': 'Database query failed'}), 500
+        
+        return jsonify({
+            'success': True,
+            'data': _to_jsonable(appointments) or [],
+            'count': len(appointments) if appointments else 0
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get today's check-in appointments error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/appointments/<int:appointment_id>/check-in', methods=['POST'])
+@token_required
+@role_required(['administrator', 'clerk', 'nurse'])
+def check_in_patient(appointment_id: int):
+    """Check in a patient for their appointment"""
+    try:
+        # Get appointment details
+        appt_query = """
+        SELECT 
+            pa.id,
+            pa.patient_id,
+            pa.appointment_date,
+            pa.appointment_time,
+            pa.route_location_id,
+            pa.status,
+            rl.route_id,
+            l.location_name,
+            l.city,
+            l.province
+        FROM patient_appointments pa
+        LEFT JOIN route_locations rl ON pa.route_location_id = rl.id
+        LEFT JOIN locations l ON rl.location_id = l.id
+        WHERE pa.id = %s
+        """
+        
+        appointment = DatabaseManager.execute_query(appt_query, (appointment_id,), fetch=True)
+        
+        if not appointment or len(appointment) == 0:
+            return jsonify({'success': False, 'error': 'Appointment not found'}), 404
+        
+        appt = appointment[0]
+        
+        if not appt['patient_id']:
+            return jsonify({'success': False, 'error': 'Appointment has no patient assigned'}), 400
+        
+        # Check if already checked in (visit exists for this patient and date)
+        existing_visit = DatabaseManager.execute_query(
+            """SELECT id FROM patient_visits 
+               WHERE patient_id = %s AND visit_date = %s""",
+            (appt['patient_id'], appt['appointment_date']),
+            fetch=True
+        )
+        
+        if existing_visit and len(existing_visit) > 0:
+            return jsonify({
+                'success': False, 
+                'error': 'Patient already checked in',
+                'visit_id': existing_visit[0]['id']
+            }), 400
+        
+        # Get first workflow stage (Patient Checkin)
+        first_stage = DatabaseManager.execute_query(
+            "SELECT id FROM workflow_stages ORDER BY stage_order ASC LIMIT 1",
+            fetch=True
+        )
+        
+        if not first_stage or len(first_stage) == 0:
+            return jsonify({'success': False, 'error': 'No workflow stages configured'}), 500
+        
+        first_stage_id = first_stage[0]['id']
+        
+        # Create patient visit record
+        location_str = appt['location_name'] or 'Mobile Clinic'
+        if appt['city']:
+            location_str += f", {appt['city']}"
+        if appt['province']:
+            location_str += f", {appt['province']}"
+        
+        current_time = datetime.now(timezone.utc).strftime('%H:%M:%S')
+        
+        insert_visit_query = """
+        INSERT INTO patient_visits (
+            patient_id,
+            visit_date,
+            visit_time,
+            route_id,
+            location,
+            current_stage_id,
+            is_completed,
+            created_by,
+            created_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        
+        visit_result = DatabaseManager.execute_query(
+            insert_visit_query,
+            (
+                appt['patient_id'],
+                appt['appointment_date'],
+                current_time,
+                appt['route_id'],
+                location_str,
+                first_stage_id,
+                False,
+                request.current_user['id'],
+                datetime.now(timezone.utc)
+            )
+        )
+        
+        if not visit_result:
+            return jsonify({'success': False, 'error': 'Failed to create visit record'}), 500
+        
+        visit_id = visit_result
+        
+        # Initialize workflow progress for first stage
+        insert_progress_query = """
+        INSERT INTO visit_workflow_progress (
+            visit_id,
+            stage_id,
+            started_at
+        ) VALUES (%s, %s, %s)
+        """
+        
+        DatabaseManager.execute_query(
+            insert_progress_query,
+            (visit_id, first_stage_id, datetime.now(timezone.utc))
+        )
+        
+        # Update appointment status to Confirmed
+        DatabaseManager.execute_query(
+            "UPDATE patient_appointments SET status = 'Confirmed', updated_at = %s WHERE id = %s",
+            (datetime.now(timezone.utc), appointment_id)
+        )
+        
+        logger.info(f"Patient {appt['patient_id']} checked in for appointment {appointment_id}, visit {visit_id} created")
+        
+        return jsonify({
+            'success': True,
+            'visit_id': visit_id,
+            'message': 'Patient checked in successfully',
+            'data': {
+                'visit_id': visit_id,
+                'appointment_id': appointment_id,
+                'patient_id': appt['patient_id'],
+                'check_in_time': current_time,
+                'stage_id': first_stage_id
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Check-in patient error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patients/<int:patient_id>/visit', methods=['POST'])
+@token_required
+@role_required(['administrator', 'clerk', 'nurse'])
+def create_patient_visit(patient_id: int):
+    """Create a patient visit (check-in without appointment)"""
+    try:
+        data = request.get_json() or {}
+        
+        # Check if patient exists
+        patient = DatabaseManager.execute_query(
+            "SELECT id, first_name, last_name FROM patients WHERE id = %s",
+            (patient_id,),
+            fetch=True
+        )
+        
+        if not patient or len(patient) == 0:
+            return jsonify({'success': False, 'error': 'Patient not found'}), 404
+        
+        # Check if already checked in today
+        today = datetime.now(timezone.utc).date()
+        existing_visit = DatabaseManager.execute_query(
+            """SELECT id FROM patient_visits 
+               WHERE patient_id = %s AND visit_date = %s""",
+            (patient_id, today),
+            fetch=True
+        )
+        
+        if existing_visit and len(existing_visit) > 0:
+            return jsonify({
+                'success': False, 
+                'error': 'Patient already checked in today',
+                'visit_id': existing_visit[0]['id']
+            }), 400
+        
+        # Get first workflow stage
+        first_stage = DatabaseManager.execute_query(
+            "SELECT id FROM workflow_stages ORDER BY stage_order ASC LIMIT 1",
+            fetch=True
+        )
+        
+        if not first_stage or len(first_stage) == 0:
+            return jsonify({'success': False, 'error': 'No workflow stages configured'}), 500
+        
+        first_stage_id = first_stage[0]['id']
+        
+        # Create patient visit record
+        route_id = data.get('route_id')
+        location = data.get('location', 'Walk-in')
+        current_time = datetime.now(timezone.utc).strftime('%H:%M:%S')
+        
+        insert_visit_query = """
+        INSERT INTO patient_visits (
+            patient_id,
+            visit_date,
+            visit_time,
+            route_id,
+            location,
+            current_stage_id,
+            is_completed,
+            created_by,
+            created_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        
+        visit_result = DatabaseManager.execute_query(
+            insert_visit_query,
+            (
+                patient_id,
+                today,
+                current_time,
+                route_id,
+                location,
+                first_stage_id,
+                False,
+                request.current_user['id'],
+                datetime.now(timezone.utc)
+            )
+        )
+        
+        if not visit_result:
+            return jsonify({'success': False, 'error': 'Failed to create visit record'}), 500
+        
+        visit_id = visit_result
+        
+        # Initialize workflow progress for first stage
+        insert_progress_query = """
+        INSERT INTO visit_workflow_progress (
+            visit_id,
+            stage_id,
+            started_at
+        ) VALUES (%s, %s, %s)
+        """
+        
+        DatabaseManager.execute_query(
+            insert_progress_query,
+            (visit_id, first_stage_id, datetime.now(timezone.utc))
+        )
+        
+        logger.info(f"Patient {patient_id} checked in as walk-in, visit {visit_id} created")
+        
+        return jsonify({
+            'success': True,
+            'visit_id': visit_id,
+            'message': 'Patient checked in successfully',
+            'data': {
+                'visit_id': visit_id,
+                'patient_id': patient_id,
+                'check_in_time': current_time,
+                'stage_id': first_stage_id
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Create patient visit error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+# ============================================================================
+# ============================================================================
 # PATIENT DOCUMENT MANAGEMENT (CLINICAL STAFF)
 # ============================================================================
 

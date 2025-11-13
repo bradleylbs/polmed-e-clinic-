@@ -931,6 +931,37 @@ class ApiService {
     })
   }
 
+  // ==================== PATIENT CHECK-IN ====================
+  async getTodaysCheckInAppointments(): Promise<ApiResponse<any[]>> {
+    return this.request<any[]>("/appointments/check-in/today")
+  }
+
+  async checkInPatient(appointmentId: number): Promise<ApiResponse<{
+    visit_id: number
+    appointment_id: number
+    patient_id: number
+    check_in_time: string
+    stage_id: number
+  }>> {
+    return this.request(`/appointments/${appointmentId}/check-in`, {
+      method: "POST",
+    })
+  }
+
+  async createPatientVisit(patientId: number, data?: {
+    route_id?: number
+    location?: string
+  }): Promise<ApiResponse<{
+    visit_id: number
+    patient_id: number
+    stage_id: number
+  }>> {
+    return this.request(`/patients/${patientId}/visit`, {
+      method: "POST",
+      body: JSON.stringify(data || {}),
+    })
+  }
+
   // ==================== INVENTORY MANAGEMENT ====================
   async getAssets(params?: Record<string, string>): Promise<ApiResponse<any[]>> {
     const queryString = params ? `?${new URLSearchParams(params)}` : ""

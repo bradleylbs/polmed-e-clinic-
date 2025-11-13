@@ -35,6 +35,7 @@ import {
   Target,
   Clipboard,
   CloudUpload,
+  Loader2,
 } from "lucide-react"
 import { ReferralModal } from "./referral-modal"
 import {
@@ -1122,6 +1123,7 @@ export function ClinicalWorkflow({
   const [showReferral, setShowReferral] = useState(false)
   const [patientPolmedStatus, setPatientPolmedStatus] = useState<boolean>(false)
   const [currentReferralContext, setCurrentReferralContext] = useState<string>("")
+  const [patientDetails, setPatientDetails] = useState<any>(null)
 
   // Enhanced doctor consultation state
   const [medications, setMedications] = useState<Medication[]>([])
@@ -1182,7 +1184,7 @@ export function ClinicalWorkflow({
     )
   }, [userRole, selectedSpecialists, specialistCatalog, workflowStatusById])
 
-  // Fetch patient POLMED status
+  // Fetch patient details and POLMED status
   useEffect(() => {
     let isMounted = true
     apiService
@@ -1190,12 +1192,13 @@ export function ClinicalWorkflow({
       .then((response) => {
         if (!isMounted) return
         if (response.success && response.data) {
+          setPatientDetails(response.data)
           const medicalAidNumber = response.data.medical_aid_number || ""
           setPatientPolmedStatus(medicalAidNumber.toUpperCase().startsWith("PAL"))
         }
       })
       .catch((error) => {
-        console.warn("Failed to fetch patient POLMED status", error)
+        console.warn("Failed to fetch patient details", error)
       })
 
     return () => {
@@ -5425,7 +5428,153 @@ export function ClinicalWorkflow({
         <CardDescription>Patient ID: {patientId}</CardDescription>
       </CardHeader>
       <CardContent>
-  {specialistCatalog.length > 0 && !isSpecialistRole && (
+        {/* Patient Check-in Section */}
+        <Card className="mb-6 border-2 border-primary/20 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <UserCheck className="w-5 h-5" />
+              Patient Check-in
+            </CardTitle>
+            <CardDescription>Verify patient details before starting clinical workflow</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {patientDetails ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-xs font-medium text-muted-foreground">Full Name</Label>
+                    <p className="text-sm font-semibold">{patientName}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-muted-foreground">Patient ID</Label>
+                    <p className="text-sm font-mono">{patientId}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-muted-foreground">Medical Aid Number</Label>
+                    <p className="text-sm font-mono">{patientDetails.medical_aid_number || "N/A"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-muted-foreground">ID Number</Label>
+                    <p className="text-sm font-mono">{patientDetails.id_number || "N/A"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-muted-foreground">Date of Birth</Label>
+                    <p className="text-sm">{patientDetails.date_of_birth ? new Date(patientDetails.date_of_birth).toLocaleDateString() : "N/A"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-muted-foreground">Gender</Label>
+                    <p className="text-sm capitalize">{patientDetails.gender || "N/A"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-muted-foreground">Phone Number</Label>
+                    <p className="text-sm">{patientDetails.phone_number || "N/A"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium text-muted-foreground">Email</Label>
+                    <p className="text-sm">{patientDetails.email || "N/A"}</p>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-xs font-medium text-muted-foreground">Check-in Status</Label>
+                    <div className="mt-1">
+                      <Badge variant={workflowSteps[0]?.status === "completed" ? "default" : "secondary"}>
+                        {workflowSteps[0]?.status === "completed" ? "Checked In" : "Pending Check-in"}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {workflowSteps[0]?.status !== "completed" && normalizedUserRole === "clerk" && (
+                    <Button 
+                      onClick={async () => {
+                        try {
+                          // Call API to create patient visit
+                          const response = await apiService.createPatientVisit(Number(patientId), {
+                            location: 'Walk-in'
+                          })
+                          
+                          if (response.success && response.data) {
+                            // Update visit ID
+                            setVisitId(response.data.visit_id)
+                            
+                            // Mark check-in as completed
+                            setWorkflowSteps(prev => {
+                              const updated = [...prev]
+                              if (updated[0]) {
+                                updated[0] = {
+                                  ...updated[0],
+                                  status: "completed",
+                                  completedBy: username,
+                                  completedAt: new Date().toISOString()
+                                }
+                              }
+                              return updated
+                            })
+                            
+                            toast({
+                              title: "Patient Checked In",
+                              description: `${patientName} has been successfully checked in. Visit ID: ${response.data.visit_id}`
+                            })
+                          } else {
+                            toast({
+                              title: "Check-in Failed",
+                              description: response.error || "Failed to check in patient",
+                              variant: "destructive"
+                            })
+                          }
+                        } catch (error) {
+                          console.error("Check-in error:", error)
+                          toast({
+                            title: "Error",
+                            description: "An error occurred during check-in",
+                            variant: "destructive"
+                          })
+                        }
+                      }}
+                      className="gap-2"
+                      disabled={completingStep}
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      Check In Patient
+                    </Button>
+                  )}
+                </div>
+
+                {workflowSteps[0]?.status !== "completed" && normalizedUserRole === "clerk" && (
+                  <Alert className="bg-yellow-50 border-yellow-200">
+                    <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                    <AlertDescription className="text-sm text-yellow-800">
+                      Please verify all patient details above and check them in to start the clinical workflow.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {workflowSteps[0]?.status === "completed" && (
+                  <div className="flex items-center gap-2 text-green-700 bg-green-50 p-3 rounded-lg">
+                    <CheckCircle className="w-4 h-4" />
+                    <span className="text-sm font-medium">
+                      Patient checked in successfully by {workflowSteps[0]?.completedBy}
+                      {workflowSteps[0]?.completedAt && 
+                        ` on ${new Date(workflowSteps[0].completedAt).toLocaleString()}`}
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-center justify-center py-8">
+                <div className="text-center space-y-2">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Loading patient details...</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {specialistCatalog.length > 0 && !isSpecialistRole && (
           <div className="mb-6 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
