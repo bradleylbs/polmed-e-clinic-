@@ -522,10 +522,17 @@ class PatientPortalService {
       emergency_contact_relationship?: string
     },
   ): Promise<ApiResponse<{ updated: boolean }>> {
-    return apiService["request"](`/patient-portal/profile/${patientId}`, {
-      method: "PUT",
-      body: JSON.stringify(updates),
-    })
+    try {
+      return await this.makeAuthenticatedRequest(`/patient-portal/profile/${patientId}`, {
+        method: "PUT",
+        body: JSON.stringify(updates),
+      })
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to update profile",
+      }
+    }
   }
 
   async requestDataDeletion(patientId: number, reason: string): Promise<ApiResponse<{ request_submitted: boolean }>> {
@@ -776,12 +783,11 @@ class PatientPortalService {
         (queryParams.toString() ? `?${queryParams.toString()}` : "")
 
       try {
-        // Try the medical-reports endpoint first
-        const response = await apiService["request"](url, {
+        // Try the medical-reports endpoint first using authenticated request
+        const response = await this.makeAuthenticatedRequest<ApiResponse<any[]>>(url, {
           method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
         })
-        return (response as ApiResponse<any[]>) || { success: false, error: "No reports found" }
+        return response || { success: false, error: "No reports found" }
       } catch (endpointError) {
         // Fallback: Try to get reports from visits endpoint
         console.warn("Medical reports endpoint failed, trying visits fallback:", endpointError)
@@ -839,19 +845,12 @@ class PatientPortalService {
       generated_by: string
     }>
   > {
-    const token = this.getPatientToken()
-    if (!token) {
+    if (!this.getPatientToken()) {
       return { success: false, error: "Not authenticated" }
     }
 
     try {
-      const response = await apiService["request"](
-        `/patient-portal/visits/${visitId}/report`,
-        {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      ) as ApiResponse<{
+      const response = await this.makeAuthenticatedRequest<ApiResponse<{
         visit_id: number
         patient_id: number
         visit_date: string
@@ -865,7 +864,9 @@ class PatientPortalService {
         referrals: any[]
         report_generated_at: string
         generated_by: string
-      }>
+      }>>(`/patient-portal/visits/${visitId}/report`, {
+        method: "GET",
+      })
 
       return response ?? { success: false, error: "Report not found" }
     } catch (error) {

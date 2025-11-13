@@ -7,6 +7,7 @@ import { PatientPortalRegistration } from "@/components/patient-portal/patient-p
 import { patientPortalService, type PatientDashboardData } from "@/lib/patient-portal-service"
 import { authPersistence } from "@/lib/auth-persistence"
 import { useToast } from "@/hooks/use-toast"
+import { useInactivityLogout } from "@/hooks/use-inactivity-logout"
 import { Loader2, ShieldCheck, Mail, CheckCircle2, AlertCircle } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -287,15 +288,25 @@ export default function PatientPortalPage() {
   }
 
   // Logout handler with cleanup
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback((reason?: string) => {
     clearSession()
     setViewMode("login")
     
     toast({
       title: "Logged Out",
-      description: "You have been logged out successfully.",
+      description: reason || "You have been logged out successfully.",
+      variant: reason ? "destructive" : "default",
     })
   }, [clearSession, toast])
+
+  // Inactivity detection - auto-logout after 15 minutes
+  useInactivityLogout({
+    timeout: 15 * 60 * 1000, // 15 minutes
+    enabled: !!session && viewMode === "dashboard",
+    onTimeout: () => {
+      handleLogout("You have been logged out due to inactivity.")
+    },
+  })
 
   // Auto-logout on session expiry
   useEffect(() => {

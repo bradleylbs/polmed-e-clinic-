@@ -7,20 +7,27 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { ArrowLeft, X, Send, UserPlus } from "lucide-react"
 
 interface Props {
   patientId: number
   currentStage: "Registration" | "Nursing Assessment" | "Doctor Consultation" | "Counseling Session"
   visitId?: number
+  specialistContext?: string
+  isPolmedMember?: boolean
   onClose: () => void
   onCreated?: () => void
 }
 
-export function ReferralModal({ patientId, currentStage, visitId, onClose, onCreated }: Props) {
-  const [type, setType] = useState<"internal" | "external">("internal")
+export function ReferralModal({ patientId, currentStage, visitId, specialistContext, isPolmedMember, onClose, onCreated }: Props) {
+  // For psychology referrals with POLMED members, default to external only
+  const isPsychologyReferral = specialistContext?.toLowerCase().includes('psychology') || specialistContext?.toLowerCase().includes('psychologist')
+  const shouldForceExternal = isPsychologyReferral && isPolmedMember
+  
+  const [type, setType] = useState<"internal" | "external">(shouldForceExternal ? "external" : "internal")
   const [toStage, setToStage] = useState<Props["currentStage"] | "Registration">("Registration")
   const [provider, setProvider] = useState("")
-  const [department, setDepartment] = useState("")
+  const [department, setDepartment] = useState(isPsychologyReferral ? "Psychology" : "")
   const [reason, setReason] = useState("")
   const [notes, setNotes] = useState("")
   const [date, setDate] = useState("")
@@ -68,22 +75,46 @@ export function ReferralModal({ patientId, currentStage, visitId, onClose, onCre
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-black/60 via-black/50 to-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
       <div className="bg-background/95 backdrop-blur-xl rounded-2xl shadow-2xl shadow-primary/20 w-full max-w-lg p-6 border border-primary/10 animate-in slide-in-from-bottom-4 duration-300">
-        <h2 className="text-2xl font-bold mb-6 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-          Create Referral
-        </h2>
+        {/* Header with Close Button */}
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent flex items-center gap-2">
+            <UserPlus className="w-6 h-6 text-primary" />
+            Create Referral
+          </h2>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="rounded-full hover:bg-destructive/10 hover:text-destructive transition-colors"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </Button>
+        </div>
 
         <div className="space-y-4">
           <div className="space-y-2">
             <Label className="text-sm font-medium">Referral type</Label>
-            <Select value={type} onValueChange={(val) => setType(val as any)}>
+            <Select 
+              value={type} 
+              onValueChange={(val) => setType(val as any)}
+              disabled={shouldForceExternal}
+            >
               <SelectTrigger className="w-full border-primary/20 focus:border-primary focus:ring-primary/20">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="internal">Internal</SelectItem>
+                <SelectItem value="internal" disabled={shouldForceExternal}>
+                  Internal {shouldForceExternal && "(Not available for psychology - POLMED policy)"}
+                </SelectItem>
                 <SelectItem value="external">External</SelectItem>
               </SelectContent>
             </Select>
+            {shouldForceExternal && (
+              <p className="text-xs text-muted-foreground mt-1">
+                ℹ️ POLMED members must use external psychology referrals only
+              </p>
+            )}
           </div>
 
           {type === "internal" ? (

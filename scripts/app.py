@@ -6119,6 +6119,114 @@ def get_dashboard_stats():
             )
             stats['maintenanceAlerts'] = int((maintenance or [{}])[0].get('maintenance_alerts') or 0)
 
+        # Time tracking statistics - Calculate average consultation time and total time spent
+        time_tracking_stats = {}
+        
+        # For user-specific roles, calculate time spent by that user
+        if user_role != 'administrator':
+            # Average time per workflow stage (in minutes) for today
+            time_stats_today = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(*) as completed_stages,
+                    AVG(TIMESTAMPDIFF(MINUTE, vwp.started_at, vwp.completed_at)) as avg_stage_minutes,
+                    SUM(TIMESTAMPDIFF(MINUTE, vwp.started_at, vwp.completed_at)) as total_stage_minutes
+                FROM visit_workflow_progress vwp
+                WHERE vwp.assigned_user_id = %s
+                    AND vwp.is_completed = TRUE
+                    AND vwp.started_at IS NOT NULL
+                    AND vwp.completed_at IS NOT NULL
+                    AND DATE(vwp.completed_at) = CURDATE()
+                """,
+                (user_id,),
+                fetch=True,
+            )
+            
+            # Weekly time stats
+            time_stats_week = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(*) as completed_stages,
+                    AVG(TIMESTAMPDIFF(MINUTE, vwp.started_at, vwp.completed_at)) as avg_stage_minutes,
+                    SUM(TIMESTAMPDIFF(MINUTE, vwp.started_at, vwp.completed_at)) as total_stage_minutes
+                FROM visit_workflow_progress vwp
+                WHERE vwp.assigned_user_id = %s
+                    AND vwp.is_completed = TRUE
+                    AND vwp.started_at IS NOT NULL
+                    AND vwp.completed_at IS NOT NULL
+                    AND vwp.completed_at >= CURDATE() - INTERVAL 7 DAY
+                """,
+                (user_id,),
+                fetch=True,
+            )
+        else:
+            # System-wide time tracking for administrators
+            time_stats_today = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(*) as completed_stages,
+                    AVG(TIMESTAMPDIFF(MINUTE, vwp.started_at, vwp.completed_at)) as avg_stage_minutes,
+                    SUM(TIMESTAMPDIFF(MINUTE, vwp.started_at, vwp.completed_at)) as total_stage_minutes
+                FROM visit_workflow_progress vwp
+                WHERE vwp.is_completed = TRUE
+                    AND vwp.started_at IS NOT NULL
+                    AND vwp.completed_at IS NOT NULL
+                    AND DATE(vwp.completed_at) = CURDATE()
+                """,
+                fetch=True,
+            )
+            
+            time_stats_week = DatabaseManager.execute_query(
+                """
+                SELECT 
+                    COUNT(*) as completed_stages,
+                    AVG(TIMESTAMPDIFF(MINUTE, vwp.started_at, vwp.completed_at)) as avg_stage_minutes,
+                    SUM(TIMESTAMPDIFF(MINUTE, vwp.started_at, vwp.completed_at)) as total_stage_minutes
+                FROM visit_workflow_progress vwp
+                WHERE vwp.is_completed = TRUE
+                    AND vwp.started_at IS NOT NULL
+                    AND vwp.completed_at IS NOT NULL
+                    AND vwp.completed_at >= CURDATE() - INTERVAL 7 DAY
+                """,
+                fetch=True,
+            )
+        
+        today_time = time_stats_today[0] if time_stats_today else {}
+        week_time = time_stats_week[0] if time_stats_week else {}
+        
+        # Format time tracking data
+        time_tracking_stats['todayStats'] = {
+            'completedStages': int(today_time.get('completed_stages') or 0),
+            'avgMinutesPerStage': round(float(today_time.get('avg_stage_minutes') or 0), 1),
+            'totalMinutes': int(today_time.get('total_stage_minutes') or 0),
+            'totalHours': round(float(today_time.get('total_stage_minutes') or 0) / 60, 1)
+        }
+        
+        time_tracking_stats['weekStats'] = {
+            'completedStages': int(week_time.get('completed_stages') or 0),
+            'avgMinutesPerStage': round(float(week_time.get('avg_stage_minutes') or 0), 1),
+            'totalMinutes': int(week_time.get('total_stage_minutes') or 0),
+            'totalHours': round(float(week_time.get('total_stage_minutes') or 0) / 60, 1)
+        }
+        
+        # Average visit completion time (from visit creation to completion)
+        visit_time_stats = DatabaseManager.execute_query(
+            """
+            SELECT 
+                AVG(TIMESTAMPDIFF(MINUTE, pv.created_at, pv.completed_at)) as avg_visit_minutes
+            FROM patient_visits pv
+            WHERE pv.is_completed = TRUE
+                AND pv.completed_at IS NOT NULL
+                AND pv.completed_at >= CURDATE() - INTERVAL 7 DAY
+            """,
+            fetch=True,
+        )
+        
+        visit_time = visit_time_stats[0] if visit_time_stats else {}
+        time_tracking_stats['avgVisitCompletionMinutes'] = round(float(visit_time.get('avg_visit_minutes') or 0), 1)
+        
+        stats['timeTracking'] = time_tracking_stats
+
         def format_audit_change_summary(old_values, new_values):
             """Return a concise change summary derived from audit JSON values."""
             def parse_json_blob(blob):
@@ -7466,23 +7574,69 @@ def submit_patient_feedback(patient_id: int):
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
         data = request.get_json() or {}
-        feedback_text = data.get('feedback', '').strip()
-        rating = data.get('rating')
-        category = data.get('category', 'general')
         
-        if not feedback_text:
-            return jsonify({'success': False, 'error': 'Feedback text is required'}), 400
+        # Extract feedback data
+        feedback_type = data.get('feedback_type', 'service_rating')
+        overall_rating = data.get('overall_rating')
+        service_ratings = data.get('service_ratings')
+        comments = data.get('comments', '').strip()
+        visit_id = data.get('visit_id')
+        appointment_id = data.get('appointment_id')
+        location_name = data.get('location_name')
+        visit_date = data.get('visit_date')
+        is_anonymous = data.get('is_anonymous', False)
         
-        if rating is not None and (not isinstance(rating, int) or rating < 1 or rating > 5):
-            return jsonify({'success': False, 'error': 'Rating must be between 1 and 5'}), 400
+        # Validate feedback type
+        valid_types = ['service_rating', 'complaint', 'suggestion', 'compliment']
+        if feedback_type not in valid_types:
+            return jsonify({'success': False, 'error': f'Invalid feedback type. Must be one of: {", ".join(valid_types)}'}), 400
         
-        # TODO: Create patient_feedback table and store feedback
-        # For now, just log the feedback
-        logger.info(f"Patient {patient_id} submitted feedback: {feedback_text}, Rating: {rating}, Category: {category}")
+        # Validate overall rating if provided
+        if overall_rating is not None and (not isinstance(overall_rating, int) or overall_rating < 1 or overall_rating > 5):
+            return jsonify({'success': False, 'error': 'Overall rating must be between 1 and 5'}), 400
+        
+        # Validate comments for complaint/suggestion types
+        if feedback_type in ['complaint', 'suggestion'] and not comments:
+            return jsonify({'success': False, 'error': 'Comments are required for complaints and suggestions'}), 400
+        
+        # Insert feedback into database
+        query = """
+        INSERT INTO patient_feedback (
+            patient_id, visit_id, appointment_id, feedback_type, overall_rating, 
+            service_ratings, location_name, visit_date, comments, is_anonymous, 
+            status, created_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', NOW())
+        """
+        
+        # Convert service_ratings dict to JSON string if provided
+        import json
+        service_ratings_json = json.dumps(service_ratings) if service_ratings else None
+        
+        DatabaseManager.execute_query(
+            query,
+            (
+                patient_id,
+                visit_id,
+                appointment_id,
+                feedback_type,
+                overall_rating,
+                service_ratings_json,
+                location_name,
+                visit_date,
+                comments,
+                is_anonymous
+            )
+        )
+        
+        logger.info(f"Patient {patient_id} submitted feedback: Type={feedback_type}, Rating={overall_rating}")
         
         return jsonify({
             'success': True,
-            'message': 'Feedback submitted successfully'
+            'message': 'Feedback submitted successfully. Thank you for your feedback!',
+            'data': {
+                'feedback_type': feedback_type,
+                'status': 'pending'
+            }
         }), 200
         
     except Exception as e:
@@ -8739,12 +8893,13 @@ def update_patient_profile(patient_id: int):
         data = request.get_json() or {}
         
         # Build update query dynamically based on provided fields
-        allowed_fields = ['phone_number', 'email', 'physical_address', 'emergency_contact_name', 'emergency_contact_phone']
+        # Note: emergency_contact_relationship is not a field in the patients table - store in emergency_contact_name if needed
+        allowed_fields = ['phone_number', 'email', 'physical_address', 'emergency_contact_name', 'emergency_contact_phone', 'date_of_birth']
         update_fields = []
         params = []
         
         for field in allowed_fields:
-            if field in data:
+            if field in data and data[field] is not None:
                 update_fields.append(f"{field} = %s")
                 params.append(data[field])
         
@@ -8759,16 +8914,30 @@ def update_patient_profile(patient_id: int):
         WHERE id = %s
         """
         
+        logger.info(f"Updating patient {patient_id} profile with fields: {update_fields}")
         DatabaseManager.execute_query(query, params)
+        
+        # Fetch updated patient data to return
+        fetch_query = """
+        SELECT id, phone_number, email, physical_address, emergency_contact_name, 
+               emergency_contact_phone, date_of_birth, updated_at
+        FROM patients
+        WHERE id = %s
+        """
+        updated_patient = DatabaseManager.execute_query(fetch_query, (patient_id,), fetch=True)
         
         return jsonify({
             'success': True,
-            'data': {'updated': True}
+            'message': 'Profile updated successfully',
+            'data': {
+                'updated': True,
+                'patient': updated_patient[0] if updated_patient else None
+            }
         }), 200
         
     except Exception as e:
-        logger.error(f"Update profile error: {e}")
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+        logger.error(f"Update profile error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': f'Failed to update profile: {str(e)}'}), 500
 
 
 @app.route('/api/patient-portal/password/change', methods=['POST'])

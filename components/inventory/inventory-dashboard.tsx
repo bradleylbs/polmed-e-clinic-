@@ -18,12 +18,14 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  ArrowLeft,
 } from "lucide-react"
 import { apiService } from "@/lib/api-service"
 import { useToast } from "@/hooks/use-toast"
 
 interface InventoryDashboardProps {
   userRole: string
+  onBack?: () => void
 }
 
 interface InventorySummary {
@@ -48,7 +50,7 @@ interface InventoryAlert {
   date: string
 }
 
-export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
+export function InventoryDashboard({ userRole, onBack }: InventoryDashboardProps) {
   const [activeTab, setActiveTab] = useState("overview")
   const [summaryData, setSummaryData] = useState<InventorySummary | null>(null)
   const [alerts, setAlerts] = useState<InventoryAlert[]>([])
@@ -287,6 +289,19 @@ export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
 
   return (
     <div className="space-y-6">
+      {/* Header with Back Button */}
+      <div className="flex items-center gap-4">
+        {onBack && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onBack}
+            className="rounded-full hover:bg-primary/10 transition-colors group"
+            aria-label="Go back"
+          >
+            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
+          </Button>
+        )}
       <div>
         <h2 className="text-3xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
           Inventory Management
@@ -524,6 +539,7 @@ export function InventoryDashboard({ userRole }: InventoryDashboardProps) {
           <ConsumablesManagement userRole={userRole} />
         </TabsContent>
       </Tabs>
+      </div>
     </div>
   )
 }

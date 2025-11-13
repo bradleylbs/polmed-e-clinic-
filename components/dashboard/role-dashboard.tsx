@@ -76,6 +76,21 @@ interface DashboardStats {
     todayReferrals?: number
     weekReferrals?: number
   }
+  timeTracking?: {
+    todayStats: {
+      completedStages: number
+      avgMinutesPerStage: number
+      totalMinutes: number
+      totalHours: number
+    }
+    weekStats: {
+      completedStages: number
+      avgMinutesPerStage: number
+      totalMinutes: number
+      totalHours: number
+    }
+    avgVisitCompletionMinutes: number
+  }
 }
 
 interface ActivityItem {
@@ -354,6 +369,7 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
           recentActivity: normalizedActivity,
           upcomingTasks: normalizedUpcoming,
           roleSpecificMetrics: raw.roleSpecificMetrics ?? { metricType: "" },
+          timeTracking: raw.timeTracking,
         })
       } else {
         toast({
@@ -570,6 +586,92 @@ export function RoleDashboard({ user }: RoleDashboardProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Time Tracking Summary */}
+      {dashboardData.timeTracking && (
+        <Card className="border-blue-500/30 shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-blue-700">
+              <Clock className="w-5 h-5" />
+              Time Tracking Summary
+            </CardTitle>
+            <CardDescription>Time spent on workflows and consultations</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Today's Time Stats */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-foreground">Today</h4>
+                <div className="p-4 bg-linear-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-muted-foreground">Total Time Spent</span>
+                    <span className="text-2xl font-bold text-blue-600">
+                      {dashboardData.timeTracking.todayStats.totalHours}h
+                    </span>
+                  </div>
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    <div className="flex justify-between">
+                      <span>Completed Stages:</span>
+                      <span className="font-medium text-foreground">
+                        {dashboardData.timeTracking.todayStats.completedStages}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Avg per Stage:</span>
+                      <span className="font-medium text-foreground">
+                        {dashboardData.timeTracking.todayStats.avgMinutesPerStage} min
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Weekly Time Stats */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-foreground">This Week</h4>
+                <div className="p-4 bg-linear-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-muted-foreground">Total Time Spent</span>
+                    <span className="text-2xl font-bold text-purple-600">
+                      {dashboardData.timeTracking.weekStats.totalHours}h
+                    </span>
+                  </div>
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    <div className="flex justify-between">
+                      <span>Completed Stages:</span>
+                      <span className="font-medium text-foreground">
+                        {dashboardData.timeTracking.weekStats.completedStages}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Avg per Stage:</span>
+                      <span className="font-medium text-foreground">
+                        {dashboardData.timeTracking.weekStats.avgMinutesPerStage} min
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Average Visit Completion Time */}
+            {dashboardData.timeTracking.avgVisitCompletionMinutes > 0 && (
+              <div className="mt-4 p-4 bg-linear-to-r from-green-50 to-green-100/50 border border-green-200 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    <span className="text-sm font-medium">Avg. Visit Completion Time</span>
+                  </div>
+                  <span className="text-lg font-bold text-green-600">
+                    {dashboardData.timeTracking.avgVisitCompletionMinutes} min
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">From registration to closure (last 7 days)</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Role-specific Alerts */}
       {(normalizedRole === "administrator" || normalizedRole === "doctor" || normalizedRole === "nurse") &&

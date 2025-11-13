@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { UserPlus, Search, CheckCircle, AlertCircle } from "lucide-react"
+import { UserPlus, Search, CheckCircle, AlertCircle, ArrowLeft } from "lucide-react"
 import { apiService } from "@/lib/api-service"
 import { offlineManager } from "@/lib/offline-manager"
 import { handleSubmissionWithFeedback, showWarningFeedback } from "@/lib/feedback-utils"
@@ -47,9 +47,10 @@ interface MemberRecord {
 interface PatientRegistrationProps {
   onPatientRegistered: (patient: PatientData) => void
   userRole: string
+  onBack?: () => void
 }
 
-function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrationProps) {
+function PatientRegistration({ onPatientRegistered, userRole, onBack }: PatientRegistrationProps) {
   const { toast } = useToast()
   const [formData, setFormData] = useState<PatientData>({
     fullName: "",
@@ -238,11 +239,26 @@ function PatientRegistration({ onPatientRegistered, userRole }: PatientRegistrat
   return (
     <Card className="w-full max-w-2xl mx-auto border-primary/10 shadow-2xl">
       <CardHeader className="bg-gradient-to-br from-primary/5 via-primary/3 to-transparent border-b border-primary/10">
-        <CardTitle className="flex items-center gap-2 text-2xl">
-          <UserPlus className="w-6 h-6 text-primary" />
-          Patient Registration
-        </CardTitle>
-        <CardDescription>Register new patient or update existing patient information</CardDescription>
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <CardTitle className="flex items-center gap-2 text-2xl">
+              <UserPlus className="w-6 h-6 text-primary" />
+              Patient Registration
+            </CardTitle>
+            <CardDescription>Register new patient or update existing patient information</CardDescription>
+          </div>
+          {onBack && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onBack}
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Back</span>
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="pt-6">
         <form onSubmit={handleSubmit} className="space-y-6">

@@ -38,6 +38,7 @@ import {
   MoreVertical,
   ChevronRight,
   Ear,
+  ArrowLeft,
 } from "lucide-react"
 
 type UserRole =
@@ -77,6 +78,7 @@ interface UserManagementProps {
     username: string
     role: UserRole
   }
+  onBack?: () => void
 }
 
 const roleConfig = {
@@ -193,7 +195,7 @@ const southAfricanProvinces = [
   "Western Cape",
 ]
 
-export function UserManagement({ currentUser }: UserManagementProps) {
+export function UserManagement({ currentUser, onBack }: UserManagementProps) {
   const { toast } = useToast()
   const [users, setUsers] = useState<SystemUser[]>([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -384,6 +386,17 @@ export function UserManagement({ currentUser }: UserManagementProps) {
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-3">
+              {onBack && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onBack}
+                  className="rounded-full hover:bg-primary/10 transition-colors group"
+                  aria-label="Go back"
+                >
+                  <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
+                </Button>
+              )}
               <div className="w-12 h-12 rounded-2xl bg-linear-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg shadow-primary/30">
                 <Users className="w-6 h-6 text-primary-foreground" />
               </div>

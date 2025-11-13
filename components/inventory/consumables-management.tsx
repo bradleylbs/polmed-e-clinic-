@@ -20,6 +20,8 @@ import {
   Clock,
   Loader2,
   Truck,
+  ArrowLeft,
+  X,
 } from "lucide-react"
 import { apiService, type Supplier, type StockReceiptRequest } from "@/lib/api-service"
 import { useToast } from "@/hooks/use-toast"
@@ -68,6 +70,7 @@ interface ConsumableCategory {
 
 interface ConsumablesManagementProps {
   userRole: string
+  onBack?: () => void
 }
 
 const consumableCategories = [
@@ -77,7 +80,7 @@ const consumableCategories = [
   { value: "other", label: "Other Supplies", icon: Package, color: "bg-gray-100 text-gray-800" },
 ]
 
-export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) {
+export function ConsumablesManagement({ userRole, onBack }: ConsumablesManagementProps) {
   const [consumables, setConsumables] = useState<Consumable[]>([])
   const [categories, setCategories] = useState<ConsumableCategory[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -539,13 +542,26 @@ export function ConsumablesManagement({ userRole }: ConsumablesManagementProps) 
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header with Back Button */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
-            Consumables Management
-          </h2>
-          <p className="text-muted-foreground mt-1">Track pharmaceuticals, medical supplies, and consumables</p>
+        <div className="flex items-center gap-4">
+          {onBack && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onBack}
+              className="rounded-full hover:bg-primary/10 transition-colors group"
+              aria-label="Go back"
+            >
+              <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
+            </Button>
+          )}
+          <div>
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
+              Consumables Management
+            </h2>
+            <p className="text-muted-foreground mt-1">Track pharmaceuticals, medical supplies, and consumables</p>
+          </div>
         </div>
         {(userRole === "administrator" || userRole === "doctor" || userRole === "nurse") && (
           <Button

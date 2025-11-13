@@ -18,6 +18,7 @@ import { SyncManager } from "@/components/offline/sync-manager"
 import { offlineManager } from "@/lib/offline-manager"
 import { useToast } from "@/hooks/use-toast"
 import { usePersistentAuth } from "@/hooks/use-persistent-auth"
+import { useInactivityLogout } from "@/hooks/use-inactivity-logout"
 import { authPersistence } from "@/lib/auth-persistence"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -564,14 +565,15 @@ export default function StaffHomePage() {
   )
 
   // Logout handler
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback((reason?: string) => {
     try {
-      console.log("User logged out")
+      console.log("User logged out", reason ? `Reason: ${reason}` : "")
       clearSession()
 
       toast({
         title: "Logged Out",
-        description: "You have been logged out successfully.",
+        description: reason || "You have been logged out successfully.",
+        variant: reason ? "destructive" : "default",
       })
     } catch (error) {
       console.error("Logout error:", error)
@@ -582,6 +584,15 @@ export default function StaffHomePage() {
       })
     }
   }, [clearSession, toast])
+
+  // Inactivity detection - auto-logout after 15 minutes
+  useInactivityLogout({
+    timeout: 15 * 60 * 1000, // 15 minutes
+    enabled: !!user,
+    onTimeout: () => {
+      handleLogout("You have been logged out due to inactivity.")
+    },
+  })
 
   // Patient management handlers
   const handlePatientSelect = useCallback(

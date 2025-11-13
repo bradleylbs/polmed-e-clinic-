@@ -325,11 +325,19 @@ const formatFileSize = (bytes: number) => {
 
 const formatUploadTimestamp = (value?: string | null) => {
   if (!value) {
-    return "Just now"
+    // If no timestamp, show current time
+    return new Date().toLocaleString("en-ZA", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
   }
 
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) {
+    // Fallback to showing the raw value if parsing fails
     return value
   }
 
@@ -1112,6 +1120,8 @@ export function ClinicalWorkflow({
   })
 
   const [showReferral, setShowReferral] = useState(false)
+  const [patientPolmedStatus, setPatientPolmedStatus] = useState<boolean>(false)
+  const [currentReferralContext, setCurrentReferralContext] = useState<string>("")
 
   // Enhanced doctor consultation state
   const [medications, setMedications] = useState<Medication[]>([])
@@ -1171,6 +1181,27 @@ export function ClinicalWorkflow({
       }),
     )
   }, [userRole, selectedSpecialists, specialistCatalog, workflowStatusById])
+
+  // Fetch patient POLMED status
+  useEffect(() => {
+    let isMounted = true
+    apiService
+      .getPatient(Number(patientId))
+      .then((response) => {
+        if (!isMounted) return
+        if (response.success && response.data) {
+          const medicalAidNumber = response.data.medical_aid_number || ""
+          setPatientPolmedStatus(medicalAidNumber.toUpperCase().startsWith("PAL"))
+        }
+      })
+      .catch((error) => {
+        console.warn("Failed to fetch patient POLMED status", error)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [patientId])
 
   useEffect(() => {
     let isMounted = true
@@ -4270,13 +4301,19 @@ export function ClinicalWorkflow({
             )}
 
             <div className="space-y-2">
-              <Label>Nursing Assessment Notes</Label>
+              <Label>
+                Nursing Assessment Notes <RequiredAsterisk />
+                <span className="text-xs text-muted-foreground ml-2">(or vital signs)</span>
+              </Label>
               <Textarea
-                placeholder="Record nursing assessment, observations, and screening results..."
+                placeholder="Record nursing assessment, observations, and screening results... (minimum 20 characters required)"
                 value={clinicalNotes.nursingAssessment}
                 onChange={(e) => updateClinicalNotes("nursingAssessment", e.target.value)}
                 rows={4}
               />
+              <p className="text-xs text-muted-foreground">
+                {clinicalNotes.nursingAssessment.length}/20 characters
+              </p>
             </div>
 
             <div className="flex justify-end">
@@ -4408,9 +4445,11 @@ export function ClinicalWorkflow({
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
-                      <Label className="text-sm font-medium">Clinical Examination & Findings</Label>
+                      <Label className="text-sm font-medium">
+                        Clinical Examination & Findings <RequiredAsterisk />
+                      </Label>
                       <Textarea
-                        placeholder="Document clinical findings, examination results, review of systems..."
+                        placeholder="Document clinical findings, examination results, review of systems... (minimum 10 characters required)"
                         value={clinicalNotes.doctorDiagnosis}
                         onChange={(e) => {
                           updateClinicalNotes("doctorDiagnosis", e.target.value)
@@ -4420,6 +4459,9 @@ export function ClinicalWorkflow({
                         rows={6}
                         className="mt-1"
                       />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {clinicalNotes.doctorDiagnosis.length}/10 characters
+                      </p>
                     </div>
 
                     {/* Quick Assessment Templates */}
@@ -4496,10 +4538,10 @@ export function ClinicalWorkflow({
                     <div>
                       <Label className="text-sm font-semibold mb-2 flex items-center gap-2">
                         <Target className="w-4 h-4 text-primary" />
-                        Primary Diagnosis
+                        Primary Diagnosis <RequiredAsterisk />
                       </Label>
                       <Textarea
-                        placeholder="Enter primary and differential diagnoses..."
+                        placeholder="Enter primary and differential diagnoses... (minimum 10 characters required)"
                         value={clinicalNotes.doctorDiagnosis}
                         onChange={(e) => {
                           updateClinicalNotes("doctorDiagnosis", e.target.value)
@@ -4508,6 +4550,9 @@ export function ClinicalWorkflow({
                         rows={4}
                         className="mt-2 resize-none border-primary/20 focus:border-primary focus:ring-primary/20"
                       />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {clinicalNotes.doctorDiagnosis.length}/10 characters
+                      </p>
                     </div>
 
                     <div>
@@ -4803,30 +4848,23 @@ export function ClinicalWorkflow({
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
                               {[
                                 { code: "I10", desc: "Hypertension" },
-                                { code: "E11.9", desc: "Type 2 Diabetes", popular: true }, 
+                                { code: "E11.9", desc: "Type 2 Diabetes" }, 
                                 { code: "J06.9", desc: "Upper Respiratory Infection" },
                                 { code: "R50.9", desc: "Fever" },
-                                { code: "R06.02", desc: "Shortness of Breath", popular: true },
+                                { code: "R06.02", desc: "Shortness of Breath" },
                                 { code: "M79.3", desc: "Panniculitis" },
                                 { code: "K59.00", desc: "Constipation" },
                                 { code: "Z00.00", desc: "General Medical Exam" }
-                              ].map((item) => {
-                                const isSelected = selectedICD10Codes.find(c => c.code === item.code)
+                              ].filter(item => !selectedICD10Codes.find(c => c.code === item.code)).map((item) => {
                                 return (
                                   <Button
                                     key={item.code}
-                                    variant={isSelected ? "secondary" : "ghost"}
+                                    variant="ghost"
                                     size="sm"
                                     onClick={() => addICD10Code(item.code, item.desc)}
-                                    disabled={!!isSelected}
-                                    className={`text-xs h-8 px-2 font-mono transition-all justify-start ${
-                                      isSelected 
-                                        ? 'bg-green-100 text-green-700 border-green-200 cursor-not-allowed' 
-                                        : 'hover:bg-primary/10 border border-transparent hover:border-primary/20'
-                                    }`}
+                                    className="text-xs h-8 px-2 font-mono transition-all justify-start hover:bg-primary/10 border border-transparent hover:border-primary/20"
                                     title={item.desc}
                                   >
-                                    {isSelected && <CheckCircle className="w-3 h-3 mr-1 shrink-0" />}
                                     <span className="font-bold">{item.code}</span>
                                     <span className="text-xs opacity-70 ml-1 hidden md:inline">• {item.desc}</span>
                                   </Button>
@@ -5062,7 +5100,14 @@ export function ClinicalWorkflow({
                         rows={2}
                       />
                       <div className="flex justify-end">
-                        <Button variant="outline" size="sm" onClick={() => setShowReferral(true)}>
+                        <Button variant="outline" size="sm" onClick={() => {
+                          // Check if psychology is in selected specialists
+                          const hasPsychology = selectedSpecialists.some(s => 
+                            s.toLowerCase().includes('psychology') || s.toLowerCase().includes('psychologist')
+                          )
+                          setCurrentReferralContext(hasPsychology ? "Psychology" : "General")
+                          setShowReferral(true)
+                        }}>
                           Create Formal Referral
                         </Button>
                       </div>
@@ -5179,9 +5224,9 @@ export function ClinicalWorkflow({
                     </div>
 
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline">Save Draft</Button>
-                      <Button onClick={completeCurrentStep}>
-                        Complete Consultation
+                      <Button variant="outline" disabled={completingStep}>Save Draft</Button>
+                      <Button onClick={completeCurrentStep} disabled={completingStep}>
+                        {completingStep ? "Completing..." : "Complete Consultation"}
                         <CheckCircle className="w-4 h-4 ml-2" />
                       </Button>
                     </div>
@@ -5196,23 +5241,35 @@ export function ClinicalWorkflow({
         return (
           <div className="space-y-6">
             <div className="space-y-2">
-              <Label>Mental Health Screening</Label>
+              <Label>
+                Mental Health Screening <RequiredAsterisk />
+                <span className="text-xs text-muted-foreground ml-2">(or counseling notes)</span>
+              </Label>
               <Textarea
-                placeholder="Record mental health assessment results and screening tools used..."
+                placeholder="Record mental health assessment results and screening tools used... (minimum 20 characters required)"
                 value={clinicalNotes.mentalHealthScreening}
                 onChange={(e) => updateClinicalNotes("mentalHealthScreening", e.target.value)}
                 rows={3}
               />
+              <p className="text-xs text-muted-foreground">
+                {clinicalNotes.mentalHealthScreening.length}/20 characters
+              </p>
             </div>
 
             <div className="space-y-2">
-              <Label>Counseling Notes</Label>
+              <Label>
+                Counseling Notes <RequiredAsterisk />
+                <span className="text-xs text-muted-foreground ml-2">(or mental health screening)</span>
+              </Label>
               <Textarea
-                placeholder="Document counseling session, interventions, and recommendations..."
+                placeholder="Document counseling session, interventions, and recommendations... (minimum 30 characters required)"
                 value={clinicalNotes.counselingNotes}
                 onChange={(e) => updateClinicalNotes("counselingNotes", e.target.value)}
                 rows={4}
               />
+              <p className="text-xs text-muted-foreground">
+                {clinicalNotes.counselingNotes.length}/30 characters
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -5340,13 +5397,18 @@ export function ClinicalWorkflow({
             </div>
 
             <div className="space-y-2">
-              <Label>Final Notes</Label>
+              <Label>
+                Final Notes <RequiredAsterisk />
+              </Label>
               <Textarea
-                placeholder="Any additional notes or follow-up instructions..."
+                placeholder="Provide a comprehensive summary and follow-up instructions... (minimum 30 characters required)"
                 rows={3}
                 value={clinicalNotes.finalNotes || ""}
                 onChange={(e) => updateClinicalNotes("finalNotes" as any, e.target.value)}
               />
+              <p className="text-xs text-muted-foreground">
+                {(clinicalNotes.finalNotes || "").length}/30 characters
+              </p>
             </div>
           </div>
         )
@@ -5567,6 +5629,8 @@ export function ClinicalWorkflow({
           <ReferralModal
             patientId={Number(patientId)}
             currentStage={workflowSteps[currentStep]?.title as any}
+            specialistContext={currentReferralContext}
+            isPolmedMember={patientPolmedStatus}
             onClose={() => setShowReferral(false)}
             onCreated={() => setShowReferral(false)}
           />
