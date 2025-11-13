@@ -1191,8 +1191,8 @@ export function ClinicalWorkflow({
         if (!isMounted) return
         if (response.success && response.data) {
           setPatientDetails(response.data)
-          const medicalAidNumber = response.data.medical_aid_number || ""
-          setPatientPolmedStatus(medicalAidNumber.toUpperCase().startsWith("PAL"))
+          // Use is_palmed_member from database instead of checking medical_aid_number
+          setPatientPolmedStatus(response.data.is_palmed_member || false)
         }
       })
       .catch((error) => {
@@ -5472,13 +5472,13 @@ export function ClinicalWorkflow({
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground">Medical Aid</Label>
                       <p className="text-sm font-medium">
-                        {patientPolmedStatus ? "POLMED Member" : "N/A"}
+                        {patientDetails.is_palmed_member ? "POLMED Member" : patientDetails.member_type || "N/A"}
                       </p>
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground">Address</Label>
                       <p className="text-sm font-medium">
-                        {patientDetails.address || "Not provided"}
+                        {patientDetails.physical_address || "Not provided"}
                       </p>
                     </div>
                   </div>

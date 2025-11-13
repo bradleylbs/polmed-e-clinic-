@@ -1665,19 +1665,21 @@ def get_patients():
             params.extend([search_param, search_param, search_param])
         
         # Role-based filtering using geographic restrictions
+        # Note: patients table doesn't have province column, geographic filtering disabled
+        # TODO: Add province column to patients table or use location-based filtering
         user_role = request.current_user.get('role_name')
-        if user_role == 'doctor':
-            geographic_restrictions = request.current_user.get('geographic_restrictions')
-            if geographic_restrictions:
-                try:
-                    import json
-                    provinces = json.loads(geographic_restrictions)
-                    if provinces and len(provinces) > 0:
-                        province_placeholders = ','.join(['%s'] * len(provinces))
-                        base_query += f" AND p.province IN ({province_placeholders})"
-                        params.extend(provinces)
-                except:
-                    pass
+        # if user_role == 'doctor':
+        #     geographic_restrictions = request.current_user.get('geographic_restrictions')
+        #     if geographic_restrictions:
+        #         try:
+        #             import json
+        #             provinces = json.loads(geographic_restrictions)
+        #             if provinces and len(provinces) > 0:
+        #                 province_placeholders = ','.join(['%s'] * len(provinces))
+        #                 base_query += f" AND p.province IN ({province_placeholders})"
+        #                 params.extend(provinces)
+        #         except:
+        #             pass
         
         base_query += " GROUP BY p.id ORDER BY p.created_at DESC LIMIT %s OFFSET %s"
         params.extend([limit, offset])
@@ -1708,6 +1710,61 @@ def get_patients():
         
     except Exception as e:
         logger.error(f"Get patients error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patients/<int:patient_id>', methods=['GET'])
+@token_required
+@role_required(['administrator', 'doctor', 'nurse', 'clerk', 'social_work', 'social_worker'])
+def get_patient(patient_id: int):
+    """Get a single patient by ID"""
+    try:
+        # Query patient details with correct column names from schema
+        query = """
+        SELECT p.id,
+               p.medical_aid_number,
+               p.first_name,
+               p.last_name,
+               p.date_of_birth,
+               p.gender,
+               p.id_number,
+               p.phone_number,
+               p.email,
+               p.physical_address,
+               p.emergency_contact_name,
+               p.emergency_contact_phone,
+               p.is_palmed_member,
+               p.member_type,
+               p.chronic_conditions,
+               p.allergies,
+               p.current_medications,
+               p.created_at,
+               p.updated_at,
+               COUNT(DISTINCT pv.id) as total_visits,
+               MAX(pv.visit_date) as last_visit
+        FROM patients p
+        LEFT JOIN patient_visits pv ON p.id = pv.patient_id
+        WHERE p.id = %s
+        GROUP BY p.id, p.medical_aid_number, p.first_name, p.last_name, 
+                 p.date_of_birth, p.gender, p.id_number, p.phone_number, 
+                 p.email, p.physical_address, p.emergency_contact_name, 
+                 p.emergency_contact_phone, p.is_palmed_member, p.member_type,
+                 p.chronic_conditions, p.allergies, p.current_medications,
+                 p.created_at, p.updated_at
+        """
+        
+        patient = DatabaseManager.execute_query(query, (patient_id,), fetch=True)
+        
+        if not patient or len(patient) == 0:
+            return jsonify({'success': False, 'error': 'Patient not found'}), 404
+        
+        return jsonify({
+            'success': True,
+            'data': patient[0]
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get patient error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 @app.route('/api/patients', methods=['POST'])
