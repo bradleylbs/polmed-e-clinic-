@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   UserCheck,
@@ -5413,6 +5413,197 @@ export function ClinicalWorkflow({
                 {(clinicalNotes.finalNotes || "").length}/30 characters
               </p>
             </div>
+          </div>
+        )
+
+      case "registration":
+        return (
+          <div className="space-y-6">
+            {/* Patient Information Card */}
+            <Card className="border-primary/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <UserCheck className="w-5 h-5 text-primary" />
+                  Patient Information
+                </CardTitle>
+                <CardDescription>
+                  Review patient details before check-in
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {patientDetails ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Full Name</Label>
+                      <p className="text-sm font-medium">
+                        {patientDetails.first_name} {patientDetails.last_name}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">ID Number</Label>
+                      <p className="text-sm font-medium">
+                        {patientDetails.id_number || "Not provided"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Date of Birth</Label>
+                      <p className="text-sm font-medium">
+                        {patientDetails.date_of_birth
+                          ? new Date(patientDetails.date_of_birth).toLocaleDateString("en-ZA")
+                          : "Not provided"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Gender</Label>
+                      <p className="text-sm font-medium">
+                        {patientDetails.gender || "Not provided"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Contact Number</Label>
+                      <p className="text-sm font-medium">
+                        {patientDetails.phone_number || "Not provided"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Email</Label>
+                      <p className="text-sm font-medium">
+                        {patientDetails.email || "Not provided"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Medical Aid</Label>
+                      <p className="text-sm font-medium">
+                        {patientPolmedStatus ? "POLMED Member" : "N/A"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Address</Label>
+                      <p className="text-sm font-medium">
+                        {patientDetails.address || "Not provided"}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center py-8">
+                    <p className="text-sm text-muted-foreground">Loading patient information...</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Check-in Action */}
+            {step.status !== "completed" && (
+              <Card className="border-dashed border-primary/40 bg-primary/5">
+                <CardContent className="pt-6">
+                  <div className="flex flex-col items-center gap-4 text-center">
+                    <div className="rounded-full bg-primary/10 p-4">
+                      <UserCheck className="w-8 h-8 text-primary" />
+                    </div>
+                    <div className="space-y-2">
+                      <h3 className="font-semibold text-lg">Ready to Check In</h3>
+                      <p className="text-sm text-muted-foreground max-w-md">
+                        Click the button below to check in this patient and create a visit record. 
+                        This will begin the clinical workflow.
+                      </p>
+                    </div>
+                    <Button
+                      size="lg"
+                      disabled={completingStep || !patientDetails}
+                      onClick={async () => {
+                        if (!patientDetails) {
+                          toast({
+                            title: "Error",
+                            description: "Patient details not loaded",
+                            variant: "destructive",
+                          })
+                          return
+                        }
+
+                        setCompletingStep(true)
+                        try {
+                          const response = await apiService.createPatientVisit(Number(patientId), {
+                            location: "Mobile Clinic",
+                          })
+
+                          if (response.success && response.data) {
+                            setVisitId(response.data.visit_id)
+                            
+                            // Mark registration as completed
+                            setWorkflowSteps((prev) =>
+                              prev.map((s) =>
+                                s.id === "registration"
+                                  ? {
+                                      ...s,
+                                      status: "completed",
+                                      completedBy: username,
+                                      completedAt: new Date().toISOString(),
+                                    }
+                                  : s
+                              )
+                            )
+
+                            toast({
+                              title: "Check-in Successful",
+                              description: `Patient checked in. Visit ID: ${response.data.visit_id}`,
+                            })
+
+                            // Move to next step
+                            const nursingIndex = workflowSteps.findIndex((s) => s.id === "nursing")
+                            if (nursingIndex >= 0) {
+                              setCurrentStep(nursingIndex)
+                            }
+                          } else {
+                            toast({
+                              title: "Check-in Failed",
+                              description: response.error || "Failed to check in patient",
+                              variant: "destructive",
+                            })
+                          }
+                        } catch (error: any) {
+                          console.error("Check-in error:", error)
+                          toast({
+                            title: "Check-in Error",
+                            description: error.message || "An unexpected error occurred",
+                            variant: "destructive",
+                          })
+                        } finally {
+                          setCompletingStep(false)
+                        }
+                      }}
+                    >
+                      {completingStep ? (
+                        <>
+                          <span className="animate-spin mr-2">⏳</span>
+                          Checking In...
+                        </>
+                      ) : (
+                        <>
+                          <UserCheck className="w-4 h-4 mr-2" />
+                          Check In Patient
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Already Checked In */}
+            {step.status === "completed" && (
+              <Alert className="border-green-200 bg-green-50">
+                <CheckCircle className="w-4 h-4 text-green-600" />
+                <AlertTitle className="text-green-800">Patient Checked In</AlertTitle>
+                <AlertDescription className="text-green-700">
+                  This patient was successfully checked in on{" "}
+                  {step.completedAt
+                    ? new Date(step.completedAt).toLocaleString("en-ZA")
+                    : "Unknown time"}
+                  {step.completedBy && ` by ${step.completedBy}`}.
+                  {visitId && ` Visit ID: ${visitId}`}
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
         )
 
