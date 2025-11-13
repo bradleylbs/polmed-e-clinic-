@@ -7280,6 +7280,7 @@ def get_appointments():
         limit = int(request.args.get('limit', 20))
         status_filter = request.args.get('status', '').strip()
         route_id = request.args.get('route_id', '').strip()
+        include_available = request.args.get('include_available', 'false').lower() == 'true'
         
         # Calculate offset
         offset = (page - 1) * limit
@@ -7303,6 +7304,7 @@ def get_appointments():
             ) AS patient_name,
             COALESCE(p.phone_number, u.phone_number, '') AS patient_phone,
             COALESCE(p.medical_aid_number, '') AS patient_medical_aid,
+            COALESCE(p.email, u.email, '') AS patient_email,
             COALESCE(r.route_name, '') AS route_name,
             COALESCE(l.location_name, 'Mobile Clinic') AS location_name,
             COALESCE(l.city, '') AS location_city,
@@ -7317,6 +7319,10 @@ def get_appointments():
         """
         
         params = []
+        
+        # By default, exclude "Available" appointments unless explicitly requested
+        if not include_available and not status_filter:
+            query += " AND LOWER(pa.status) != 'available'"
         
         # Add filters
         if status_filter:
