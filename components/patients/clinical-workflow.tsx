@@ -1811,7 +1811,7 @@ export function ClinicalWorkflow({
         const content = noteDraft?.content?.trim()
         if (!content) {
           toast({
-            title: "Add specialist notes",
+            title: "❌ Add specialist notes",
             description: `Document findings for ${currentStepData.title} before completing the stage.`,
             variant: "destructive",
           })
@@ -1826,7 +1826,7 @@ export function ClinicalWorkflow({
           )
           if (missingSections.length) {
             toast({
-              title: "Complete required sections",
+              title: "❌ Complete required sections",
               description: `Include: ${missingSections.join(", ")}.`,
               variant: "destructive",
             })
@@ -1844,7 +1844,7 @@ export function ClinicalWorkflow({
             if (missingDropdowns.length) {
               const missingLabels = missingDropdowns.map((field) => dropdownLabelMap.get(field) || field)
               toast({
-                title: "Select structured details",
+                title: "❌ Select structured details",
                 description: `Complete: ${missingLabels.join(", ")}.`,
                 variant: "destructive",
               })
@@ -1855,7 +1855,7 @@ export function ClinicalWorkflow({
           // Enhanced validation: Check minimum content length for clinical validity
           if (content.length < 50) {
             toast({
-              title: "Insufficient clinical details",
+              title: "❌ Insufficient clinical details",
               description: `Please provide more detailed documentation for ${currentStepData.title}. Minimum 50 characters required.`,
               variant: "destructive",
             })
@@ -1865,7 +1865,7 @@ export function ClinicalWorkflow({
           // Enhanced validation: Check for follow-up requirements when indicated
           if (noteDraft?.followUpRequired && !noteDraft?.followUpDate) {
             toast({
-              title: "Follow-up date required",
+              title: "❌ Follow-up date required",
               description: "Please specify a follow-up date when follow-up is required.",
               variant: "destructive",
             })
@@ -2020,8 +2020,28 @@ export function ClinicalWorkflow({
         
         if (!hasMentalHealthScreening && !hasCounselingNotes) {
           toast({
-            title: "Incomplete counseling session",
+            title: "❌ Incomplete counseling session",
             description: "Please add mental health screening results or counseling notes before completing this step.",
+            variant: "destructive",
+          })
+          return
+        }
+
+        // Validate counseling notes minimum length
+        if (hasCounselingNotes && hasCounselingNotes.length < 30) {
+          toast({
+            title: "❌ Insufficient counseling notes",
+            description: "Please provide more detailed counseling documentation (minimum 30 characters).",
+            variant: "destructive",
+          })
+          return
+        }
+
+        // Validate mental health screening minimum length
+        if (hasMentalHealthScreening && hasMentalHealthScreening.length < 20) {
+          toast({
+            title: "❌ Insufficient screening details",
+            description: "Please provide more detailed mental health screening (minimum 20 characters).",
             variant: "destructive",
           })
           return
@@ -2033,8 +2053,18 @@ export function ClinicalWorkflow({
         
         if (!hasFinalNotes) {
           toast({
-            title: "Incomplete file closure",
+            title: "❌ Incomplete file closure",
             description: "Please add final notes or summary before closing the file.",
+            variant: "destructive",
+          })
+          return
+        }
+
+        // Validate final notes minimum length
+        if (hasFinalNotes.length < 30) {
+          toast({
+            title: "❌ Insufficient closure summary",
+            description: "Please provide a more comprehensive summary for file closure (minimum 30 characters).",
             variant: "destructive",
           })
           return
@@ -2114,13 +2144,14 @@ export function ClinicalWorkflow({
 
         if (result.warnings.length) {
           result.warnings.forEach((message) =>
-            toast({ title: "Partial success", description: message, variant: "default" }),
+            toast({ title: "⚠️ Partial success", description: message, variant: "default" }),
           )
         } else {
           // Success message for successful step completion
           toast({
-            title: `${currentStepData.title} completed successfully!`,
+            title: `✅ ${currentStepData.title} completed successfully!`,
             description: "Your clinical data has been saved and synced to the server.",
+            duration: 5000,
           })
         }
       } catch (error) {
@@ -3038,7 +3069,7 @@ export function ClinicalWorkflow({
         return
       }
 
-      toast({ title: "✅ Vital signs saved successfully" })
+      toast({ title: "✅ Vital signs saved successfully", description: "Vital signs have been recorded and saved to the patient record.", duration: 4000 })
       completeCurrentStep()
     } catch (e: any) {
       toast({ title: "Error", description: e?.message || String(e), variant: "destructive" })
