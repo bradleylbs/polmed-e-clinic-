@@ -1494,8 +1494,38 @@ def patient_portal_dashboard(patient_id: int):
         except (json.JSONDecodeError, TypeError):
             pass
         
-        # Get notifications (placeholder - implement based on your notifications system)
+        # Get notifications from patient_notifications table
         notifications = []
+        try:
+            notifications_query = """
+                SELECT 
+                    id,
+                    notification_type,
+                    title,
+                    message,
+                    priority,
+                    action_url,
+                    is_read,
+                    read_at,
+                    created_at,
+                    expires_at
+                FROM patient_notifications
+                WHERE patient_id = %s
+                    AND (expires_at IS NULL OR expires_at > NOW())
+                ORDER BY 
+                    CASE priority
+                        WHEN 'urgent' THEN 1
+                        WHEN 'high' THEN 2
+                        WHEN 'medium' THEN 3
+                        WHEN 'low' THEN 4
+                    END,
+                    created_at DESC
+                LIMIT 50
+            """
+            notifications = DatabaseManager.execute_query(notifications_query, (patient_id,), fetch=True) or []
+        except Exception as e:
+            logger.warning(f"Could not fetch notifications: {str(e)}")
+            notifications = []
         
         dashboard_data = {
             'patient_info': {
