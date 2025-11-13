@@ -5545,7 +5545,10 @@ export function ClinicalWorkflow({
               <TabsContent key={step.id} value={step.id} className="mt-6">
               {(() => {
                 const roleAligned = rolesAlign(step.role, userRole)
-                if (!roleAligned) {
+                // Allow viewing completed steps regardless of role (read-only access)
+                const isCompletedStep = step.status === "completed"
+                
+                if (!roleAligned && !isCompletedStep) {
                   const normalizedStepRole = normalizeRoleValue(step.role)
                   const roleLabel = ROLE_LABELS[normalizedStepRole] || step.title
                   return (
