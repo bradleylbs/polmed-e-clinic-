@@ -404,6 +404,59 @@ def _normalize_record_id(raw_id: Any) -> int:
     return int(digest, 16) % 2147483647
 
 
+def create_patient_notification(
+    patient_id: int,
+    notification_type: str,
+    title: str,
+    message: str,
+    priority: str = 'medium',
+    action_url: Optional[str] = None,
+    expires_at: Optional[datetime] = None
+) -> Optional[int]:
+    """
+    Helper function to create a patient notification.
+    
+    Args:
+        patient_id: ID of the patient to notify
+        notification_type: Type of notification ('appointment', 'health_update', 'reminder', 'alert', 'system')
+        title: Notification title
+        message: Notification message
+        priority: Priority level ('low', 'medium', 'high', 'urgent')
+        action_url: Optional URL for the notification action
+        expires_at: Optional expiration datetime
+    
+    Returns:
+        The ID of the created notification, or None if creation failed
+    """
+    try:
+        query = """
+            INSERT INTO patient_notifications 
+            (patient_id, notification_type, title, message, priority, action_url, expires_at, is_read, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 0, NOW())
+        """
+        
+        db_manager.execute_query(
+            query,
+            (patient_id, notification_type, title, message, priority, action_url, expires_at),
+            fetch=False
+        )
+        
+        # Get the last inserted ID
+        id_query = "SELECT LAST_INSERT_ID() as id"
+        result = db_manager.execute_query(id_query, fetch=True)
+        
+        if result and len(result) > 0:
+            notification_id = result[0]['id']
+            logger.info(f"Created notification {notification_id} for patient {patient_id}: {title}")
+            return notification_id
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"Failed to create notification for patient {patient_id}: {e}")
+        return None
+
+
 def _infer_endpoint_from_record(record: Dict[str, Any], payload: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """Derive a REST endpoint when the client did not supply one."""
     table_name = str(record.get("table_name") or "").strip().lower()
@@ -6832,6 +6885,22 @@ def close_visit_with_notification(visit_id: int):
             (patient_id, visit_id, json.dumps(report_data))
         )
         
+        # Create patient portal notification
+        try:
+            notification_title = "Visit Summary Available"
+            notification_message = f"Your visit summary from {visit['visit_date']} is now available. You can view your consultation details, prescriptions, and follow-up instructions in your portal."
+            
+            create_patient_notification(
+                patient_id=patient_id,
+                notification_type='health_update',
+                title=notification_title,
+                message=notification_message,
+                priority='medium',
+                action_url=f'/patient-portal/visits/{visit_id}'
+            )
+        except Exception as e:
+            logger.error(f"Failed to create visit closure notification: {e}")
+        
         # TODO: Implement actual email sending
         logger.info(f"Visit {visit_id} closed. Email notification queued for {recipient_email} ({recipient_type})")
         
@@ -7559,6 +7628,22 @@ def check_in_patient(appointment_id: int):
             (datetime.now(timezone.utc), appointment_id)
         )
         
+        # Create notification for check-in
+        try:
+            notification_title = "Check-in Successful"
+            notification_message = f"You have been checked in. Your visit is now in progress. Please wait to be called for your consultation."
+            
+            create_patient_notification(
+                patient_id=appt['patient_id'],
+                notification_type='health_update',
+                title=notification_title,
+                message=notification_message,
+                priority='medium',
+                action_url=f'/patient-portal/visits/{visit_id}'
+            )
+        except Exception as e:
+            logger.error(f"Failed to create check-in notification: {e}")
+        
         logger.info(f"Patient {appt['patient_id']} checked in for appointment {appointment_id}, visit {visit_id} created")
         
         return jsonify({
@@ -7582,7 +7667,7 @@ def check_in_patient(appointment_id: int):
 @app.route('/api/patients/<int:patient_id>/visit', methods=['POST'])
 @token_required
 @role_required(['administrator', 'clerk', 'nurse'])
-def create_patient_visit(patient_id: int):
+def check_in_patient_visit(patient_id: int):
     """Create a patient visit (check-in without appointment)"""
     try:
         data = request.get_json() or {}
@@ -7912,47 +7997,61 @@ def upload_patient_document(patient_id: int):
 @app.route('/api/patient-portal/notifications/<int:patient_id>', methods=['GET'])
 @patient_portal_token_required
 def get_patient_notifications(patient_id: int):
-    """Get patient notifications"""
+    """Get patient notifications from database"""
     try:
         # Verify token matches requested patient ID
         if request.patient_id != patient_id:
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
-        # For now, return sample notifications since we don't have a notifications table yet
-        # TODO: Create patient_notifications table and implement proper notifications
-        notifications = [
-            {
-                'id': 1,
-                'title': 'Upcoming Appointment Reminder',
-                'message': 'You have an appointment scheduled for tomorrow at 10:00 AM.',
-                'type': 'appointment',
-                'is_read': False,
-                'created_at': '2024-01-15T09:00:00Z',
-                'priority': 'medium'
-            },
-            {
-                'id': 2,
-                'title': 'Visit Summary Available',
-                'message': 'Your recent visit summary and prescription are now available to view.',
-                'type': 'medical',
-                'is_read': False,
-                'created_at': '2024-01-14T16:30:00Z',
-                'priority': 'low'
-            },
-            {
-                'id': 3,
-                'title': 'Medication Reminder',
-                'message': 'Don\'t forget to take your prescribed medication.',
-                'type': 'reminder',
-                'is_read': True,
-                'created_at': '2024-01-14T08:00:00Z',
-                'priority': 'high'
-            }
-        ]
+        # Query patient_notifications table for real data
+        query = """
+            SELECT 
+                id,
+                notification_type,
+                title,
+                message,
+                priority,
+                action_url,
+                is_read,
+                read_at,
+                created_at,
+                expires_at
+            FROM patient_notifications
+            WHERE patient_id = %s
+                AND (expires_at IS NULL OR expires_at > NOW())
+            ORDER BY 
+                CASE priority
+                    WHEN 'urgent' THEN 1
+                    WHEN 'high' THEN 2
+                    WHEN 'medium' THEN 3
+                    WHEN 'low' THEN 4
+                END,
+                created_at DESC
+            LIMIT 50
+        """
+        
+        notifications_data = db_manager.execute_query(query, (patient_id,), fetch=True)
+        
+        # Format notifications
+        notifications = []
+        for row in notifications_data:
+            notifications.append({
+                'id': row['id'],
+                'type': row['notification_type'],
+                'title': row['title'],
+                'message': row['message'],
+                'priority': row['priority'],
+                'action_url': row['action_url'],
+                'is_read': bool(row['is_read']),
+                'read_at': row['read_at'].isoformat() if row['read_at'] else None,
+                'created_at': row['created_at'].isoformat() if row['created_at'] else None,
+                'expires_at': row['expires_at'].isoformat() if row['expires_at'] else None
+            })
         
         return jsonify({
             'success': True,
-            'data': notifications
+            'data': notifications,
+            'count': len(notifications)
         }), 200
         
     except Exception as e:
@@ -7965,8 +8064,34 @@ def get_patient_notifications(patient_id: int):
 def mark_notification_as_read(notification_id: int):
     """Mark a notification as read"""
     try:
-        # TODO: Implement actual notification reading logic with database
-        # For now, just return success
+        # Verify the notification belongs to the authenticated patient
+        verify_query = """
+            SELECT patient_id 
+            FROM patient_notifications 
+            WHERE id = %s
+        """
+        result = db_manager.execute_query(verify_query, (notification_id,), fetch=True)
+        
+        if not result:
+            return jsonify({
+                'success': False,
+                'error': 'Notification not found'
+            }), 404
+        
+        if result[0]['patient_id'] != request.patient_id:
+            return jsonify({
+                'success': False,
+                'error': 'Access denied'
+            }), 403
+        
+        # Update the notification to mark as read
+        update_query = """
+            UPDATE patient_notifications
+            SET is_read = 1,
+                read_at = NOW()
+            WHERE id = %s
+        """
+        db_manager.execute_query(update_query, (notification_id,), fetch=False)
         
         return jsonify({
             'success': True,
@@ -9227,6 +9352,26 @@ def book_appointment_via_portal(appointment_id: int):
         """
         
         DatabaseManager.execute_query(update_query, (booking_reference, patient_id, appointment_id))
+        
+        # Create notification for appointment confirmation
+        try:
+            apt_date_str = apt['appointment_date'].strftime('%B %d, %Y') if apt['appointment_date'] else 'N/A'
+            apt_time_str = apt['appointment_time'].strftime('%H:%M') if apt['appointment_time'] else 'N/A'
+            location_str = apt['location_name'] or 'N/A'
+            
+            notification_title = "Appointment Confirmed"
+            notification_message = f"Your appointment on {apt_date_str} at {apt_time_str} has been confirmed. Location: {location_str}. Booking reference: {booking_reference}"
+            
+            create_patient_notification(
+                patient_id=patient_id,
+                notification_type='appointment',
+                title=notification_title,
+                message=notification_message,
+                priority='high',
+                action_url=f'/patient-portal/appointments/{appointment_id}'
+            )
+        except Exception as e:
+            logger.error(f"Failed to create appointment notification: {e}")
         
         return jsonify({
             'success': True,
