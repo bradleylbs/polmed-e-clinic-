@@ -13,12 +13,28 @@ interface LoginCredentials {
 interface Patient {
   id?: number
   medical_aid_number: string
-  full_name: string
-  physical_address: string
-  telephone_number: string
+  first_name?: string
+  last_name?: string
+  full_name?: string
+  date_of_birth?: string
+  gender?: string
+  id_number?: string
+  phone_number?: string
+  physical_address?: string
+  telephone_number?: string
   email?: string
-  status: string
+  emergency_contact_name?: string
+  emergency_contact_phone?: string
+  is_palmed_member?: boolean
+  member_type?: string
+  chronic_conditions?: any
+  allergies?: any
+  current_medications?: any
+  status?: string
   created_at?: string
+  updated_at?: string
+  total_visits?: number
+  last_visit?: string
 }
 
 // Payload expected by backend /api/patients (POST)

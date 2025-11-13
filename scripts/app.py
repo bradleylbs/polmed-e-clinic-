@@ -1719,7 +1719,7 @@ def get_patients():
 def get_patient(patient_id: int):
     """Get a single patient by ID"""
     try:
-        # Query patient details with correct column names from schema
+        # Query patient details - exact same structure as check_patient_in_db.py
         query = """
         SELECT p.id,
                p.medical_aid_number,
@@ -1753,18 +1753,22 @@ def get_patient(patient_id: int):
                  p.created_at, p.updated_at
         """
         
-        patient = DatabaseManager.execute_query(query, (patient_id,), fetch=True)
+        result = DatabaseManager.execute_query(query, (patient_id,), fetch=True)
         
-        if not patient or len(patient) == 0:
+        if not result or len(result) == 0:
+            logger.warning(f"Patient {patient_id} not found in database")
             return jsonify({'success': False, 'error': 'Patient not found'}), 404
+        
+        patient = result[0]
+        logger.info(f"Successfully retrieved patient {patient_id}: {patient.get('first_name')} {patient.get('last_name')}")
         
         return jsonify({
             'success': True,
-            'data': patient[0]
+            'data': patient
         }), 200
         
     except Exception as e:
-        logger.error(f"Get patient error: {e}")
+        logger.error(f"Get patient {patient_id} error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 @app.route('/api/patients', methods=['POST'])

@@ -351,18 +351,18 @@ export function PatientList({ userRole, onPatientSelect, onNewPatient }: Patient
                   <div className="flex items-start gap-4 flex-1">
                     <Avatar className="w-14 h-14 border-2 border-primary/20 shadow-md">
                       <AvatarFallback className="bg-linear-to-br from-primary to-primary/70 text-primary-foreground text-lg font-semibold">
-                        {getInitials(patient.full_name)}
+                        {getInitials(patient.full_name || "Unknown")}
                       </AvatarFallback>
                     </Avatar>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-semibold text-foreground truncate text-lg">{patient.full_name}</h3>
+                        <h3 className="font-semibold text-foreground truncate text-lg">{patient.full_name || "Unknown"}</h3>
                       </div>
 
                       <div className="flex flex-wrap gap-2 mb-3">
-                        {getMembershipBadge(patient.medical_aid_number)}
-                        {getStatusBadge(patient.status)}
+                        {getMembershipBadge(patient.medical_aid_number || "")}
+                        {getStatusBadge(patient.status || "registered")}
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-muted-foreground">

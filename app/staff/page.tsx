@@ -606,13 +606,13 @@ export default function StaffHomePage() {
 
         const mappedPatient: Patient = {
           id: String(patient.id),
-          fullName: patient.full_name,
-          medicalAidNumber: patient.medical_aid_number,
-          telephone: patient.telephone_number,
+          fullName: patient.full_name || `${patient.first_name || ""} ${patient.last_name || ""}`.trim() || "Unknown",
+          medicalAidNumber: patient.medical_aid_number || "",
+          telephone: patient.telephone_number || patient.phone_number || "",
           email: patient.email || "",
-          dateOfBirth: "",
-          gender: "",
-          isMember: !!patient.medical_aid_number && patient.medical_aid_number.startsWith(" POL"),
+          dateOfBirth: patient.date_of_birth || "",
+          gender: patient.gender || "",
+          isMember: patient.is_palmed_member || (!!patient.medical_aid_number && patient.medical_aid_number.startsWith("POL")),
           workflowStatus: "registered",
         }
 
