@@ -7789,20 +7789,22 @@ def check_in_patient_visit(patient_id: int):
                 'visit_id': existing_visit[0]['id']
             }), 400
         
-        # Get first workflow stage
-        first_stage = DatabaseManager.execute_query(
-            "SELECT id FROM workflow_stages ORDER BY stage_order ASC LIMIT 1",
-            fetch=True
-        )
-        
-        if not first_stage or len(first_stage) == 0:
-            return jsonify({'success': False, 'error': 'No workflow stages configured'}), 500
-        
-        first_stage_id = first_stage[0]['id']
+        # Try to get first workflow stage (optional - workflow_stages may not exist)
+        first_stage_id = None
+        try:
+            first_stage = DatabaseManager.execute_query(
+                "SELECT id FROM workflow_stages ORDER BY stage_order ASC LIMIT 1",
+                fetch=True
+            )
+            if first_stage and len(first_stage) > 0:
+                first_stage_id = first_stage[0]['id']
+        except Exception as stage_error:
+            logger.warning(f"Workflow stages not available: {stage_error}")
+            # Continue without workflow stages
         
         # Create patient visit record
         route_id = data.get('route_id')
-        location = data.get('location', 'Walk-in')
+        location = data.get('location', 'Mobile Clinic')
         current_time = datetime.now(timezone.utc).strftime('%H:%M:%S')
         
         insert_visit_query = """
@@ -7827,7 +7829,7 @@ def check_in_patient_visit(patient_id: int):
                 current_time,
                 route_id,
                 location,
-                first_stage_id,
+                first_stage_id,  # Can be NULL if workflow_stages doesn't exist
                 False,
                 request.current_user['id'],
                 datetime.now(timezone.utc)
@@ -7839,21 +7841,26 @@ def check_in_patient_visit(patient_id: int):
         
         visit_id = visit_result
         
-        # Initialize workflow progress for first stage
-        insert_progress_query = """
-        INSERT INTO visit_workflow_progress (
-            visit_id,
-            stage_id,
-            started_at
-        ) VALUES (%s, %s, %s)
-        """
+        # Initialize workflow progress for first stage (only if workflow stages exist)
+        if first_stage_id is not None:
+            try:
+                insert_progress_query = """
+                INSERT INTO visit_workflow_progress (
+                    visit_id,
+                    stage_id,
+                    started_at
+                ) VALUES (%s, %s, %s)
+                """
+                
+                DatabaseManager.execute_query(
+                    insert_progress_query,
+                    (visit_id, first_stage_id, datetime.now(timezone.utc))
+                )
+            except Exception as progress_error:
+                logger.warning(f"Failed to create workflow progress: {progress_error}")
+                # Continue without workflow progress
         
-        DatabaseManager.execute_query(
-            insert_progress_query,
-            (visit_id, first_stage_id, datetime.now(timezone.utc))
-        )
-        
-        logger.info(f"Patient {patient_id} checked in as walk-in, visit {visit_id} created")
+        logger.info(f"Patient {patient_id} checked in, visit {visit_id} created")
         
         return jsonify({
             'success': True,
@@ -7869,7 +7876,7 @@ def check_in_patient_visit(patient_id: int):
         
     except Exception as e:
         logger.error(f"Create patient visit error: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ============================================================================
