@@ -958,9 +958,7 @@ const composeWorkflowSteps = ({
       title: "Patient Check-in",
       icon: UserCheck,
       role: "clerk",
-      status: "completed",
-      completedBy: "System",
-      completedAt: previousSteps.find((s) => s.id === "registration")?.completedAt ?? new Date().toISOString(),
+      status: "pending",
     },
     {
       id: "nursing",
