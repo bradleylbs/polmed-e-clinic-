@@ -235,6 +235,12 @@ const SPECIALIST_ICON_MAP: Record<string, React.ComponentType<{ className?: stri
 const TEMPLATE_CUSTOM_VALUE = "__palmed-template-custom__"
 const SELECT_EMPTY_VALUE = "__palmed-empty__"
 
+const RequiredAsterisk = () => (
+  <span className="text-destructive" aria-hidden="true">
+    *
+  </span>
+)
+
 type SpecialistDropdownType = "severity" | "laterality" | "grade"
 
 interface SpecialistDropdownConfig {
@@ -1845,6 +1851,26 @@ export function ClinicalWorkflow({
               return
             }
           }
+
+          // Enhanced validation: Check minimum content length for clinical validity
+          if (content.length < 50) {
+            toast({
+              title: "Insufficient clinical details",
+              description: `Please provide more detailed documentation for ${currentStepData.title}. Minimum 50 characters required.`,
+              variant: "destructive",
+            })
+            return
+          }
+
+          // Enhanced validation: Check for follow-up requirements when indicated
+          if (noteDraft?.followUpRequired && !noteDraft?.followUpDate) {
+            toast({
+              title: "Follow-up date required",
+              description: "Please specify a follow-up date when follow-up is required.",
+              variant: "destructive",
+            })
+            return
+          }
         }
 
         submissionPayload.specialistNotes = {
@@ -1854,6 +1880,21 @@ export function ClinicalWorkflow({
             followUpRequired: noteDraft?.followUpRequired,
             followUpDate: noteDraft?.followUpDate,
           },
+        }
+      }
+
+      // Enhanced validation for all workflow steps
+      if (currentStepData.id === "nursing") {
+        const hasVitalSigns = Object.values(submissionPayload.vitalSigns).some(value => value.trim() !== "")
+        const hasNursingNotes = submissionPayload.clinicalNotes.nursingAssessment?.trim()
+        
+        if (!hasVitalSigns && !hasNursingNotes) {
+          toast({
+            title: "Incomplete nursing assessment",
+            description: "Please record vital signs or add nursing assessment notes before completing this step.",
+            variant: "destructive",
+          })
+          return
         }
       }
 
@@ -1888,8 +1929,35 @@ export function ClinicalWorkflow({
 
         if (!diagContent && !treatContent) {
           toast({
-            title: "Nothing to save",
-            description: "Add a Diagnosis and/or Treatment before saving.",
+            title: "Incomplete doctor consultation",
+            description: "Please add a diagnosis and/or treatment plan before completing this step.",
+            variant: "destructive",
+          })
+          return
+        }
+      }
+
+      if (currentStepData.id === "counseling") {
+        const hasMentalHealthScreening = submissionPayload.clinicalNotes.mentalHealthScreening?.trim()
+        const hasCounselingNotes = submissionPayload.clinicalNotes.counselingNotes?.trim()
+        
+        if (!hasMentalHealthScreening && !hasCounselingNotes) {
+          toast({
+            title: "Incomplete counseling session",
+            description: "Please add mental health screening results or counseling notes before completing this step.",
+            variant: "destructive",
+          })
+          return
+        }
+      }
+
+      if (currentStepData.id === "closure") {
+        const hasFinalNotes = submissionPayload.clinicalNotes.finalNotes?.trim()
+        
+        if (!hasFinalNotes) {
+          toast({
+            title: "Incomplete file closure",
+            description: "Please add final notes or summary before closing the file.",
             variant: "destructive",
           })
           return
@@ -1942,6 +2010,10 @@ export function ClinicalWorkflow({
 
         setWorkflowSteps(updatedSteps)
         if (currentStep >= updatedSteps.length - 1) {
+          toast({
+            title: "Workflow completed successfully!",
+            description: "All clinical workflow steps have been completed offline and will sync when connection is restored.",
+          })
           onWorkflowComplete()
         }
         toast({
@@ -1967,6 +2039,12 @@ export function ClinicalWorkflow({
           result.warnings.forEach((message) =>
             toast({ title: "Partial success", description: message, variant: "default" }),
           )
+        } else {
+          // Success message for successful step completion
+          toast({
+            title: `${currentStepData.title} completed successfully!`,
+            description: "Your clinical data has been saved and synced to the server.",
+          })
         }
       } catch (error) {
         const description = error instanceof Error ? error.message : String(error)
