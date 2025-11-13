@@ -8219,40 +8219,126 @@ def submit_patient_feedback(patient_id: int):
 @app.route('/api/patient-portal/feedback/<int:patient_id>', methods=['GET'])
 @patient_portal_token_required
 def get_patient_feedback_history(patient_id: int):
-    """Get patient's feedback history"""
+    """Get patient's feedback history from database"""
     try:
         # Verify token matches requested patient ID
         if request.patient_id != patient_id:
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
-        # TODO: Implement actual feedback history from database
-        # For now, return sample feedback history
-        feedback_history = [
-            {
-                'id': 1,
-                'feedback': 'Great service, very professional staff.',
-                'rating': 5,
-                'category': 'service',
-                'submitted_at': '2024-01-10T14:30:00Z',
-                'response': 'Thank you for your positive feedback!'
-            },
-            {
-                'id': 2,
-                'feedback': 'Waiting time was a bit long, but overall good experience.',
-                'rating': 4,
-                'category': 'general',
-                'submitted_at': '2024-01-05T11:15:00Z',
-                'response': None
+        # Query feedback history from database
+        query = """
+            SELECT 
+                pf.id,
+                pf.visit_id,
+                pf.appointment_id,
+                pf.feedback_type,
+                pf.overall_rating,
+                pf.service_ratings,
+                pf.location_name,
+                pf.visit_date,
+                pf.comments,
+                pf.is_anonymous,
+                pf.status,
+                pf.response,
+                pf.responded_at,
+                pf.created_at,
+                COALESCE(CONCAT(u.first_name, ' ', u.last_name), 'Staff') as responded_by_name
+            FROM patient_feedback pf
+            LEFT JOIN users u ON pf.responded_by = u.id
+            WHERE pf.patient_id = %s
+            ORDER BY pf.created_at DESC
+            LIMIT 50
+        """
+        
+        feedback_data = DatabaseManager.execute_query(query, (patient_id,), fetch=True) or []
+        
+        # Format feedback history
+        feedback_history = []
+        for fb in feedback_data:
+            import json
+            feedback_record = {
+                'id': fb['id'],
+                'visit_id': fb['visit_id'],
+                'appointment_id': fb['appointment_id'],
+                'feedback_type': fb['feedback_type'],
+                'overall_rating': fb['overall_rating'],
+                'service_ratings': json.loads(fb['service_ratings']) if fb['service_ratings'] else None,
+                'location_name': fb['location_name'],
+                'visit_date': fb['visit_date'].isoformat() if fb['visit_date'] else None,
+                'comments': fb['comments'],
+                'is_anonymous': bool(fb['is_anonymous']),
+                'status': fb['status'],
+                'response': fb['response'],
+                'responded_by_name': fb['responded_by_name'] if fb['response'] else None,
+                'responded_at': fb['responded_at'].isoformat() if fb['responded_at'] else None,
+                'created_at': fb['created_at'].isoformat() if fb['created_at'] else None
             }
-        ]
+            feedback_history.append(feedback_record)
         
         return jsonify({
             'success': True,
-            'data': feedback_history
+            'data': feedback_history,
+            'count': len(feedback_history)
         }), 200
         
     except Exception as e:
         logger.error(f"Get patient feedback history error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/patient-portal/visits/pending-feedback/<int:patient_id>', methods=['GET'])
+@patient_portal_token_required
+def get_visits_pending_feedback(patient_id: int):
+    """Get completed visits that don't have feedback yet"""
+    try:
+        # Verify token matches requested patient ID
+        if request.patient_id != patient_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        # Query completed visits without feedback
+        query = """
+            SELECT 
+                pv.id as visit_id,
+                pv.visit_date,
+                pv.visit_time,
+                pv.location,
+                pv.chief_complaint,
+                pv.completed_at,
+                COALESCE(CONCAT(u.first_name, ' ', u.last_name), 'Doctor') as doctor_name
+            FROM patient_visits pv
+            LEFT JOIN users u ON pv.doctor_id = u.id
+            LEFT JOIN patient_feedback pf ON pf.visit_id = pv.id
+            WHERE pv.patient_id = %s 
+                AND pv.is_completed = 1
+                AND pf.id IS NULL
+            ORDER BY pv.visit_date DESC, pv.visit_time DESC
+            LIMIT 20
+        """
+        
+        visits = DatabaseManager.execute_query(query, (patient_id,), fetch=True) or []
+        
+        # Format visits data
+        visits_data = []
+        for visit in visits:
+            visit_record = {
+                'visit_id': visit['visit_id'],
+                'visit_date': visit['visit_date'].isoformat() if visit['visit_date'] else None,
+                'visit_time': visit['visit_time'].isoformat() if visit['visit_time'] else None,
+                'location_name': visit['location'] or 'Mobile Clinic',
+                'chief_complaint': visit['chief_complaint'],
+                'completed_at': visit['completed_at'].isoformat() if visit['completed_at'] else None,
+                'doctor_name': visit['doctor_name']
+            }
+            visits_data.append(visit_record)
+        
+        return jsonify({
+            'success': True,
+            'data': visits_data,
+            'count': len(visits_data)
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get visits pending feedback error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 
