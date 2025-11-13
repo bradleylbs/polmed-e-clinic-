@@ -8030,6 +8030,7 @@ def get_patient_notifications(patient_id: int):
             LIMIT 50
         """
         
+        db_manager = DatabaseManager()
         notifications_data = db_manager.execute_query(query, (patient_id,), fetch=True)
         
         # Format notifications
@@ -8064,6 +8065,8 @@ def get_patient_notifications(patient_id: int):
 def mark_notification_as_read(notification_id: int):
     """Mark a notification as read"""
     try:
+        db_manager = DatabaseManager()
+        
         # Verify the notification belongs to the authenticated patient
         verify_query = """
             SELECT patient_id 
