@@ -1890,11 +1890,44 @@ export function ClinicalWorkflow({
         
         if (!hasVitalSigns && !hasNursingNotes) {
           toast({
-            title: "Incomplete nursing assessment",
+            title: "❌ Incomplete nursing assessment",
             description: "Please record vital signs or add nursing assessment notes before completing this step.",
             variant: "destructive",
           })
           return
+        }
+
+        // Validate nursing assessment minimum length
+        if (hasNursingNotes && hasNursingNotes.length < 20) {
+          toast({
+            title: "❌ Insufficient nursing notes",
+            description: "Please provide more detailed nursing assessment (minimum 20 characters).",
+            variant: "destructive",
+          })
+          return
+        }
+
+        // Validate vital signs format if provided
+        if (hasVitalSigns) {
+          const { bloodPressureSystolic, bloodPressureDiastolic, pulse, temperature } = submissionPayload.vitalSigns
+          
+          if (bloodPressureSystolic && !bloodPressureDiastolic) {
+            toast({
+              title: "❌ Incomplete blood pressure",
+              description: "Please provide both systolic and diastolic blood pressure readings.",
+              variant: "destructive",
+            })
+            return
+          }
+
+          if (bloodPressureDiastolic && !bloodPressureSystolic) {
+            toast({
+              title: "❌ Incomplete blood pressure",
+              description: "Please provide both systolic and diastolic blood pressure readings.",
+              variant: "destructive",
+            })
+            return
+          }
         }
       }
 
@@ -1929,8 +1962,52 @@ export function ClinicalWorkflow({
 
         if (!diagContent && !treatContent) {
           toast({
-            title: "Incomplete doctor consultation",
+            title: "❌ Incomplete doctor consultation",
             description: "Please add a diagnosis and/or treatment plan before completing this step.",
+            variant: "destructive",
+          })
+          return
+        }
+
+        // Validate diagnosis minimum length
+        const diagnosis = submissionPayload.clinicalNotes.doctorDiagnosis?.trim()
+        if (diagnosis && diagnosis.length < 10) {
+          toast({
+            title: "❌ Insufficient diagnosis details",
+            description: "Please provide a more detailed diagnosis (minimum 10 characters).",
+            variant: "destructive",
+          })
+          return
+        }
+
+        // Validate treatment plan minimum length
+        const treatment = submissionPayload.clinicalNotes.treatmentPlan?.trim()
+        if (treatment && treatment.length < 10) {
+          toast({
+            title: "❌ Insufficient treatment details",
+            description: "Please provide a more detailed treatment plan (minimum 10 characters).",
+            variant: "destructive",
+          })
+          return
+        }
+
+        // Validate medication completeness
+        for (const med of submissionPayload.medications) {
+          if (!med.name?.trim() || !med.dosage?.trim() || !med.frequency?.trim() || !med.duration?.trim()) {
+            toast({
+              title: "❌ Incomplete medication details",
+              description: "Please complete all medication fields (name, dosage, frequency, duration).",
+              variant: "destructive",
+            })
+            return
+          }
+        }
+
+        // Validate follow-up date when follow-up is required
+        if (submissionPayload.clinicalNotes.followUpRequired && !submissionPayload.clinicalNotes.followUpDate?.trim()) {
+          toast({
+            title: "❌ Follow-up date required",
+            description: "Please specify a follow-up date when follow-up is required.",
             variant: "destructive",
           })
           return
