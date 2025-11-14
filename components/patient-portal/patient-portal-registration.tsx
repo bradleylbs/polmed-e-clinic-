@@ -37,6 +37,7 @@ interface RegistrationData {
   last_name: string
   date_of_birth: string
   gender: string
+  id_number: string
 
   // Contact Information
   email: string
@@ -62,6 +63,7 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
     last_name: "",
     date_of_birth: "",
     gender: "",
+    id_number: "",
     email: "",
     mobile_number: "",  // Changed from phone_number
     polmed_number: "",  // Changed from medical_aid_number
@@ -105,6 +107,11 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
         if (!formData.last_name.trim()) newErrors.last_name = "Last name is required"
         if (!formData.date_of_birth) newErrors.date_of_birth = "Date of birth is required"
         if (!formData.gender) newErrors.gender = "Gender is required"
+        if (!formData.id_number.trim()) {
+          newErrors.id_number = "ID number is required"
+        } else if (!/^\d{13}$/.test(formData.id_number.trim())) {
+          newErrors.id_number = "Enter a valid 13-digit ID number"
+        }
 
         // Validate age (must be 18+)
         if (formData.date_of_birth) {
@@ -219,6 +226,7 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
           last_name: formData.last_name.trim(),
           date_of_birth: formData.date_of_birth,
           gender: formData.gender,
+          id_number: formData.id_number.trim(),
           email: formData.email.trim().toLowerCase(),
           mobile_number: formData.mobile_number.replace(/\s/g, ""),  // Normalize format
           polmed_number: formData.polmed_number.trim() || "", // Always optional - empty string if not provided
@@ -302,6 +310,18 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
                 </SelectContent>
               </Select>
               {errors.gender && <p className="text-sm text-destructive">{errors.gender}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="id_number">South African ID Number *</Label>
+              <Input
+                id="id_number"
+                value={formData.id_number}
+                onChange={(e) => updateFormData("id_number", e.target.value.replace(/[^0-9]/g, ""))}
+                placeholder="Enter your 13-digit ID number"
+                maxLength={13}
+              />
+              {errors.id_number && <p className="text-sm text-destructive">{errors.id_number}</p>}
             </div>
           </div>
         )
@@ -574,7 +594,7 @@ export function PatientPortalRegistration({ onRegistrationComplete, onBackToLogi
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <Card className="w-full max-w-2xl">
         <CardHeader className="text-center">
           <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">

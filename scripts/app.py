@@ -628,8 +628,13 @@ class DatabaseManager:
                 logger.info(f"Query returned {len(result) if result else 0} rows")
             else:
                 connection.commit()
-                result = cursor.rowcount
-                logger.info(f"Query affected {result} rows")
+                last_insert_id = cursor.lastrowid
+                if last_insert_id:
+                    result = last_insert_id
+                    logger.info(f"Query inserted row with id {last_insert_id}")
+                else:
+                    result = cursor.rowcount
+                    logger.info(f"Query affected {result} rows")
             
             return result
         except Error as e:
@@ -999,7 +1004,7 @@ def register_patient_portal():
         data = request.get_json() or {}
 
         # Required fields
-        required_fields = ['first_name', 'last_name', 'email', 'password', 'mobile_number', 'date_of_birth', 'gender']
+        required_fields = ['first_name', 'last_name', 'email', 'password', 'mobile_number', 'date_of_birth', 'gender', 'id_number']
         for field in required_fields:
             if not data.get(field):
                 return jsonify({'success': False, 'error': f'{field} is required'}), 400
@@ -1019,6 +1024,10 @@ def register_patient_portal():
         mobile_number = re.sub(r'\s+', '', data['mobile_number'])
         if not re.match(r'^(\+27|0)[0-9]{9}$', mobile_number):
             return jsonify({'success': False, 'error': 'Please provide a valid South African mobile number'}), 400
+
+        id_number = data['id_number'].strip()
+        if not re.match(r'^\d{13}$', id_number):
+            return jsonify({'success': False, 'error': 'Please provide a valid 13-digit South African ID number'}), 400
 
         # Ensure key fields are unique before attempting transaction
         existing_patient = DatabaseManager.execute_query(
@@ -1057,6 +1066,14 @@ def register_patient_portal():
             )
             if existing_auth_polmed:
                 return jsonify({'success': False, 'error': 'Patient portal access already exists for this POLMED number'}), 400
+
+        existing_id_patient = DatabaseManager.execute_query(
+            "SELECT id FROM patients WHERE id_number = %s",
+            (id_number,),
+            fetch=True,
+        )
+        if existing_id_patient:
+            return jsonify({'success': False, 'error': 'A patient with this ID number already exists'}), 400
 
         # Consent tracking (checkboxes required in UI)
         terms_accepted = bool(data.get('terms_accepted'))
@@ -1108,7 +1125,7 @@ def register_patient_portal():
                     data['last_name'].strip(),
                     data['date_of_birth'],
                     data['gender'],
-                    None,
+                    id_number,
                     mobile_number,
                     email,
                     None,

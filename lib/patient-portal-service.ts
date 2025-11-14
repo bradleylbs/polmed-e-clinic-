@@ -172,6 +172,7 @@ class PatientPortalService {
     mobile_number: string
     date_of_birth: string
     gender: string
+    id_number: string
     is_private_patient?: boolean // Flag for non-POLMED users
     terms_accepted: boolean
     privacy_accepted: boolean
