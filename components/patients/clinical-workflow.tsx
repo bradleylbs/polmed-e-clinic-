@@ -4248,8 +4248,10 @@ export function ClinicalWorkflow({
               </div>
             </div>
 
-            {/* Real-time Validation Display */
-            {vitalsValidation && (
+            {/* Real-time Validation Display */}
+            {vitalsValidation && (() => {
+              const validation = vitalsValidation
+              return (
               <div className="space-y-3 p-4 rounded-lg border">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-sm flex items-center gap-2">
@@ -4257,96 +4259,96 @@ export function ClinicalWorkflow({
                     Vital Signs Validation
                   </h3>
                   <Badge 
-                    variant={vitalsValidation.anyCritical ? "destructive" : vitalsValidation.anyWarnings ? "outline" : "secondary"}
-                    className={vitalsValidation.anyCritical ? "bg-red-100 text-red-800" : vitalsValidation.anyWarnings ? "bg-yellow-100 text-yellow-800" : "bg-green-100 text-green-800"}
+                    variant={validation.anyCritical ? "destructive" : validation.anyWarnings ? "outline" : "secondary"}
+                    className={validation.anyCritical ? "bg-red-100 text-red-800" : validation.anyWarnings ? "bg-yellow-100 text-yellow-800" : "bg-green-100 text-green-800"}
                   >
-                    {vitalsValidation.summary}
+                    {validation.summary}
                   </Badge>
                 </div>
 
                 {/* Validation Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                  {vitalSigns.bloodPressureSystolic && (
+                  {vitalSigns.bloodPressureSystolic && validation.systolic_bp && (
                     <div className={`p-2 rounded border-l-4 ${
-                      vitalsValidation.systolic_bp.status === "critical" ? "border-red-500 bg-red-50" :
-                      vitalsValidation.systolic_bp.status === "caution" ? "border-yellow-500 bg-yellow-50" :
+                      validation.systolic_bp.status === "critical" ? "border-red-500 bg-red-50" :
+                      validation.systolic_bp.status === "caution" ? "border-yellow-500 bg-yellow-50" :
                       "border-green-500 bg-green-50"
                     }`}>
                       <div className="font-semibold flex items-center gap-1">
-                        <span>{getValidationIcon(vitalsValidation.systolic_bp.status)}</span>
+                        <span>{getValidationIcon(validation.systolic_bp.status)}</span>
                         Systolic BP
                       </div>
-                      <div className="text-xs mt-1">{vitalsValidation.systolic_bp.message}</div>
+                      <div className="text-xs mt-1">{validation.systolic_bp.message}</div>
                     </div>
                   )}
 
-                  {vitalSigns.bloodPressureDiastolic && (
+                  {vitalSigns.bloodPressureDiastolic && validation.diastolic_bp && (
                     <div className={`p-2 rounded border-l-4 ${
-                      vitalsValidation.diastolic_bp.status === "critical" ? "border-red-500 bg-red-50" :
-                      vitalsValidation.diastolic_bp.status === "caution" ? "border-yellow-500 bg-yellow-50" :
+                      validation.diastolic_bp.status === "critical" ? "border-red-500 bg-red-50" :
+                      validation.diastolic_bp.status === "caution" ? "border-yellow-500 bg-yellow-50" :
                       "border-green-500 bg-green-50"
                     }`}>
                       <div className="font-semibold flex items-center gap-1">
-                        <span>{getValidationIcon(vitalsValidation.diastolic_bp.status)}</span>
+                        <span>{getValidationIcon(validation.diastolic_bp.status)}</span>
                         Diastolic BP
                       </div>
-                      <div className="text-xs mt-1">{vitalsValidation.diastolic_bp.message}</div>
+                      <div className="text-xs mt-1">{validation.diastolic_bp.message}</div>
                     </div>
                   )}
 
-                  {vitalSigns.temperature && (
+                  {vitalSigns.temperature && validation.temperature && (
                     <div className={`p-2 rounded border-l-4 ${
-                      vitalsValidation.temperature.status === "critical" ? "border-red-500 bg-red-50" :
-                      vitalsValidation.temperature.status === "caution" ? "border-yellow-500 bg-yellow-50" :
+                      validation.temperature.status === "critical" ? "border-red-500 bg-red-50" :
+                      validation.temperature.status === "caution" ? "border-yellow-500 bg-yellow-50" :
                       "border-green-500 bg-green-50"
                     }`}>
                       <div className="font-semibold flex items-center gap-1">
-                        <span>{getValidationIcon(vitalsValidation.temperature.status)}</span>
+                        <span>{getValidationIcon(validation.temperature.status)}</span>
                         Temperature
                       </div>
-                      <div className="text-xs mt-1">{vitalsValidation.temperature.message}</div>
+                      <div className="text-xs mt-1">{validation.temperature.message}</div>
                     </div>
                   )}
 
-                  {vitalSigns.pulse && (
+                  {vitalSigns.pulse && validation.heart_rate && (
                     <div className={`p-2 rounded border-l-4 ${
-                      vitalsValidation.heart_rate.status === "critical" ? "border-red-500 bg-red-50" :
-                      vitalsValidation.heart_rate.status === "caution" ? "border-yellow-500 bg-yellow-50" :
+                      validation.heart_rate.status === "critical" ? "border-red-500 bg-red-50" :
+                      validation.heart_rate.status === "caution" ? "border-yellow-500 bg-yellow-50" :
                       "border-green-500 bg-green-50"
                     }`}>
                       <div className="font-semibold flex items-center gap-1">
-                        <span>{getValidationIcon(vitalsValidation.heart_rate.status)}</span>
+                        <span>{getValidationIcon(validation.heart_rate.status)}</span>
                         Heart Rate
                       </div>
-                      <div className="text-xs mt-1">{vitalsValidation.heart_rate.message}</div>
+                      <div className="text-xs mt-1">{validation.heart_rate.message}</div>
                     </div>
                   )}
 
-                  {vitalSigns.oxygenSaturation && (
+                  {vitalSigns.oxygenSaturation && validation.oxygen_saturation && (
                     <div className={`p-2 rounded border-l-4 ${
-                      vitalsValidation.oxygen_saturation.status === "critical" ? "border-red-500 bg-red-50" :
-                      vitalsValidation.oxygen_saturation.status === "caution" ? "border-yellow-500 bg-yellow-50" :
+                      validation.oxygen_saturation.status === "critical" ? "border-red-500 bg-red-50" :
+                      validation.oxygen_saturation.status === "caution" ? "border-yellow-500 bg-yellow-50" :
                       "border-green-500 bg-green-50"
                     }`}>
                       <div className="font-semibold flex items-center gap-1">
-                        <span>{getValidationIcon(vitalsValidation.oxygen_saturation.status)}</span>
+                        <span>{getValidationIcon(validation.oxygen_saturation.status)}</span>
                         O2 Saturation
                       </div>
-                      <div className="text-xs mt-1">{vitalsValidation.oxygen_saturation.message}</div>
+                      <div className="text-xs mt-1">{validation.oxygen_saturation.message}</div>
                     </div>
                   )}
 
-                  {vitalSigns.weight && vitalSigns.height && vitalsValidation.bmi && (
+                  {vitalSigns.weight && vitalSigns.height && validation.bmi && (
                     <div className={`p-2 rounded border-l-4 ${
-                      vitalsValidation.bmi.status === "critical" ? "border-red-500 bg-red-50" :
-                      vitalsValidation.bmi.status === "caution" ? "border-yellow-500 bg-yellow-50" :
+                      validation.bmi.status === "critical" ? "border-red-500 bg-red-50" :
+                      validation.bmi.status === "caution" ? "border-yellow-500 bg-yellow-50" :
                       "border-green-500 bg-green-50"
                     }`}>
                       <div className="font-semibold flex items-center gap-1">
-                        <span>{getValidationIcon(vitalsValidation.bmi.status)}</span>
+                        <span>{getValidationIcon(validation.bmi.status)}</span>
                         BMI
                       </div>
-                      <div className="text-xs mt-1">{vitalsValidation.bmi.message}</div>
+                      <div className="text-xs mt-1">{validation.bmi.message}</div>
                     </div>
                   )}
                 </div>
@@ -4357,8 +4359,8 @@ export function ClinicalWorkflow({
                   <span className="flex items-center gap-1"><span className="text-yellow-600 font-bold">🟡</span> Caution</span>
                   <span className="flex items-center gap-1"><span className="text-red-600 font-bold">🔴</span> Critical</span>
                 </div>
-              </div>
-            )}
+              </div>)
+            })()}
 
             <div className="space-y-2">
               <Label>

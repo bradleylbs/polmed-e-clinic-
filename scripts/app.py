@@ -428,33 +428,48 @@ def create_patient_notification(
     Returns:
         The ID of the created notification, or None if creation failed
     """
+    connection = None
+    cursor = None
     try:
-        query = """
+        connection = DatabaseManager.get_connection()
+        if not connection:
+            logger.error("Unable to create notification - no database connection available")
+            return None
+
+        cursor = connection.cursor(dictionary=True)
+
+        insert_query = """
             INSERT INTO patient_notifications 
             (patient_id, notification_type, title, message, priority, action_url, expires_at, is_read, created_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, 0, NOW())
         """
-        
-        db_manager.execute_query(
-            query,
-            (patient_id, notification_type, title, message, priority, action_url, expires_at),
-            fetch=False
+
+        cursor.execute(
+            insert_query,
+            (patient_id, notification_type, title, message, priority, action_url, expires_at)
         )
-        
-        # Get the last inserted ID
-        id_query = "SELECT LAST_INSERT_ID() as id"
-        result = db_manager.execute_query(id_query, fetch=True)
-        
-        if result and len(result) > 0:
-            notification_id = result[0]['id']
+
+        notification_id = cursor.lastrowid
+        connection.commit()
+
+        if notification_id:
             logger.info(f"Created notification {notification_id} for patient {patient_id}: {title}")
             return notification_id
         
+        logger.warning(f"Notification insert for patient {patient_id} succeeded but no ID returned")
         return None
         
     except Exception as e:
         logger.error(f"Failed to create notification for patient {patient_id}: {e}")
         return None
+    finally:
+        try:
+            if cursor:
+                cursor.close()
+            if connection and connection.is_connected():
+                connection.close()
+        except Exception:
+            pass
 
 
 def _infer_endpoint_from_record(record: Dict[str, Any], payload: Optional[Dict[str, Any]] = None) -> Optional[str]:
