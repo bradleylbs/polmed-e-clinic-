@@ -4907,7 +4907,7 @@ export function ClinicalWorkflow({
                                 </Button>
                               )}
                             </div>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                               {[
                                 { code: "I10", desc: "Hypertension" },
                                 { code: "E11.9", desc: "Type 2 Diabetes" }, 
@@ -4924,11 +4924,11 @@ export function ClinicalWorkflow({
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => addICD10Code(item.code, item.desc)}
-                                    className="text-xs h-8 px-2 font-mono transition-all justify-start hover:bg-primary/10 border border-transparent hover:border-primary/20"
-                                    title={item.desc}
+                                    className="text-xs h-auto py-2 px-3 font-mono transition-all justify-start hover:bg-primary/10 border border-transparent hover:border-primary/20 flex-col items-start gap-0.5"
+                                    title={`${item.code} - ${item.desc}`}
                                   >
-                                    <span className="font-bold">{item.code}</span>
-                                    <span className="text-xs opacity-70 ml-1 hidden md:inline">• {item.desc}</span>
+                                    <span className="font-bold text-primary">{item.code}</span>
+                                    <span className="text-xs opacity-70 font-normal whitespace-normal text-left">{item.desc}</span>
                                   </Button>
                                 )
                               })}
