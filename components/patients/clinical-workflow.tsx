@@ -37,6 +37,7 @@ import {
   CloudUpload,
   Loader2,
   UserPlus,
+  Lightbulb,
 } from "lucide-react"
 import { ReferralModal } from "./referral-modal"
 import {
@@ -232,6 +233,8 @@ const SPECIALIST_ICON_MAP: Record<string, React.ComponentType<{ className?: stri
   psychology: Brain,
   psychology_session: Brain,
   psychologist: Brain,
+  cpet_treadmill: Activity,
+  cpet: Activity,
 }
 
 const TEMPLATE_CUSTOM_VALUE = "__palmed-template-custom__"
@@ -1379,6 +1382,31 @@ export function ClinicalWorkflow({
     })
   }
 
+  // Auto-navigate to role-specific tab on mount
+  useEffect(() => {
+    const roleStepMapping: Record<string, string> = {
+      'nurse': 'nursing',
+      'doctor': 'doctor',
+      'clerk': 'registration',
+      'social_worker': 'counseling',
+      'social_work': 'counseling',
+      'administrator': 'registration',
+    }
+
+    const targetStepId = roleStepMapping[normalizedUserRole]
+    if (targetStepId) {
+      const targetIndex = workflowSteps.findIndex((step) => step.id === targetStepId)
+      if (targetIndex >= 0 && targetIndex !== currentStep) {
+        // Only auto-navigate if the step is accessible
+        const targetStep = workflowSteps[targetIndex]
+        if (targetStep && canAccessStepForRole(targetStep, workflowSteps, userRole)) {
+          setCurrentStep(targetIndex)
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Run only on mount
+
   useEffect(() => {
     const current = workflowSteps[currentStep]
     if (current && visibleStepIds.has(current.id)) {
@@ -1449,6 +1477,203 @@ export function ClinicalWorkflow({
     }
 
     return alerts
+  }
+
+  // Smart specialist suggestions based on clinical data
+  const getSmartSpecialistSuggestions = (): Array<{type: string, reason: string, urgency: 'routine'|'soon'|'urgent', icon: React.ComponentType<{ className?: string }>}> => {
+    const suggestions: Array<{type: string, reason: string, urgency: 'routine'|'soon'|'urgent', icon: React.ComponentType<{ className?: string }>}> = []
+    const vitalAlerts = generateVitalAlerts()
+    
+    // Critical vital signs → CPET Treadmill or urgent care
+    const criticalVitals = vitalAlerts.filter(a => a.severity === 'critical')
+    const cautionVitals = vitalAlerts.filter(a => a.severity === 'caution')
+    
+    if (criticalVitals.length > 0) {
+      const hasCardiacIssue = criticalVitals.some(v => v.parameter === 'Blood Pressure' || v.parameter === 'Heart Rate' || v.parameter === 'SpO2')
+      if (hasCardiacIssue) {
+        suggestions.push({
+          type: 'cpet_treadmill',
+          reason: `Critical cardiopulmonary signs detected: ${criticalVitals.map(v => v.parameter).join(', ')}`,
+          urgency: 'urgent',
+          icon: Activity
+        })
+      }
+    }
+    
+    // Caution vitals - cardiopulmonary assessment
+    if (cautionVitals.some(v => v.parameter === 'Blood Pressure' || v.parameter === 'Heart Rate')) {
+      suggestions.push({
+        type: 'cpet_treadmill',
+        reason: 'Abnormal cardiovascular vitals - consider exercise stress test',
+        urgency: 'soon',
+        icon: Activity
+      })
+    }
+    
+    // ICD-10 code-based suggestions
+    selectedICD10Codes.forEach(code => {
+      const codeStart = code.code.substring(0, 3)
+      const codeChapter = code.code.charAt(0)
+      
+      // Eye conditions (H00-H59)
+      if (codeChapter === 'H' && parseInt(code.code.substring(1, 3)) < 60) {
+        if (!suggestions.find(s => s.type === 'optometrist')) {
+          suggestions.push({
+            type: 'optometrist',
+            reason: `Eye condition: ${code.description}`,
+            urgency: 'routine',
+            icon: Eye
+          })
+        }
+      }
+      
+      // Ear conditions (H60-H95)
+      if (codeChapter === 'H' && parseInt(code.code.substring(1, 3)) >= 60) {
+        if (!suggestions.find(s => s.type === 'audiologist')) {
+          suggestions.push({
+            type: 'audiologist',
+            reason: `Ear/hearing condition: ${code.description}`,
+            urgency: 'routine',
+            icon: Activity
+          })
+        }
+      }
+      
+      // Dental conditions (K00-K14)
+      if (codeStart === 'K00' || codeStart === 'K01' || codeStart === 'K02' || codeStart === 'K03' || codeStart === 'K04') {
+        if (!suggestions.find(s => s.type === 'dentist')) {
+          suggestions.push({
+            type: 'dentist',
+            reason: `Dental issue: ${code.description}`,
+            urgency: 'soon',
+            icon: Sparkles
+          })
+        }
+      }
+      
+      // Cardiovascular conditions (I00-I99) → CPET
+      if (codeChapter === 'I') {
+        if (!suggestions.find(s => s.type === 'cpet_treadmill')) {
+          suggestions.push({
+            type: 'cpet_treadmill',
+            reason: `Cardiovascular condition: ${code.description}`,
+            urgency: 'soon',
+            icon: Activity
+          })
+        }
+      }
+      
+      // Respiratory conditions (J00-J99) → Consider CPET
+      if (codeChapter === 'J') {
+        if (!suggestions.find(s => s.type === 'cpet_treadmill')) {
+          suggestions.push({
+            type: 'cpet_treadmill',
+            reason: `Respiratory condition affecting exercise capacity: ${code.description}`,
+            urgency: 'routine',
+            icon: Activity
+          })
+        }
+      }
+      
+      // Mental health (F00-F99) → Psychology
+      if (codeChapter === 'F') {
+        if (!suggestions.find(s => s.type === 'psychology')) {
+          suggestions.push({
+            type: 'psychology',
+            reason: `Mental health condition: ${code.description}`,
+            urgency: 'soon',
+            icon: Brain
+          })
+        }
+      }
+      
+      // Pregnancy-related (O00-O99) → Gynaecology
+      if (codeChapter === 'O') {
+        if (!suggestions.find(s => s.type === 'gynaecologist')) {
+          suggestions.push({
+            type: 'gynaecologist',
+            reason: `Pregnancy/gynaecological condition: ${code.description}`,
+            urgency: 'soon',
+            icon: Target
+          })
+        }
+      }
+      
+      // Gynaecological conditions (N70-N98)
+      if (codeStart === 'N70' || codeStart === 'N80' || codeStart === 'N90') {
+        if (!suggestions.find(s => s.type === 'gynaecologist')) {
+          suggestions.push({
+            type: 'gynaecologist',
+            reason: `Gynaecological condition: ${code.description}`,
+            urgency: 'routine',
+            icon: Target
+          })
+        }
+      }
+    })
+    
+    // Clinical notes keyword analysis
+    const allNotes = [
+      clinicalNotes.nursingAssessment,
+      clinicalNotes.doctorDiagnosis,
+      clinicalNotes.treatmentPlan
+    ].join(' ').toLowerCase()
+    
+    if ((allNotes.includes('vision') || allNotes.includes('eye') || allNotes.includes('sight')) && !suggestions.find(s => s.type === 'optometrist')) {
+      suggestions.push({
+        type: 'optometrist',
+        reason: 'Vision/eye symptoms mentioned in clinical notes',
+        urgency: 'routine',
+        icon: Eye
+      })
+    }
+    
+    if ((allNotes.includes('hearing') || allNotes.includes('ear') || allNotes.includes('deaf')) && !suggestions.find(s => s.type === 'audiologist')) {
+      suggestions.push({
+        type: 'audiologist',
+        reason: 'Hearing/ear symptoms mentioned in clinical notes',
+        urgency: 'routine',
+        icon: Activity
+      })
+    }
+    
+    if ((allNotes.includes('tooth') || allNotes.includes('dental') || allNotes.includes('gum')) && !suggestions.find(s => s.type === 'dentist')) {
+      suggestions.push({
+        type: 'dentist',
+        reason: 'Dental symptoms mentioned in clinical notes',
+        urgency: 'soon',
+        icon: Sparkles
+      })
+    }
+    
+    if ((allNotes.includes('chest pain') || allNotes.includes('shortness of breath') || allNotes.includes('exercise intolerance')) && !suggestions.find(s => s.type === 'cpet_treadmill')) {
+      suggestions.push({
+        type: 'cpet_treadmill',
+        reason: 'Cardiopulmonary symptoms requiring assessment',
+        urgency: 'soon',
+        icon: Activity
+      })
+    }
+    
+    if ((allNotes.includes('anxiety') || allNotes.includes('depression') || allNotes.includes('stress')) && !suggestions.find(s => s.type === 'psychology')) {
+      suggestions.push({
+        type: 'psychology',
+        reason: 'Mental health concerns mentioned',
+        urgency: 'soon',
+        icon: Brain
+      })
+    }
+    
+    if ((allNotes.includes('pregnant') || allNotes.includes('pregnancy') || allNotes.includes('antenatal')) && !suggestions.find(s => s.type === 'gynaecologist')) {
+      suggestions.push({
+        type: 'gynaecologist',
+        reason: 'Pregnancy-related care needed',
+        urgency: 'routine',
+        icon: Target
+      })
+    }
+    
+    return suggestions
   }
 
   // Smart text analysis fallback when backend is unreachable
@@ -1842,30 +2067,46 @@ export function ClinicalWorkflow({
         const specialistType = currentStepData.specialistType
         const noteDraft = specialistNotes[specialistType]
         const content = noteDraft?.content?.trim()
+        
         if (!content) {
           toast({
-            title: "❌ Add specialist notes",
-            description: `Document findings for ${currentStepData.title} before completing the stage.`,
+            title: "❌ Empty Specialist Notes",
+            description: `Please document clinical findings for ${currentStepData.title} before completing this consultation.`,
             variant: "destructive",
+            duration: 6000,
           })
           return
         }
 
         const config = SPECIALIST_NOTE_CONFIG[specialistType]
         if (config) {
+          // Check minimum content length first
+          if (content.length < 50) {
+            toast({
+              title: "❌ Insufficient Clinical Documentation",
+              description: `Please provide more detailed notes for ${currentStepData.title} (minimum 50 characters). Include Chief Complaint, Examination, Assessment, and Treatment.`,
+              variant: "destructive",
+              duration: 7000,
+            })
+            return
+          }
+
+          // Check required sections
           const normalizedContent = content.toLowerCase()
           const missingSections = config.requiredSections.filter(
             (section) => !normalizedContent.includes(section.toLowerCase()),
           )
           if (missingSections.length) {
             toast({
-              title: "❌ Complete required sections",
-              description: `Include: ${missingSections.join(", ")}.`,
+              title: "❌ Missing Required Sections",
+              description: `Please include these sections: ${missingSections.join(", ")}. Use templates or quick snippets for guidance.`,
               variant: "destructive",
+              duration: 7000,
             })
             return
           }
 
+          // Check required dropdowns
           const requiredDropdowns = config.requiredDropdowns ?? []
           if (requiredDropdowns.length) {
             const dropdownLabelMap = new Map(config.dropdowns.map((dropdown) => [dropdown.field, dropdown.label]))
@@ -1877,30 +2118,22 @@ export function ClinicalWorkflow({
             if (missingDropdowns.length) {
               const missingLabels = missingDropdowns.map((field) => dropdownLabelMap.get(field) || field)
               toast({
-                title: "❌ Select structured details",
-                description: `Complete: ${missingLabels.join(", ")}.`,
+                title: "❌ Missing Structured Details",
+                description: `Please select: ${missingLabels.join(", ")} before completing this consultation.`,
                 variant: "destructive",
+                duration: 6000,
               })
               return
             }
           }
 
-          // Enhanced validation: Check minimum content length for clinical validity
-          if (content.length < 50) {
-            toast({
-              title: "❌ Insufficient clinical details",
-              description: `Please provide more detailed documentation for ${currentStepData.title}. Minimum 50 characters required.`,
-              variant: "destructive",
-            })
-            return
-          }
-
-          // Enhanced validation: Check for follow-up requirements when indicated
+          // Check follow-up requirements
           if (noteDraft?.followUpRequired && !noteDraft?.followUpDate) {
             toast({
-              title: "❌ Follow-up date required",
-              description: "Please specify a follow-up date when follow-up is required.",
+              title: "❌ Follow-up Date Required",
+              description: "Please specify a follow-up date when follow-up is marked as required.",
               variant: "destructive",
+              duration: 5000,
             })
             return
           }
@@ -1965,72 +2198,64 @@ export function ClinicalWorkflow({
       }
 
       if (currentStepData.id === "doctor") {
-        const diagSegments: string[] = []
-        if (submissionPayload.clinicalNotes.icd10Codes)
-          diagSegments.push(`ICD-10: ${submissionPayload.clinicalNotes.icd10Codes}`)
-        if (submissionPayload.clinicalNotes.doctorDiagnosis)
-          diagSegments.push(`Diagnosis: ${submissionPayload.clinicalNotes.doctorDiagnosis}`)
-        const diagContent = diagSegments.join("\n")
+        // Check for diagnosis
+        const hasDiagnosis = submissionPayload.clinicalNotes.doctorDiagnosis?.trim()
+        const hasICD10 = submissionPayload.selectedICD10Codes.length > 0
+        
+        // Check for treatment
+        const hasTreatmentPlan = submissionPayload.clinicalNotes.treatmentPlan?.trim()
+        const hasMedications = submissionPayload.medications.length > 0
+        const hasInvestigations = submissionPayload.investigations.length > 0
 
-        const treatmentSegments: string[] = []
-        if (submissionPayload.clinicalNotes.treatmentPlan)
-          treatmentSegments.push(`Treatment: ${submissionPayload.clinicalNotes.treatmentPlan}`)
-        if (submissionPayload.medications.length > 0) {
-          treatmentSegments.push(
-            `Medications: ${submissionPayload.medications
-              .map((m) => `${m.name} ${m.dosage} ${m.frequency} for ${m.duration}`)
-              .join(", ")}`,
-          )
-        }
-        if (submissionPayload.investigations.length > 0) {
-          treatmentSegments.push(`Investigations: ${submissionPayload.investigations.join(", ")}`)
-        }
-        if (submissionPayload.clinicalNotes.referrals) {
-          treatmentSegments.push(`Referrals: ${submissionPayload.clinicalNotes.referrals}`)
-        }
-        if (submissionPayload.clinicalNotes.followUpInstructions) {
-          treatmentSegments.push(`Follow-up instructions: ${submissionPayload.clinicalNotes.followUpInstructions}`)
-        }
-        const treatContent = treatmentSegments.join("\n")
-
-        if (!diagContent && !treatContent) {
+        // Require EITHER diagnosis OR treatment content
+        if (!hasDiagnosis && !hasICD10 && !hasTreatmentPlan && !hasMedications && !hasInvestigations) {
           toast({
-            title: "❌ Incomplete doctor consultation",
-            description: "Please add a diagnosis and/or treatment plan before completing this step.",
+            title: "❌ Empty Doctor Consultation",
+            description: "Please add diagnosis (with ICD-10 codes) OR treatment plan OR medications before completing this consultation.",
             variant: "destructive",
+            duration: 7000,
           })
           return
         }
 
-        // Validate diagnosis minimum length
-        const diagnosis = submissionPayload.clinicalNotes.doctorDiagnosis?.trim()
-        if (diagnosis && diagnosis.length < 10) {
+        // Validate diagnosis minimum length if provided
+        if (hasDiagnosis && hasDiagnosis.length < 10) {
           toast({
-            title: "❌ Insufficient diagnosis details",
-            description: "Please provide a more detailed diagnosis (minimum 10 characters).",
+            title: "❌ Insufficient Diagnosis Details",
+            description: "Please provide a more detailed diagnosis (minimum 10 characters). Example: 'Type 2 Diabetes Mellitus, poorly controlled'",
             variant: "destructive",
+            duration: 6000,
           })
           return
         }
 
-        // Validate treatment plan minimum length
-        const treatment = submissionPayload.clinicalNotes.treatmentPlan?.trim()
-        if (treatment && treatment.length < 10) {
+        // Validate treatment plan minimum length if provided
+        if (hasTreatmentPlan && hasTreatmentPlan.length < 10) {
           toast({
-            title: "❌ Insufficient treatment details",
-            description: "Please provide a more detailed treatment plan (minimum 10 characters).",
+            title: "❌ Insufficient Treatment Details",
+            description: "Please provide a more detailed treatment plan (minimum 10 characters). Example: 'Continue current medications, lifestyle modifications'",
             variant: "destructive",
+            duration: 6000,
           })
           return
         }
 
         // Validate medication completeness
-        for (const med of submissionPayload.medications) {
-          if (!med.name?.trim() || !med.dosage?.trim() || !med.frequency?.trim() || !med.duration?.trim()) {
+        for (let i = 0; i < submissionPayload.medications.length; i++) {
+          const med = submissionPayload.medications[i]
+          const missingFields: string[] = []
+          
+          if (!med.name?.trim()) missingFields.push("name")
+          if (!med.dosage?.trim()) missingFields.push("dosage")
+          if (!med.frequency?.trim()) missingFields.push("frequency")
+          if (!med.duration?.trim()) missingFields.push("duration")
+          
+          if (missingFields.length > 0) {
             toast({
-              title: "❌ Incomplete medication details",
-              description: "Please complete all medication fields (name, dosage, frequency, duration).",
+              title: "❌ Incomplete Medication Entry",
+              description: `Medication ${i + 1}: Please complete ${missingFields.join(", ")}. All fields are required.`,
               variant: "destructive",
+              duration: 6000,
             })
             return
           }
@@ -2039,66 +2264,93 @@ export function ClinicalWorkflow({
         // Validate follow-up date when follow-up is required
         if (submissionPayload.clinicalNotes.followUpRequired && !submissionPayload.clinicalNotes.followUpDate?.trim()) {
           toast({
-            title: "❌ Follow-up date required",
-            description: "Please specify a follow-up date when follow-up is required.",
+            title: "❌ Follow-up Date Required",
+            description: "Please specify a follow-up date when follow-up is marked as required.",
             variant: "destructive",
+            duration: 5000,
           })
           return
+        }
+
+        // Warn if diagnosis exists without ICD-10 codes (non-blocking)
+        if (hasDiagnosis && !hasICD10) {
+          toast({
+            title: "⚠️ Missing ICD-10 Codes",
+            description: "Consider adding ICD-10 codes for complete medical records.",
+            duration: 4000,
+          })
         }
       }
 
       if (currentStepData.id === "counseling") {
-        const hasMentalHealthScreening = submissionPayload.clinicalNotes.mentalHealthScreening?.trim()
-        const hasCounselingNotes = submissionPayload.clinicalNotes.counselingNotes?.trim()
+        const mentalHealthScreening = submissionPayload.clinicalNotes.mentalHealthScreening?.trim()
+        const counselingNotes = submissionPayload.clinicalNotes.counselingNotes?.trim()
         
-        if (!hasMentalHealthScreening && !hasCounselingNotes) {
+        // Require at least one field to be filled
+        if (!mentalHealthScreening && !counselingNotes) {
           toast({
-            title: "❌ Incomplete counseling session",
-            description: "Please add mental health screening results or counseling notes before completing this step.",
+            title: "❌ Empty Counseling Session",
+            description: "Please add mental health screening results OR counseling notes before completing this session.",
             variant: "destructive",
+            duration: 6000,
           })
           return
         }
 
-        // Validate counseling notes minimum length
-        if (hasCounselingNotes && hasCounselingNotes.length < 30) {
+        // Validate mental health screening minimum length if provided
+        if (mentalHealthScreening && mentalHealthScreening.length < 20) {
           toast({
-            title: "❌ Insufficient counseling notes",
-            description: "Please provide more detailed counseling documentation (minimum 30 characters).",
+            title: "❌ Insufficient Mental Health Screening",
+            description: "Please provide more detailed screening (minimum 20 characters). Example: 'Patient reports low mood, sleep disturbances, denies suicidal ideation'",
             variant: "destructive",
+            duration: 7000,
           })
           return
         }
 
-        // Validate mental health screening minimum length
-        if (hasMentalHealthScreening && hasMentalHealthScreening.length < 20) {
+        // Validate counseling notes minimum length if provided
+        if (counselingNotes && counselingNotes.length < 30) {
           toast({
-            title: "❌ Insufficient screening details",
-            description: "Please provide more detailed mental health screening (minimum 20 characters).",
+            title: "❌ Insufficient Counseling Notes",
+            description: "Please provide more detailed documentation (minimum 30 characters). Example: 'Discussed coping strategies, psychosocial support resources provided'",
             variant: "destructive",
+            duration: 7000,
+          })
+          return
+        }
+
+        // Validate follow-up requirements
+        if (submissionPayload.clinicalNotes.followUpRequired && !submissionPayload.clinicalNotes.followUpDate?.trim()) {
+          toast({
+            title: "❌ Follow-up Date Required",
+            description: "Please specify a follow-up date when follow-up is marked as required.",
+            variant: "destructive",
+            duration: 5000,
           })
           return
         }
       }
 
       if (currentStepData.id === "closure") {
-        const hasFinalNotes = submissionPayload.clinicalNotes.finalNotes?.trim()
+        const finalNotes = submissionPayload.clinicalNotes.finalNotes?.trim()
         
-        if (!hasFinalNotes) {
+        if (!finalNotes) {
           toast({
-            title: "❌ Incomplete file closure",
-            description: "Please add final notes or summary before closing the file.",
+            title: "❌ Empty File Closure",
+            description: "Please add final notes or clinical summary before closing this patient file. This is required for complete medical records.",
             variant: "destructive",
+            duration: 6000,
           })
           return
         }
 
         // Validate final notes minimum length
-        if (hasFinalNotes.length < 30) {
+        if (finalNotes.length < 30) {
           toast({
-            title: "❌ Insufficient closure summary",
-            description: "Please provide a more comprehensive summary for file closure (minimum 30 characters).",
+            title: "❌ Insufficient Closure Summary",
+            description: "Please provide a comprehensive summary (minimum 30 characters). Example: 'Patient treated for hypertension, stable on medication, follow-up in 3 months'",
             variant: "destructive",
+            duration: 7000,
           })
           return
         }
@@ -3037,29 +3289,55 @@ export function ClinicalWorkflow({
   }, [patientId, userRole])
 
   const saveVitals = async () => {
-    // Check for required fields
-    const requiredFields = [
-      { value: vitalSigns.bloodPressureSystolic, name: 'Blood Pressure (Systolic)' },
-      { value: vitalSigns.bloodPressureDiastolic, name: 'Blood Pressure (Diastolic)' },
-      { value: vitalSigns.pulse, name: 'Pulse/Heart Rate' },
-      { value: vitalSigns.temperature, name: 'Temperature' },
-      { value: vitalSigns.weight, name: 'Weight' },
-      { value: vitalSigns.height, name: 'Height' },
-      { value: vitalSigns.oxygenSaturation, name: 'Oxygen Saturation' },
-      { value: vitalSigns.respiratoryRate, name: 'Respiratory Rate' },
-    ]
-
-    const emptyFields = requiredFields.filter(field => !field.value || field.value.trim() === '')
+    // Check if at least vital signs OR nursing notes are provided
+    const hasAnyVitals = Object.values(vitalSigns).some(v => v && v.trim() !== '')
+    const hasNursingNotes = clinicalNotes.nursingAssessment && clinicalNotes.nursingAssessment.trim().length >= 20
     
-    if (emptyFields.length > 0) {
-      const fieldNames = emptyFields.map(f => f.name).join(', ')
+    if (!hasAnyVitals && !hasNursingNotes) {
       toast({
-        title: "❌ Required Fields Missing",
-        description: `Please complete the following fields: ${fieldNames}`,
+        title: "❌ No Data Entered",
+        description: "Please enter vital signs OR nursing assessment notes (minimum 20 characters) before saving.",
         variant: "destructive",
         duration: 6000,
       })
       return
+    }
+
+    // If vital signs are partially filled, require all critical fields
+    if (hasAnyVitals) {
+      const criticalFields = [
+        { value: vitalSigns.bloodPressureSystolic, name: 'Blood Pressure (Systolic)' },
+        { value: vitalSigns.bloodPressureDiastolic, name: 'Blood Pressure (Diastolic)' },
+        { value: vitalSigns.pulse, name: 'Pulse/Heart Rate' },
+        { value: vitalSigns.temperature, name: 'Temperature' },
+      ]
+
+      const emptyFields = criticalFields.filter(field => !field.value || field.value.trim() === '')
+      
+      if (emptyFields.length > 0) {
+        const fieldNames = emptyFields.map(f => f.name).join(', ')
+        toast({
+          title: "❌ Critical Vital Signs Missing",
+          description: `Please complete these critical fields: ${fieldNames}`,
+          variant: "destructive",
+          duration: 6000,
+        })
+        return
+      }
+
+      // Validate BP pairing
+      const hasSystolic = vitalSigns.bloodPressureSystolic && vitalSigns.bloodPressureSystolic.trim() !== ''
+      const hasDiastolic = vitalSigns.bloodPressureDiastolic && vitalSigns.bloodPressureDiastolic.trim() !== ''
+      
+      if (hasSystolic !== hasDiastolic) {
+        toast({
+          title: "❌ Incomplete Blood Pressure",
+          description: "Please provide both systolic AND diastolic blood pressure readings.",
+          variant: "destructive",
+          duration: 5000,
+        })
+        return
+      }
     }
 
     const n = (v: string) => (v.trim() === "" ? undefined : Number(v))
@@ -4479,36 +4757,46 @@ export function ClinicalWorkflow({
             </div>
 
             <Tabs defaultValue="assessment" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 h-auto p-1 bg-muted/50 backdrop-blur-sm">
-                <TabsTrigger
-                  value="assessment"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg transition-all"
-                >
-                  <Clipboard className="w-4 h-4 mr-2" />
-                  Assessment
-                </TabsTrigger>
-                <TabsTrigger
-                  value="diagnosis"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg transition-all"
-                >
-                  <Eye className="w-4 h-4 mr-2" />
-                  Diagnosis
-                </TabsTrigger>
-                <TabsTrigger
-                  value="treatment"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg transition-all"
-                >
-                  <Pill className="w-4 h-4 mr-2" />
-                  Treatment
-                </TabsTrigger>
-                <TabsTrigger
-                  value="review"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg transition-all"
-                >
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Review
-                </TabsTrigger>
-              </TabsList>
+              <div className="flex items-center gap-3 mb-4">
+                <TabsList className="grid flex-1 grid-cols-4 h-auto p-1 bg-muted/50 backdrop-blur-sm">
+                  <TabsTrigger
+                    value="assessment"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg transition-all"
+                  >
+                    <Clipboard className="w-4 h-4 mr-2" />
+                    Assessment
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="diagnosis"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg transition-all"
+                  >
+                    <Eye className="w-4 h-4 mr-2" />
+                    Diagnosis
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="treatment"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg transition-all"
+                  >
+                    <Pill className="w-4 h-4 mr-2" />
+                    Treatment
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="review"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg transition-all"
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Review
+                  </TabsTrigger>
+                </TabsList>
+                {selectedSpecialists.length > 0 && (
+                  <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/30 rounded-lg">
+                    <Users className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-medium text-primary">
+                      {selectedSpecialists.length} specialist{selectedSpecialists.length > 1 ? 's' : ''} assigned
+                    </span>
+                  </div>
+                )}
+              </div>
 
               <TabsContent value="assessment" className="space-y-4 mt-6">
                 <Card>
@@ -5165,28 +5453,155 @@ export function ClinicalWorkflow({
                       </div>
                     </div>
 
-                    {/* Referrals */}
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Referrals</Label>
-                      <Textarea
-                        placeholder="Specialist referrals or additional services required..."
-                        value={clinicalNotes.referrals}
-                        onChange={(e) => updateClinicalNotes("referrals", e.target.value)}
-                        rows={2}
-                      />
-                      <div className="flex justify-end">
-                        <Button variant="outline" size="sm" onClick={() => {
-                          // Check if psychology is in selected specialists
-                          const hasPsychology = selectedSpecialists.some(s => 
-                            s.toLowerCase().includes('psychology') || s.toLowerCase().includes('psychologist')
-                          )
-                          setCurrentReferralContext(hasPsychology ? "Psychology" : "General")
-                          setShowReferral(true)
-                        }}>
-                          Create Formal Referral
-                        </Button>
-                      </div>
-                    </div>
+                    {/* Smart Specialist Selection Panel */}
+                    <Card className="border-primary/20 bg-primary/5">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-base">
+                          <Stethoscope className="w-5 h-5" />
+                          Specialist Referrals
+                          {selectedSpecialists.length > 0 && (
+                            <Badge variant="default" className="ml-2">
+                              {selectedSpecialists.length} selected
+                            </Badge>
+                          )}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {/* Smart Suggestions */}
+                        {(() => {
+                          const smartSuggestions = getSmartSpecialistSuggestions()
+                          const filteredSuggestions = smartSuggestions.filter(s => {
+                            const allowedTypes = normalizedUserRole === 'nurse' 
+                              ? ['optometrist', 'audiologist', 'dentist']
+                              : ['optometrist', 'audiologist', 'dentist', 'gynaecologist', 'ultrasound', 'psychology', 'cpet_treadmill']
+                            return allowedTypes.includes(s.type) && !selectedSpecialists.includes(s.type)
+                          })
+                          
+                          if (filteredSuggestions.length > 0) {
+                            return (
+                              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
+                                <p className="text-sm font-medium text-blue-900 flex items-center gap-2">
+                                  <Lightbulb className="w-4 h-4" />
+                                  AI-Recommended Specialists:
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  {filteredSuggestions.map((suggestion, idx) => {
+                                    const specialist = specialistCatalog.find(s => s.specialist_type === suggestion.type)
+                                    const IconComponent = suggestion.icon
+                                    const urgencyColors = {
+                                      urgent: 'bg-red-100 border-red-300 text-red-900 hover:bg-red-200',
+                                      soon: 'bg-orange-100 border-orange-300 text-orange-900 hover:bg-orange-200',
+                                      routine: 'bg-green-100 border-green-300 text-green-900 hover:bg-green-200'
+                                    }
+                                    return (
+                                      <Button
+                                        key={idx}
+                                        variant="outline"
+                                        size="sm"
+                                        className={`gap-2 ${urgencyColors[suggestion.urgency]}`}
+                                        onClick={() => {
+                                          if (!selectedSpecialists.includes(suggestion.type)) {
+                                            setSelectedSpecialists(prev => [...prev, suggestion.type])
+                                            toast({
+                                              title: "✅ Specialist Added",
+                                              description: `${specialist?.label || suggestion.type} - ${suggestion.reason}`,
+                                              duration: 4000,
+                                            })
+                                          }
+                                        }}
+                                      >
+                                        <IconComponent className="w-4 h-4" />
+                                        <div className="flex flex-col items-start text-xs">
+                                          <span className="font-semibold">{specialist?.label || suggestion.type}</span>
+                                          <span className="text-xs opacity-90">{suggestion.reason.substring(0, 40)}...</span>
+                                        </div>
+                                        <Badge variant="outline" className="ml-1 text-xs">{suggestion.urgency}</Badge>
+                                      </Button>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          }
+                          return null
+                        })()}
+
+                        {/* All Available Specialists */}
+                        <div>
+                          <Label className="text-sm font-medium mb-3 block">Available Specialists:</Label>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {specialistCatalog
+                              .filter(spec => {
+                                const allowedTypes = normalizedUserRole === 'nurse' 
+                                  ? ['optometrist', 'audiologist', 'dentist']
+                                  : ['optometrist', 'audiologist', 'dentist', 'gynaecologist', 'ultrasound', 'psychology', 'cpet_treadmill']
+                                return allowedTypes.includes(spec.specialist_type)
+                              })
+                              .map(spec => {
+                                const isSelected = selectedSpecialists.includes(spec.specialist_type)
+                                const IconComponent = SPECIALIST_ICON_MAP[spec.specialist_type] || Stethoscope
+                                const hasNote = specialistNotes[spec.specialist_type]?.content
+                                
+                                return (
+                                  <div
+                                    key={spec.specialist_type}
+                                    className={`flex items-center justify-between p-3 border rounded-lg transition-all cursor-pointer ${
+                                      isSelected 
+                                        ? 'bg-primary/10 border-primary shadow-sm' 
+                                        : 'bg-muted/30 border-muted hover:bg-muted/50'
+                                    }`}
+                                    onClick={() => {
+                                      if (isSelected) {
+                                        setSelectedSpecialists(prev => prev.filter(s => s !== spec.specialist_type))
+                                      } else {
+                                        setSelectedSpecialists(prev => [...prev, spec.specialist_type])
+                                      }
+                                    }}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <Checkbox 
+                                        checked={isSelected}
+                                        onCheckedChange={() => {}}
+                                        className="pointer-events-none"
+                                      />
+                                      <IconComponent className={`w-5 h-5 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
+                                      <span className={`text-sm font-medium ${isSelected ? 'text-primary' : ''}`}>
+                                        {spec.label}
+                                      </span>
+                                    </div>
+                                    {isSelected && (
+                                      <Badge variant={hasNote ? "default" : "outline"} className="text-xs">
+                                        {hasNote ? '✓ Completed' : '⏳ Pending'}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                          </div>
+                        </div>
+
+                        {/* External Referrals Section */}
+                        <div className="pt-2 border-t">
+                          <Label className="text-sm font-medium mb-2 block">External Referrals</Label>
+                          <Textarea
+                            placeholder="Specialist referrals to external providers or additional services required..."
+                            value={clinicalNotes.referrals}
+                            onChange={(e) => updateClinicalNotes("referrals", e.target.value)}
+                            rows={2}
+                            className="mb-2"
+                          />
+                          <div className="flex justify-end">
+                            <Button variant="outline" size="sm" onClick={() => {
+                              setCurrentReferralContext("External")
+                              setShowReferral(true)
+                            }}>
+                              <UserPlus className="w-4 h-4 mr-2" />
+                              Create External Referral
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
 
                     {/* Follow-up */}
                     <div className="space-y-2">
@@ -5484,6 +5899,71 @@ export function ClinicalWorkflow({
                 })()}
               </div>
             </div>
+
+            {/* Comprehensive Referral Summary */}
+            {(selectedSpecialists.length > 0 || clinicalNotes.referrals) && (
+              <Card className="border-blue-200 bg-blue-50/50">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Users className="w-5 h-5 text-blue-600" />
+                    Referrals Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {/* Internal Specialist Referrals */}
+                    {selectedSpecialists.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold text-sm mb-2 text-blue-900">Internal Specialist Referrals:</h4>
+                        <div className="space-y-2">
+                          {selectedSpecialists.map((type) => {
+                            const spec = specialistCatalog.find((s) => s.specialist_type === type)
+                            const note = specialistNotes[type]
+                            const IconComponent = SPECIALIST_ICON_MAP[type] || Stethoscope
+                            const isCompleted = note?.content && note.content.length > 0
+                            
+                            return (
+                              <div
+                                key={type}
+                                className={`border-l-4 pl-4 py-2 rounded-r ${
+                                  isCompleted ? 'border-green-500 bg-green-50' : 'border-orange-500 bg-orange-50'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <IconComponent className="w-4 h-4" />
+                                    <span className="font-medium text-sm">{spec?.label || type}</span>
+                                  </div>
+                                  <Badge variant={isCompleted ? 'default' : 'outline'} className="text-xs">
+                                    {isCompleted ? '✓ Completed' : '⏳ Pending'}
+                                  </Badge>
+                                </div>
+                                {isCompleted && note.followUpRequired && (
+                                  <div className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3 text-orange-600" />
+                                    <span>Follow-up required{note.followUpDate ? ` on ${note.followUpDate}` : ''}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* External Referrals */}
+                    {clinicalNotes.referrals && (
+                      <div className="pt-3 border-t border-blue-200">
+                        <h4 className="font-semibold text-sm mb-2 text-purple-900">External Referrals:</h4>
+                        <div className="border-l-4 border-purple-500 bg-purple-50 pl-4 py-2 rounded-r">
+                          <p className="text-sm whitespace-pre-wrap">{clinicalNotes.referrals}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <div className="space-y-2">
               <Label>

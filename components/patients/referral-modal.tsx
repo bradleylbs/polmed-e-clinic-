@@ -33,7 +33,7 @@ interface Props {
 
 // Role-based specialist filtering
 const NURSE_ALLOWED_SPECIALISTS = ['optometrist', 'audiologist', 'dentist']
-const DOCTOR_ALLOWED_SPECIALISTS = ['optometrist', 'audiologist', 'dentist', 'gynaecologist', 'ultrasound', 'psychology']
+const DOCTOR_ALLOWED_SPECIALISTS = ['optometrist', 'audiologist', 'dentist', 'gynaecologist', 'ultrasound', 'psychology', 'cpet_treadmill']
 const SOCIAL_WORKER_ALLOWED_SPECIALISTS: string[] = [] // No internal specialists, external only
 
 export function ReferralModal({ patientId, currentStage, visitId, specialistContext, isPolmedMember, userRole, specialistCatalog = [], selectedSpecialists = [], onSpecialistToggle, onClose, onCreated }: Props) {

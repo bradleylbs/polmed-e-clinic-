@@ -54,6 +54,11 @@ SPECIALIST_DEFINITIONS: Dict[str, Dict[str, str]] = {
         'label': 'Psychology Session',
         'note_type': 'Psychology',
     },
+    'cpet_treadmill': {
+        'role': 'cpet_specialist',
+        'label': 'CPET Treadmill Assessment',
+        'note_type': 'CPET',
+    },
 }
 SPECIALIST_STAGE_ORDER: List[str] = [
     'dentist',
@@ -62,6 +67,7 @@ SPECIALIST_STAGE_ORDER: List[str] = [
     'gynaecologist',
     'ultrasound',
     'psychology',
+    'cpet_treadmill',
 ]
 SPECIALIST_ROLE_NAMES: Set[str] = {definition['role'] for definition in SPECIALIST_DEFINITIONS.values()}
 SPECIALIST_LOOKUP: Dict[str, str] = {}
