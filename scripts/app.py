@@ -1647,6 +1647,42 @@ def patient_portal_book_appointment(appointment_id: int):
             connection.commit()
 
             if result_message and str(result_message).startswith('SUCCESS') and booking_reference:
+                # Fetch appointment details for notification
+                appointment_query = """
+                SELECT 
+                    a.date, a.start_time, a.end_time,
+                    rl.location_name, r.route_name,
+                    b.booking_reference
+                FROM appointments a
+                INNER JOIN bookings b ON a.id = b.appointment_id
+                INNER JOIN route_locations rl ON a.route_location_id = rl.id
+                INNER JOIN routes r ON rl.route_id = r.id
+                WHERE b.booking_reference = %s
+                """
+                apt_result = DatabaseManager.execute_query(
+                    appointment_query, 
+                    (booking_reference,), 
+                    fetch=True
+                )
+                
+                # Create notification for patient
+                if apt_result and patient_id:
+                    apt = apt_result[0]
+                    notification_message = (
+                        f"Your appointment at {apt['location_name']} is confirmed for "
+                        f"{apt['date'].strftime('%d %b %Y')} at {apt['start_time'].strftime('%H:%M')}. "
+                        f"Booking reference: {apt['booking_reference']}"
+                    )
+                    
+                    create_patient_notification(
+                        patient_id=patient_id,
+                        notification_type='appointment',
+                        title='Appointment Confirmed',
+                        message=notification_message,
+                        priority='medium',
+                        action_url=f"/patient-portal/appointments/{booking_reference}"
+                    )
+                
                 return jsonify({
                     'success': True,
                     'data': {
@@ -4284,6 +4320,35 @@ def book_appointment(appointment_id: int):
             connection.commit()
 
             if result_message and str(result_message).startswith('SUCCESS') and booking_reference:
+                # Get appointment details for notification
+                cursor.execute("""
+                    SELECT a.appointment_date, a.appointment_time, 
+                           rl.location_name, r.route_name,
+                           b.patient_id, b.booked_by_name
+                    FROM appointments a
+                    JOIN route_locations rl ON a.route_location_id = rl.route_location_id
+                    JOIN routes r ON rl.route_id = r.route_id
+                    JOIN bookings b ON a.appointment_id = b.appointment_id
+                    WHERE a.appointment_id = %s AND b.booking_reference = %s
+                    LIMIT 1
+                """, (appointment_id, booking_reference))
+                
+                appointment_details = cursor.fetchone()
+                
+                # Create notification for the patient if patient_id exists
+                if appointment_details and appointment_details['patient_id']:
+                    notification_title = "Appointment Confirmed"
+                    notification_message = f"Your appointment at {appointment_details['location_name']} on {appointment_details['appointment_date']} at {appointment_details['appointment_time']} has been confirmed. Booking reference: {booking_reference}"
+                    
+                    create_patient_notification(
+                        patient_id=appointment_details['patient_id'],
+                        notification_type='appointment',
+                        title=notification_title,
+                        message=notification_message,
+                        priority='medium',
+                        action_url=f'/patient-portal/appointments/{booking_reference}'
+                    )
+                
                 return jsonify({
                     'success': True,
                     'data': { 'booking_reference': booking_reference },
