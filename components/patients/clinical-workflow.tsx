@@ -6185,52 +6185,6 @@ export function ClinicalWorkflow({
         <CardDescription>Patient ID: {patientId}</CardDescription>
       </CardHeader>
       <CardContent>
-        {specialistCatalog.length > 0 && !isSpecialistRole && (
-          <div className="mb-6 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-semibold">Specialist Workflow Stages</h3>
-                <p className="text-xs text-muted-foreground">
-                  Select additional specialists required for this visit. Each selection inserts a workflow stage
-                  after the doctor consultation.
-                </p>
-              </div>
-              <Badge variant="secondary">
-                {selectedSpecialistCount} {selectedSpecialistCount === 1 ? "stage" : "stages"} selected
-              </Badge>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              {specialistCatalog.map((entry) => {
-                const specialistType = entry.specialist_type
-                const checked = selectedSpecialists.includes(specialistType)
-                const Icon = SPECIALIST_ICON_MAP[specialistType] ?? Clipboard
-                const disabled = !canEditSpecialistSelection && !checked
-                return (
-                  <Button
-                    key={specialistType}
-                    type="button"
-                    size="sm"
-                    variant={checked ? "default" : "outline"}
-                    className="flex items-center gap-2"
-                    disabled={disabled}
-                    onClick={() => toggleSpecialistSelection(specialistType)}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span>{entry.label}</span>
-                  </Button>
-                )
-              })}
-            </div>
-
-            {!canEditSpecialistSelection && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Specialist assignments are read-only for your role.
-              </p>
-            )}
-          </div>
-        )}
-
         {/* Workflow Progress */}
         {(!isSpecialistRole || hasVisibleSteps) && (
           <div className="mb-6">
