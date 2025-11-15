@@ -478,6 +478,62 @@ def create_patient_notification(
             pass
 
 
+def initialize_visit_workflow(visit_id: int, assigned_user_id: Optional[int] = None) -> bool:
+    """
+    Initialize workflow for a visit by creating progress records for all mandatory stages.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        # Get all workflow stages ordered by stage_order
+        stages = DatabaseManager.execute_query(
+            """
+            SELECT id, stage_name, stage_order, is_mandatory 
+            FROM workflow_stages 
+            ORDER BY stage_order ASC
+            """,
+            fetch=True
+        )
+        
+        if not stages or len(stages) == 0:
+            logger.warning(f"No workflow stages found - cannot initialize workflow for visit {visit_id}")
+            return False
+        
+        first_stage_id = stages[0]['id']
+        now = datetime.now(timezone.utc)
+        
+        # Create progress records for all stages
+        for stage in stages:
+            # Only the first stage gets started_at timestamp
+            started_at = now if stage['id'] == first_stage_id else None
+            
+            insert_query = """
+            INSERT INTO visit_workflow_progress (
+                visit_id, stage_id, assigned_user_id, started_at, is_completed
+            ) VALUES (%s, %s, %s, %s, 0)
+            """
+            
+            DatabaseManager.execute_query(
+                insert_query,
+                (visit_id, stage['id'], assigned_user_id, started_at)
+            )
+        
+        # Update patient_visits to set current_stage_id to first stage
+        update_query = """
+        UPDATE patient_visits 
+        SET current_stage_id = %s 
+        WHERE id = %s
+        """
+        
+        DatabaseManager.execute_query(update_query, (first_stage_id, visit_id))
+        
+        logger.info(f"Initialized workflow for visit {visit_id} with {len(stages)} stages")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to initialize workflow for visit {visit_id}: {e}")
+        return False
+
+
 def _infer_endpoint_from_record(record: Dict[str, Any], payload: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """Derive a REST endpoint when the client did not supply one."""
     table_name = str(record.get("table_name") or "").strip().lower()
@@ -2180,8 +2236,13 @@ def create_patient_visit(patient_id: int):
         )
         new_visit_id = sel[0]['id'] if sel else None
 
-        # Log visit creation activity
+        # Initialize workflow for the visit
         if new_visit_id:
+            try:
+                initialize_visit_workflow(new_visit_id, assigned_user_id=request.current_user['id'])
+            except Exception as workflow_err:
+                logger.error(f"Failed to initialize workflow for visit {new_visit_id}: {workflow_err}")
+            
             try:
                 _set_visit_specialists(new_visit_id, requested_specialists, user_id=request.current_user['id'])
             except Exception as specialist_err:
@@ -7944,24 +8005,12 @@ def check_in_patient_visit(patient_id: int):
         
         visit_id = visit_result
         
-        # Initialize workflow progress for first stage (only if workflow stages exist)
-        if first_stage_id is not None:
-            try:
-                insert_progress_query = """
-                INSERT INTO visit_workflow_progress (
-                    visit_id,
-                    stage_id,
-                    started_at
-                ) VALUES (%s, %s, %s)
-                """
-                
-                DatabaseManager.execute_query(
-                    insert_progress_query,
-                    (visit_id, first_stage_id, datetime.now(timezone.utc))
-                )
-            except Exception as progress_error:
-                logger.warning(f"Failed to create workflow progress: {progress_error}")
-                # Continue without workflow progress
+        # Initialize complete workflow (all stages, not just first)
+        try:
+            initialize_visit_workflow(visit_id, assigned_user_id=request.current_user['id'])
+        except Exception as workflow_error:
+            logger.warning(f"Failed to initialize workflow for visit {visit_id}: {workflow_error}")
+            # Continue - visit is still created
         
         logger.info(f"Patient {patient_id} checked in, visit {visit_id} created")
         
@@ -8204,6 +8253,8 @@ def get_patient_notifications(patient_id: int):
         if request.patient_id != patient_id:
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
+        logger.info(f"[PATIENT PORTAL] Fetching notifications for patient {patient_id}")
+        
         # Query patient_notifications table for real data
         query = """
             SELECT 
@@ -8231,8 +8282,8 @@ def get_patient_notifications(patient_id: int):
             LIMIT 50
         """
         
-        db_manager = DatabaseManager()
-        notifications_data = db_manager.execute_query(query, (patient_id,), fetch=True)
+        notifications_data = DatabaseManager.execute_query(query, (patient_id,), fetch=True) or []
+        logger.info(f"[PATIENT PORTAL] Found {len(notifications_data)} notifications for patient {patient_id}")
         
         # Format notifications
         notifications = []
@@ -8796,7 +8847,7 @@ def get_patient_visit_history(patient_id: int):
             logger.warning(f"Access denied: token patient {request.patient_id} != requested {patient_id}")
             return jsonify({'success': False, 'error': 'Access denied'}), 403
         
-        logger.info(f"Retrieving visit history for patient {patient_id}")
+        logger.info(f"[PATIENT PORTAL] Retrieving visit history for patient {patient_id}")
         
         # Get patient visits - corrected query (no location_id join, use location string directly)
         visits_query = """
@@ -8804,6 +8855,7 @@ def get_patient_visit_history(patient_id: int):
                pv.is_completed, pv.completed_at,
                pv.location, pv.route_id,
                pv.created_at, pv.updated_at, pv.doctor_id, pv.nurse_id,
+               pv.current_stage_id,
                (SELECT COUNT(*) FROM visit_workflow_progress vwp 
                 WHERE vwp.visit_id = pv.id AND vwp.completed_at IS NOT NULL) as completed_stages,
                (SELECT COUNT(*) FROM workflow_stages) as total_stages,
@@ -8815,9 +8867,9 @@ def get_patient_visit_history(patient_id: int):
         LIMIT 100
         """
         
-        logger.debug(f"Executing query for patient {patient_id}")
+        logger.debug(f"[PATIENT PORTAL] Executing visit query for patient {patient_id}")
         visits = DatabaseManager.execute_query(visits_query, (patient_id,), fetch=True) or []
-        logger.info(f"Query returned {len(visits)} visits for patient {patient_id}")
+        logger.info(f"[PATIENT PORTAL] Query returned {len(visits)} visits for patient {patient_id}")
         
         if not visits:
             logger.info(f"No visits found for patient {patient_id}")
