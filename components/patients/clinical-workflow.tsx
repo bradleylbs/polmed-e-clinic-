@@ -36,6 +36,7 @@ import {
   Clipboard,
   CloudUpload,
   Loader2,
+  UserPlus,
 } from "lucide-react"
 import { ReferralModal } from "./referral-modal"
 import {
@@ -4378,7 +4379,19 @@ export function ClinicalWorkflow({
               </p>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-between items-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setCurrentReferralContext("Nursing")
+                  setShowReferral(true)
+                }}
+                className="gap-2"
+              >
+                <UserPlus className="w-4 h-4" />
+                Create Referral
+              </Button>
               <Button
                 onClick={saveVitals}
                 disabled={savingVitals || completingStep || nursingStep?.status === "completed"}
@@ -5285,12 +5298,26 @@ export function ClinicalWorkflow({
                       )}
                     </div>
 
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" disabled={completingStep}>Save Draft</Button>
-                      <Button onClick={completeCurrentStep} disabled={completingStep}>
-                        {completingStep ? "Completing..." : "Complete Consultation"}
-                        <CheckCircle className="w-4 h-4 ml-2" />
+                    <div className="flex justify-between items-center">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setCurrentReferralContext("Doctor")
+                          setShowReferral(true)
+                        }}
+                        className="gap-2"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        Create Referral
                       </Button>
+                      <div className="flex gap-2">
+                        <Button variant="outline" disabled={completingStep}>Save Draft</Button>
+                        <Button onClick={completeCurrentStep} disabled={completingStep}>
+                          {completingStep ? "Completing..." : "Complete Consultation"}
+                          <CheckCircle className="w-4 h-4 ml-2" />
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -5885,10 +5912,17 @@ export function ClinicalWorkflow({
           <ReferralModal
             patientId={Number(patientId)}
             currentStage={workflowSteps[currentStep]?.title as any}
+            visitId={visitId ?? undefined}
             specialistContext={currentReferralContext}
             isPolmedMember={patientPolmedStatus}
+            userRole={userRole}
+            specialistCatalog={specialistCatalog}
+            selectedSpecialists={selectedSpecialists}
+            onSpecialistToggle={toggleSpecialistSelection}
             onClose={() => setShowReferral(false)}
-            onCreated={() => setShowReferral(false)}
+            onCreated={() => {
+              setShowReferral(false)
+            }}
           />
         )}
       </CardContent>

@@ -1,13 +1,21 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { apiService, type CreateReferralRequest } from "@/lib/api-service"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, X, Send, UserPlus } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ArrowLeft, X, Send, UserPlus, Stethoscope } from "lucide-react"
+
+interface SpecialistDefinition {
+  specialist_type: string
+  label: string
+  role: string
+  note_type: string
+}
 
 interface Props {
   patientId: number
@@ -15,16 +23,25 @@ interface Props {
   visitId?: number
   specialistContext?: string
   isPolmedMember?: boolean
+  userRole?: string
+  specialistCatalog?: SpecialistDefinition[]
+  selectedSpecialists?: string[]
+  onSpecialistToggle?: (specialistType: string) => void
   onClose: () => void
   onCreated?: () => void
 }
 
-export function ReferralModal({ patientId, currentStage, visitId, specialistContext, isPolmedMember, onClose, onCreated }: Props) {
+// Role-based specialist filtering
+const NURSE_ALLOWED_SPECIALISTS = ['optometrist', 'audiologist', 'dentist']
+const DOCTOR_ALLOWED_SPECIALISTS = ['optometrist', 'audiologist', 'dentist', 'gynaecologist', 'ultrasound', 'psychology']
+const SOCIAL_WORKER_ALLOWED_SPECIALISTS: string[] = [] // No internal specialists, external only
+
+export function ReferralModal({ patientId, currentStage, visitId, specialistContext, isPolmedMember, userRole, specialistCatalog = [], selectedSpecialists = [], onSpecialistToggle, onClose, onCreated }: Props) {
   // For psychology referrals with POLMED members, default to external only
   const isPsychologyReferral = specialistContext?.toLowerCase().includes('psychology') || specialistContext?.toLowerCase().includes('psychologist')
   const shouldForceExternal = isPsychologyReferral && isPolmedMember
   
-  const [type, setType] = useState<"internal" | "external">(shouldForceExternal ? "external" : "internal")
+  const [type, setType] = useState<"internal" | "external" | "internal_specialist">(shouldForceExternal ? "external" : "internal")
   const [toStage, setToStage] = useState<Props["currentStage"] | "Registration">("Registration")
   const [provider, setProvider] = useState("")
   const [department, setDepartment] = useState(isPsychologyReferral ? "Psychology" : "")
@@ -33,6 +50,33 @@ export function ReferralModal({ patientId, currentStage, visitId, specialistCont
   const [date, setDate] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [localSelectedSpecialists, setLocalSelectedSpecialists] = useState<string[]>(selectedSpecialists)
+
+  // Filter specialists based on user role
+  const allowedSpecialists = (() => {
+    const role = userRole?.toLowerCase() || ''
+    if (role === 'nurse') return NURSE_ALLOWED_SPECIALISTS
+    if (role === 'doctor' || role === 'administrator') return DOCTOR_ALLOWED_SPECIALISTS
+    if (role === 'social_worker' || role === 'social_work') return SOCIAL_WORKER_ALLOWED_SPECIALISTS
+    return [] // Default: no specialist access
+  })()
+
+  const filteredSpecialistCatalog = specialistCatalog.filter(spec => 
+    allowedSpecialists.includes(spec.specialist_type)
+  )
+
+  // Sync local selection with parent
+  useEffect(() => {
+    setLocalSelectedSpecialists(selectedSpecialists)
+  }, [selectedSpecialists])
+
+  const toggleLocalSpecialist = (specialistType: string) => {
+    setLocalSelectedSpecialists(prev => 
+      prev.includes(specialistType) 
+        ? prev.filter(s => s !== specialistType)
+        : [...prev, specialistType]
+    )
+  }
 
   const submit = async () => {
     setError(null)
@@ -48,28 +92,69 @@ export function ReferralModal({ patientId, currentStage, visitId, specialistCont
       setError("External provider is required")
       return
     }
-
-    const payload: CreateReferralRequest = {
-      referral_type: type,
-      from_stage: currentStage,
-      to_stage: type === "internal" ? (toStage as any) : undefined,
-      external_provider: type === "external" ? provider : undefined,
-      department: type === "external" ? department : undefined,
-      reason: reason.trim(),
-      notes: notes || undefined,
-      visit_id: visitId,
-      appointment_date: date || undefined,
+    if (type === "internal_specialist" && localSelectedSpecialists.length === 0) {
+      setError("Please select at least one specialist")
+      return
     }
 
     setLoading(true)
-    const res = await apiService.createReferral(patientId, payload)
-    setLoading(false)
-    if (!res.success) {
-      setError(res.error || "Failed to create referral")
-      return
+
+    try {
+      // For internal specialist referrals, update visit specialists first
+      if (type === "internal_specialist" && visitId && onSpecialistToggle) {
+        // Sync selected specialists to parent/backend
+        for (const specialistType of localSelectedSpecialists) {
+          if (!selectedSpecialists.includes(specialistType)) {
+            onSpecialistToggle(specialistType)
+          }
+        }
+        
+        // Create a documentation referral record (using internal type with stage = current stage for audit)
+        const payload: CreateReferralRequest = {
+          referral_type: "internal",
+          from_stage: currentStage,
+          to_stage: currentStage, // Same stage for specialist referral documentation
+          reason: `Specialist Referral: ${localSelectedSpecialists.map(s => specialistCatalog.find(c => c.specialist_type === s)?.label || s).join(', ')} - ${reason.trim()}`,
+          notes: notes || undefined,
+          visit_id: visitId,
+          appointment_date: date || undefined,
+        }
+        
+        const res = await apiService.createReferral(patientId, payload)
+        if (!res.success) {
+          setError(res.error || "Failed to create referral documentation")
+          setLoading(false)
+          return
+        }
+      } else {
+        // Standard internal stage or external referral
+        const payload: CreateReferralRequest = {
+          referral_type: type === "external" ? "external" : "internal",
+          from_stage: currentStage,
+          to_stage: type === "internal" ? (toStage as any) : undefined,
+          external_provider: type === "external" ? provider : undefined,
+          department: type === "external" ? department : undefined,
+          reason: reason.trim(),
+          notes: notes || undefined,
+          visit_id: visitId,
+          appointment_date: date || undefined,
+        }
+
+        const res = await apiService.createReferral(patientId, payload)
+        if (!res.success) {
+          setError(res.error || "Failed to create referral")
+          setLoading(false)
+          return
+        }
+      }
+
+      setLoading(false)
+      onCreated?.()
+      onClose()
+    } catch (err) {
+      setLoading(false)
+      setError("An unexpected error occurred")
     }
-    onCreated?.()
-    onClose()
   }
 
   return (
@@ -105,9 +190,14 @@ export function ReferralModal({ patientId, currentStage, visitId, specialistCont
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="internal" disabled={shouldForceExternal}>
-                  Internal {shouldForceExternal && "(Not available for psychology - POLMED policy)"}
+                  Internal Stage {shouldForceExternal && "(Not available for psychology - POLMED policy)"}
                 </SelectItem>
-                <SelectItem value="external">External</SelectItem>
+                {filteredSpecialistCatalog.length > 0 && (
+                  <SelectItem value="internal_specialist">
+                    Internal Specialist
+                  </SelectItem>
+                )}
+                <SelectItem value="external">External Provider</SelectItem>
               </SelectContent>
             </Select>
             {shouldForceExternal && (
@@ -136,6 +226,44 @@ export function ReferralModal({ patientId, currentStage, visitId, specialistCont
                     <SelectItem value="Counseling Session">Counseling Session</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            </>
+          ) : type === "internal_specialist" ? (
+            <>
+              <div className="space-y-3">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <Stethoscope className="w-4 h-4 text-primary" />
+                  Select Specialists
+                </Label>
+                <div className="grid grid-cols-1 gap-2 p-4 bg-muted/30 rounded-lg border border-primary/10">
+                  {filteredSpecialistCatalog.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-2">
+                      No specialists available for your role
+                    </p>
+                  ) : (
+                    filteredSpecialistCatalog.map(specialist => (
+                      <div key={specialist.specialist_type} className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors">
+                        <Checkbox
+                          id={`specialist-${specialist.specialist_type}`}
+                          checked={localSelectedSpecialists.includes(specialist.specialist_type)}
+                          onCheckedChange={() => toggleLocalSpecialist(specialist.specialist_type)}
+                          className="border-primary/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                        />
+                        <Label
+                          htmlFor={`specialist-${specialist.specialist_type}`}
+                          className="text-sm font-medium cursor-pointer flex-1"
+                        >
+                          {specialist.label}
+                        </Label>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {localSelectedSpecialists.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    ✓ {localSelectedSpecialists.length} specialist{localSelectedSpecialists.length > 1 ? 's' : ''} selected
+                  </p>
+                )}
               </div>
             </>
           ) : (
