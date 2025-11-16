@@ -27,8 +27,15 @@ This document walks through deploying the PALMED Mobile Clinic ERP stack (Next.j
    | `DB_PASSWORD` | MySQL password |
    | `DB_PORT` | `3306` |
    | `SECRET_KEY` | Long random string |
+   | `AZURE_STORAGE_CONNECTION_STRING` | Connection string for the Azure Storage account |
+   | `AZURE_STORAGE_CONTAINER_NAME` | Name of the blob container for document uploads |
    | `CORS_ALLOWED_ORIGINS` | `https://<static-web-app>.azurestaticapps.net` (comma‑separate additional origins) |
    | `DB_SSL_CA` | Path to CA cert if enforcing SSL (optional) |
+   | `JWT_ISSUER` / `JWT_AUDIENCE` | Values validated on every staff token (example: `palmed-clinic-api` / `palmed-clinic-staff`) |
+   | `PATIENT_JWT_ISSUER` / `PATIENT_JWT_AUDIENCE` | Separate issuer/audience for portal tokens |
+   | `JWT_TTL_MINUTES` / `PATIENT_JWT_TTL_MINUTES` | Control token lifetimes (default 60 / 720) |
+   | `RATE_LIMIT_STORAGE_URI` | Persistent limiter backend (e.g., `redis://:<key>@<cache-name>.redis.cache.windows.net:6380/0?ssl=true`) |
+   | `AUTH_RATE_LIMIT` / `PORTAL_AUTH_RATE_LIMIT` | Tune login throttling per environment (e.g., `10 per minute`) |
 
    > Tip: keep secrets in Azure Key Vault and reference them via `@Microsoft.KeyVault(...)` if desired.
 

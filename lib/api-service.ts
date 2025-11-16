@@ -479,20 +479,11 @@ class ApiService {
     process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
     DEFAULT_REMOTE_API_BASE_URL ||
     (typeof window !== "undefined" ? `${window.location.origin.replace(/\/$/, "")}/api` : "http://localhost:5000/api")
-  private token: string | null = null
-
   constructor() {
-    if (typeof window !== "undefined") {
-      this.token = localStorage.getItem("token")
-    }
+    // No longer need to manage tokens - using httpOnly cookies
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-    // ALWAYS refresh token from localStorage before each request
-    if (typeof window !== "undefined") {
-      this.token = localStorage.getItem("token")
-    }
-
     const url = `${this.baseUrl}${endpoint}`
     const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData
     const headers: Record<string, string> = isFormData
@@ -515,9 +506,7 @@ class ApiService {
       }
     }
 
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`
-    }
+    // No longer setting Authorization header - using httpOnly cookies
 
     console.log(`🚀 API Request: ${options.method || "GET"} ${url}`, options.body)
 
@@ -571,6 +560,7 @@ class ApiService {
         fetch(url, {
           ...options,
           headers,
+          credentials: 'include', // Include cookies in requests
         })
 
       let response = await attemptFetch()
@@ -660,10 +650,8 @@ class ApiService {
       body: JSON.stringify(credentials),
     })
 
-    if (response.success && response.data?.token) {
-      this.token = response.data.token
+    if (response.success && response.data?.user) {
       if (typeof window !== "undefined") {
-        localStorage.setItem("token", response.data.token)
         localStorage.setItem("user", JSON.stringify(response.data.user))
       }
     }
@@ -672,9 +660,10 @@ class ApiService {
   }
 
   async logout(): Promise<void> {
-    this.token = null
+    // Call backend logout endpoint to clear httpOnly cookie
+    await this.request("/auth/logout", { method: "POST" })
+    
     if (typeof window !== "undefined") {
-      localStorage.removeItem("token")
       localStorage.removeItem("user")
     }
   }
@@ -1395,19 +1384,18 @@ class ApiService {
   }
 
   // ==================== UTILITY METHODS ====================
+  // Deprecated: tokens are now managed via httpOnly cookies
   setToken(token: string): void {
-    this.token = token
-    if (typeof window !== "undefined") {
-      localStorage.setItem("token", token)
-    }
+    console.warn('setToken is deprecated - tokens are now managed via httpOnly cookies')
   }
 
   getToken(): string | null {
-    return this.token
+    console.warn('getToken is deprecated - tokens are now managed via httpOnly cookies')
+    return null
   }
 
   clearToken(): void {
-    this.token = null
+    console.warn('clearToken is deprecated - use logout endpoint instead')
     if (typeof window !== "undefined") {
       localStorage.removeItem("token")
       localStorage.removeItem("user")
@@ -1416,7 +1404,7 @@ class ApiService {
 
   // Check if user is authenticated
   isAuthenticated(): boolean {
-    return !!this.token
+    return this.getStoredUser() !== null
   }
 
   // Get stored user data

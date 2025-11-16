@@ -14,13 +14,64 @@ from typing import Any, Dict, List, Set, Optional, Sequence
 import uuid
 import json
 import hashlib
+from dotenv import load_dotenv
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+import magic
+from azure.storage.blob import BlobServiceClient
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+load_dotenv()
+
+APP_ENV = (os.environ.get('APP_ENV') or os.environ.get('FLASK_ENV') or 'development').strip().lower()
+DEV_ENVIRONMENTS = {'development', 'local', 'dev', 'testing', 'test'}
+IS_DEV_ENV = APP_ENV in DEV_ENVIRONMENTS
+
+def _get_config_value(
+    name: str,
+    *,
+    required: bool = False,
+    fallback: Optional[str] = None,
+    allow_dev_fallback: bool = False,
+) -> Optional[str]:
+    """Fetch config from env, optionally falling back only during local development."""
+    value = os.environ.get(name)
+    if value:
+        return value
+
+    if fallback is not None and (allow_dev_fallback or IS_DEV_ENV):
+        logger.warning("Using development fallback for %s", name)
+        return fallback
+
+    if required:
+        raise RuntimeError(
+            f"Missing required environment variable '{name}'. Add it to your deployment configuration or .env file."
+        )
+
+    return fallback
+
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'palmed-clinic-secret-key-2025')
+app.config['SECRET_KEY'] = _get_config_value('SECRET_KEY', required=True)
+app.config['MAX_CONTENT_LENGTH'] = int(_get_config_value('MAX_CONTENT_LENGTH', fallback=str(16 * 1024 * 1024)))  # 16MB default
+
+AZURE_STORAGE_CONNECTION_STRING = _get_config_value('AZURE_STORAGE_CONNECTION_STRING', required=True)
+AZURE_STORAGE_CONTAINER_NAME = _get_config_value('AZURE_STORAGE_CONTAINER_NAME', required=True)
+
+JWT_SETTINGS = {
+    'issuer': _get_config_value('JWT_ISSUER', fallback='palmed-clinic-api', allow_dev_fallback=True),
+    'audience': _get_config_value('JWT_AUDIENCE', fallback='palmed-clinic-staff', allow_dev_fallback=True),
+    'ttl_minutes': int(_get_config_value('JWT_TTL_MINUTES', fallback='60', allow_dev_fallback=True) or 60),
+}
+
+PATIENT_JWT_SETTINGS = {
+    'issuer': _get_config_value('PATIENT_JWT_ISSUER', fallback=JWT_SETTINGS['issuer'], allow_dev_fallback=True),
+    'audience': _get_config_value('PATIENT_JWT_AUDIENCE', fallback='palmed-clinic-patient', allow_dev_fallback=True),
+    'ttl_minutes': int(_get_config_value('PATIENT_JWT_TTL_MINUTES', fallback='720', allow_dev_fallback=True) or 720),
+}
 
 # Specialist workflow metadata (stage id -> role, label, note type)
 SPECIALIST_DEFINITIONS: Dict[str, Dict[str, str]] = {
@@ -101,30 +152,21 @@ TRUTHY_FLAG_VALUES: Set[Any] = {
     'Y',
 }
 
-ALLOWED_DOCUMENT_EXTENSIONS: Set[str] = {
-    '.pdf',
-    '.png',
-    '.jpg',
-    '.jpeg',
-    '.gif',
-    '.tif',
-    '.tiff',
-    '.bmp',
-    '.doc',
-    '.docx',
-    '.xls',
-    '.xlsx',
-    '.csv',
-    '.txt',
-    '.rtf',
+ALLOWED_MIME_TYPES: Set[str] = {
+    'image/jpeg',
+    'image/png',
+    'application/pdf',
+    'image/gif',
+    'image/tiff',
+    'image/bmp',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv',
+    'text/plain',
+    'application/rtf',
 }
-
-
-def _allowed_document_extension(filename: str) -> bool:
-    if not filename or '.' not in filename:
-        return False
-    extension = filename.rsplit('.', 1)[1].lower()
-    return f'.{extension}' in ALLOWED_DOCUMENT_EXTENSIONS
 
 
 def _parse_bool_flag(value: Any, default: bool = False) -> bool:
@@ -137,20 +179,48 @@ def _parse_bool_flag(value: Any, default: bool = False) -> bool:
         return default
     return text in {'1', 'true', 'True', 'TRUE', 'yes', 'Yes', 'YES', 'on', 'On', 'ON'}
 
-# Allow CORS from configured frontends (comma-separated) or common localhost defaults
-# Prefer CORS_ALLOWED_ORIGINS (pipeline/app settings) but support legacy FRONTEND_ORIGINS
-cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS') or os.environ.get('FRONTEND_ORIGINS')
-if cors_origins_env:
-    allowed_origins = [o.strip() for o in cors_origins_env.split(',') if o.strip()]
-else:
-    allowed_origins = ["http://localhost:3000", "https://ambitious-smoke-079250a03.2.azurestaticapps.net"]
+def _resolve_allowed_origins() -> List[str]:
+    raw_origins = os.environ.get('CORS_ALLOWED_ORIGINS') or os.environ.get('FRONTEND_ORIGINS')
+    if raw_origins:
+        parsed = [origin.strip() for origin in raw_origins.split(',') if origin.strip()]
+        safe = []
+        for origin in parsed:
+            if origin == '*':
+                raise RuntimeError('Wildcard CORS origins are not permitted. Provide explicit origins in CORS_ALLOWED_ORIGINS.')
+            safe.append(origin)
+        if safe:
+            return safe
+
+    if not IS_DEV_ENV:
+        raise RuntimeError('CORS_ALLOWED_ORIGINS must be configured for non-development environments.')
+
+    logger.warning('Falling back to default localhost CORS origin for development use only.')
+    return ["http://localhost:3000"]
+
+ALLOWED_CORS_ORIGINS = _resolve_allowed_origins()
 
 CORS(
     app,
     supports_credentials=True,
-    origins=allowed_origins,
+    origins=ALLOWED_CORS_ORIGINS,
     allow_headers=["Content-Type", "Authorization"],
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+)
+
+
+def _client_rate_limit_key() -> str:
+    forwarded_for = request.headers.get('X-Forwarded-For', '')
+    if forwarded_for:
+        return forwarded_for.split(',')[0].strip()
+    return get_remote_address()
+
+
+limiter = Limiter(
+    app=app,
+    key_func=_client_rate_limit_key,
+    storage_uri=_get_config_value('RATE_LIMIT_STORAGE_URI', fallback='memory://', allow_dev_fallback=True),
+    headers_enabled=True,
+    default_limits=[],
 )
 
 
@@ -176,11 +246,11 @@ def _to_jsonable(obj):
 
 # Database configuration
 DB_CONFIG = {
-    'host': os.environ.get('DB_HOST', 'localhost'),
-    'database': os.environ.get('DB_NAME', 'palmed_clinic_erp'),
-    'user': os.environ.get('DB_USER', 'root'),
-    'password': os.environ.get('DB_PASSWORD', 'Transport@2025'),
-    'port': int(os.environ.get('DB_PORT', 3306)),
+    'host': _get_config_value('DB_HOST', fallback='127.0.0.1', allow_dev_fallback=True),
+    'database': _get_config_value('DB_NAME', fallback='palmed_clinic_erp', allow_dev_fallback=True),
+    'user': _get_config_value('DB_USER', fallback='root', allow_dev_fallback=True),
+    'password': _get_config_value('DB_PASSWORD', required=True),
+    'port': int(_get_config_value('DB_PORT', fallback='3306', allow_dev_fallback=True) or 3306),
     'autocommit': False,
     'use_unicode': True,
     'charset': 'utf8mb4'
@@ -747,21 +817,176 @@ class DatabaseManager:
             if connection and connection.is_connected():
                 connection.close()
 
+
+_blob_service_client_instance: Optional[BlobServiceClient] = None
+
+def _get_blob_service_client() -> Optional[BlobServiceClient]:
+    """Initialize and cache the Azure Blob Service client."""
+    global _blob_service_client_instance
+    if _blob_service_client_instance:
+        return _blob_service_client_instance
+
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        logger.error("Azure Storage connection string is not configured.")
+        return None
+
+    try:
+        client = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
+        _blob_service_client_instance = client
+        logger.info("Azure Blob Service client initialized successfully.")
+        return client
+    except Exception as e:
+        logger.error(f"Failed to initialize Azure Blob Service client: {e}")
+        return None
+
+
+class SessionRegistry:
+    """Persist and verify JWT session tokens for staff users."""
+
+    @staticmethod
+    def register(user_id: int, token_id: str, expires_at: datetime, *, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
+        if not token_id:
+            return
+
+        device_payload = None
+        if user_agent:
+            device_payload = json.dumps({'user_agent': user_agent})
+
+        DatabaseManager.execute_query(
+            """
+            INSERT INTO user_sessions (user_id, session_token, ip_address, device_info, expires_at)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                ip_address = VALUES(ip_address),
+                device_info = VALUES(device_info),
+                expires_at = VALUES(expires_at)
+            """,
+            (user_id, token_id, ip_address, device_payload, expires_at),
+        )
+
+    @staticmethod
+    def is_active(token_id: Optional[str]) -> bool:
+        if not token_id:
+            return False
+
+        session_rows = DatabaseManager.execute_query(
+            "SELECT expires_at FROM user_sessions WHERE session_token = %s",
+            (token_id,),
+            fetch=True,
+        )
+        if not session_rows:
+            return False
+
+        expires_at = session_rows[0].get('expires_at')
+        return bool(expires_at and expires_at > datetime.utcnow())
+
+    @staticmethod
+    def revoke(token_id: Optional[str]) -> None:
+        if not token_id:
+            return
+
+        DatabaseManager.execute_query(
+            "DELETE FROM user_sessions WHERE session_token = %s",
+            (token_id,),
+        )
+
+
+ValidationSchema = Dict[str, Dict[str, Any]]
+
+
+class RequestValidator:
+    """Lightweight schema validation for JSON payloads."""
+
+    EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+    @staticmethod
+    def validate(payload: Dict[str, Any], schema: ValidationSchema) -> List[str]:
+        errors: List[str] = []
+
+        for field, rules in schema.items():
+            value = payload.get(field)
+            is_missing = value is None or (isinstance(value, str) and not value.strip())
+
+            if rules.get('required') and is_missing:
+                errors.append(f"{field} is required")
+                continue
+
+            if value is None:
+                continue
+
+            expected_type = rules.get('type')
+            if expected_type and not isinstance(value, expected_type):
+                errors.append(f"{field} must be of type {expected_type.__name__}")
+                continue
+
+            if isinstance(value, str):
+                value = value.strip()
+                payload[field] = value
+                min_length = rules.get('min_length')
+                if min_length and len(value) < min_length:
+                    errors.append(f"{field} must be at least {min_length} characters long")
+                max_length = rules.get('max_length')
+                if max_length and len(value) > max_length:
+                    errors.append(f"{field} must be at most {max_length} characters long")
+                if rules.get('format') == 'email' and value and not RequestValidator.EMAIL_PATTERN.match(value):
+                    errors.append(f"{field} must be a valid email address")
+
+            custom_validator = rules.get('validator')
+            if callable(custom_validator):
+                custom_error = custom_validator(value)
+                if isinstance(custom_error, str):
+                    errors.append(custom_error)
+
+        return errors
+
+
+def validate_json(schema: ValidationSchema):
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            if not request.is_json:
+                return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
+
+            payload = request.get_json() or {}
+            errors = RequestValidator.validate(payload, schema)
+            if errors:
+                return jsonify({'success': False, 'error': 'Invalid payload', 'details': errors}), 400
+
+            request.validated_json = payload
+            return f(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
 def token_required(f):
     """JWT token authentication decorator"""
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = request.headers.get('Authorization')
+        token = request.cookies.get('auth_token') or request.headers.get('Authorization')
         
         if not token:
             return jsonify({'success': False, 'error': 'Token is missing'}), 401
         
         try:
-            if token.startswith('Bearer '):
+            if isinstance(token, str) and token.startswith('Bearer '):
                 token = token[7:]
             
-            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            data = jwt.decode(
+                token,
+                app.config['SECRET_KEY'],
+                algorithms=['HS256'],
+                audience=JWT_SETTINGS['audience'],
+                issuer=JWT_SETTINGS['issuer'],
+            )
+
             current_user_id = data['user_id']
+
+            if data.get('type') != 'staff_access':
+                return jsonify({'success': False, 'error': 'Invalid token type'}), 401
+
+            if not SessionRegistry.is_active(data.get('jti')):
+                return jsonify({'success': False, 'error': 'Session no longer active'}), 401
             
             # Get user details from database - using correct schema columns
             user_query = """
@@ -776,9 +1001,12 @@ def token_required(f):
                 return jsonify({'success': False, 'error': 'Invalid token'}), 401
             
             request.current_user = user[0]
+            request.current_session_id = data.get('jti')
             
         except jwt.ExpiredSignatureError:
             return jsonify({'success': False, 'error': 'Token has expired'}), 401
+        except (jwt.InvalidAudienceError, jwt.InvalidIssuerError):
+            return jsonify({'success': False, 'error': 'Invalid token issuer or audience'}), 401
         except jwt.InvalidTokenError:
             return jsonify({'success': False, 'error': 'Invalid token'}), 401
         
@@ -811,25 +1039,28 @@ def role_required(allowed_roles: List[str]):
 # AUTHENTICATION ENDPOINTS
 # ============================================================================
 
+LOGIN_PAYLOAD_SCHEMA: ValidationSchema = {
+    'email': {'type': str, 'required': True, 'format': 'email', 'max_length': 255},
+    'password': {'type': str, 'required': True, 'min_length': 8, 'max_length': 128},
+}
+
+PATIENT_LOGIN_SCHEMA: ValidationSchema = {
+    'email': {'type': str, 'required': True, 'format': 'email', 'max_length': 255},
+    'password': {'type': str, 'required': True, 'min_length': 6, 'max_length': 128},
+}
+
 @app.route('/api/auth/login', methods=['POST'])
+@limiter.limit(_get_config_value('AUTH_RATE_LIMIT', fallback='10 per minute', allow_dev_fallback=True))
+@validate_json(LOGIN_PAYLOAD_SCHEMA)
 def login():
     """User authentication endpoint - Fixed to match database schema"""
     try:
-        data = request.get_json()
+        data = getattr(request, 'validated_json', request.get_json() or {})
         
-        if not data:
-            return jsonify({'success': False, 'error': 'Invalid request format'}), 400
-            
         email = data.get('email', '').strip().lower()
         password = data.get('password', '')
 
         logger.info(f"Login attempt for email: {email}")
-
-        if not email or not password:
-            return jsonify({'success': False, 'error': 'Email and password are required'}), 400
-
-        if '@' not in email or '.' not in email:
-            return jsonify({'success': False, 'error': 'Please enter a valid email address'}), 400
 
         # Get user from database - using correct schema with JOIN to get role name
         query = """
@@ -862,16 +1093,29 @@ def login():
         if user_data.get('requires_approval') and not user_data.get('approved_at'):
             return jsonify({'success': False, 'error': 'Your account is pending approval'}), 401
 
-        # Generate JWT token using correct user ID field
+        issued_at = datetime.now(timezone.utc)
+        expires_at = issued_at + timedelta(minutes=JWT_SETTINGS['ttl_minutes'])
         token_payload = {
-            'user_id': user_data['id'],  # Using 'id' instead of 'user_id'
+            'user_id': user_data['id'],
             'email': user_data['email'],
-            'role': user_data['role_name'],  # Using role_name from JOIN
-            'exp': datetime.now(timezone.utc) + timedelta(hours=24),
-            'iat': datetime.now(timezone.utc)
+            'role': user_data['role_name'],
+            'type': 'staff_access',
+            'iss': JWT_SETTINGS['issuer'],
+            'aud': JWT_SETTINGS['audience'],
+            'iat': issued_at,
+            'exp': expires_at,
+            'jti': uuid.uuid4().hex,
         }
 
         token = jwt.encode(token_payload, app.config['SECRET_KEY'], algorithm='HS256')
+
+        SessionRegistry.register(
+            user_id=user_data['id'],
+            token_id=token_payload['jti'],
+            expires_at=expires_at,
+            ip_address=request.headers.get('X-Forwarded-For', request.remote_addr),
+            user_agent=request.headers.get('User-Agent', ''),
+        )
 
         # Update last login
         try:
@@ -908,7 +1152,7 @@ def login():
         response_data = {
             'success': True,
             'data': {
-                'token': token,
+                'token_expires_at': expires_at.isoformat(),
                 'user': {
                     'user_id': user_data['id'],
                     'email': user_data['email'],
@@ -923,11 +1167,35 @@ def login():
         }
 
         logger.info(f"Login successful for user: {email}")
-        return jsonify(response_data), 200
+        response = jsonify(response_data)
+        response.set_cookie(
+            'auth_token',
+            token,
+            httponly=True,
+            secure=not IS_DEV_ENV,
+            samesite='Strict',
+            max_age=JWT_SETTINGS['ttl_minutes'] * 60,
+            path='/'
+        )
+        return response, 200
 
     except Exception as e:
         logger.error(f"Login error: {e}")
         return jsonify({'success': False, 'error': 'Internal server error occurred'}), 500
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+@token_required
+def logout():
+    try:
+        session_id = getattr(request, 'current_session_id', None)
+        SessionRegistry.revoke(session_id)
+        response = jsonify({'success': True, 'message': 'Logout successful'})
+        response.set_cookie('auth_token', '', httponly=True, secure=not IS_DEV_ENV, samesite='Strict', max_age=0, path='/')
+        return response, 200
+    except Exception as exc:
+        logger.error(f"Logout error: {exc}")
+        return jsonify({'success': False, 'error': 'Unable to logout'}), 500
 
 @app.route('/api/auth/register', methods=['POST'])
 def register():
@@ -1305,15 +1573,14 @@ def register_patient_portal():
 
 
 @app.route('/api/patient-portal/login', methods=['POST'])
+@limiter.limit(_get_config_value('PORTAL_AUTH_RATE_LIMIT', fallback='6 per minute', allow_dev_fallback=True))
+@validate_json(PATIENT_LOGIN_SCHEMA)
 def patient_portal_login():
     """Authenticate a patient portal user."""
     try:
-        data = request.get_json() or {}
+        data = getattr(request, 'validated_json', request.get_json() or {})
         email = str(data.get('email', '')).strip().lower()
         password = data.get('password', '')
-
-        if not email or not password:
-            return jsonify({'success': False, 'error': 'Email and password are required'}), 400
 
         auth_rows = DatabaseManager.execute_query(
             """
@@ -1404,12 +1671,17 @@ def patient_portal_login():
             cursor.close()
             connection.close()
 
+        issued_at = datetime.now(timezone.utc)
+        expires_at = issued_at + timedelta(minutes=PATIENT_JWT_SETTINGS['ttl_minutes'])
         payload = {
             'patient_id': auth_record['patient_id'],
             'email': email,
             'type': 'patient_portal',
-            'exp': datetime.now(timezone.utc) + timedelta(hours=12),
-            'iat': datetime.now(timezone.utc)
+            'iss': PATIENT_JWT_SETTINGS['issuer'],
+            'aud': PATIENT_JWT_SETTINGS['audience'],
+            'iat': issued_at,
+            'exp': expires_at,
+            'jti': uuid.uuid4().hex,
         }
         token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
 
@@ -1419,6 +1691,7 @@ def patient_portal_login():
             'success': True,
             'data': {
                 'token': token,
+                'token_expires_at': expires_at.isoformat(),
                 'patient_data': {
                     'id': auth_record['patient_id'],
                     'full_name': patient_full_name,
@@ -1459,7 +1732,13 @@ def patient_portal_token_required(f):
             if token.startswith('Bearer '):
                 token = token[7:]
             
-            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            data = jwt.decode(
+                token,
+                app.config['SECRET_KEY'],
+                algorithms=['HS256'],
+                audience=PATIENT_JWT_SETTINGS['audience'],
+                issuer=PATIENT_JWT_SETTINGS['issuer'],
+            )
             
             # Validate patient portal token type
             if data.get('type') != 'patient_portal':
@@ -1481,8 +1760,12 @@ def patient_portal_token_required(f):
             
             request.patient_id = patient_id
             
+            request.patient_session_id = data.get('jti')
+
         except jwt.ExpiredSignatureError:
             return jsonify({'success': False, 'error': 'Token has expired'}), 401
+        except (jwt.InvalidAudienceError, jwt.InvalidIssuerError):
+            return jsonify({'success': False, 'error': 'Invalid token issuer or audience'}), 401
         except jwt.InvalidTokenError:
             return jsonify({'success': False, 'error': 'Invalid token'}), 401
         
